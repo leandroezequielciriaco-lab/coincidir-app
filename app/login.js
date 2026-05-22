@@ -11,7 +11,6 @@ import {
 } from 'react-native'
 import { useRouter } from 'expo-router'
 import { signInWithEmailAndPassword } from 'firebase/auth'
-import { doc, getDoc } from 'firebase/firestore'
 
 import { getFirebaseServices } from '../firebaseConfig'
 import { styles } from '../components/LoginScreen.styles'
@@ -67,16 +66,14 @@ export default function LoginScreen() {
     setError('')
 
     try {
-      const { auth, db } = getFirebaseServices()
-      const credential = await signInWithEmailAndPassword(
+      const { auth } = getFirebaseServices()
+      await signInWithEmailAndPassword(
         auth,
         email.trim(),
         password,
       )
-      const profileSnap = await getDoc(doc(db, 'users', credential.user.uid))
-      const profile = profileSnap.exists() ? profileSnap.data() : null
 
-      router.replace(profile?.onboardingCompleted ? '/home' : '/interests')
+      router.replace('/home')
     } catch (loginError) {
       setError(getFriendlyLoginError(loginError))
     } finally {

@@ -77,6 +77,27 @@ function validateForm(form) {
   return ''
 }
 
+async function saveRegistrationProfile(user, form, fullName) {
+  try {
+    const { db } = getFirebaseServices()
+
+    await updateProfile(user, {
+      displayName: fullName,
+    })
+
+    await setDoc(doc(db, 'users', user.uid), {
+      fullName,
+      email: form.email.trim().toLowerCase(),
+      birthDate: form.birthDate.trim(),
+      city: form.city.trim(),
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    })
+  } catch (profileError) {
+    console.warn('Cuenta creada, pero no pudimos guardar el perfil en Firestore.', profileError)
+  }
+}
+
 function InputIcon({ type }) {
   if (type === 'mail') {
     return <Text style={styles.inputIcon}>✉</Text>
@@ -170,7 +191,7 @@ export default function RegisterScreen() {
     setError('')
 
     try {
-      const { auth, db } = getFirebaseServices()
+      const { auth } = getFirebaseServices()
 
       const credential = await createUserWithEmailAndPassword(
         auth,
@@ -181,20 +202,9 @@ export default function RegisterScreen() {
       const { user } = credential
       const fullName = form.fullName.trim()
 
-      await updateProfile(user, {
-        displayName: fullName,
-      })
+      saveRegistrationProfile(user, form, fullName)
 
-      await setDoc(doc(db, 'users', user.uid), {
-        fullName,
-        email: form.email.trim().toLowerCase(),
-        birthDate: form.birthDate.trim(),
-        city: form.city.trim(),
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
-      })
-
-      router.replace('/interests')
+      router.replace('/home')
     } catch (submitError) {
       setError(getFriendlyAuthError(submitError))
     } finally {
