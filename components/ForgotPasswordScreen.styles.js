@@ -1,0 +1,73 @@
+import { StyleSheet } from 'react-native'
+
+export const styles = StyleSheet.create({
+  screen: {
+    flex: 1,
+    backgroundColor: '#FAF8F1',
+  },
+  image: {
+    flex: 1,
+    width: '100%',
+    height: '100%',
+  },
+  keyboardLayer: {
+    flex: 1,
+  },
+  backHitArea: {
+    position: 'absolute',
+    left: '5%',
+    top: '4%',
+    width: '12%',
+    height: '6%',
+  },
+  emailInput: {
+    position: 'absolute',
+    left: '22%',
+    right: '13%',
+    top: '52.4%',
+    height: '5.4%',
+    color: '#123F38',
+    fontSize: 18,
+    fontWeight: '600',
+    letterSpacing: 0,
+    padding: 0,
+  },
+  errorText: {
+    position: 'absolute',
+    left: '11%',
+    right: '11%',
+    top: '58.5%',
+    color: '#B42318',
+    fontSize: 14,
+    fontWeight: '700',
+    letterSpacing: 0,
+    textAlign: 'center',
+  },
+  successText: {
+    position: 'absolute',
+    left: '11%',
+    right: '11%',
+    top: '58.5%',
+    color: '#0B6A2B',
+    fontSize: 14,
+    fontWeight: '800',
+    letterSpacing: 0,
+    textAlign: 'center',
+  },
+  submitHitArea: {
+    position: 'absolute',
+    left: '9%',
+    right: '9%',
+    top: '60.9%',
+    height: '6.5%',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  loginHitArea: {
+    position: 'absolute',
+    left: '31%',
+    right: '31%',
+    top: '82%',
+    height: '5%',
+  },
+})
