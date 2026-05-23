@@ -15,6 +15,7 @@ import {
 import * as Location from 'expo-location'
 import { useRouter } from 'expo-router'
 import { addDoc, collection, serverTimestamp } from 'firebase/firestore'
+import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import {
   ArrowLeft,
   ArrowRight,
@@ -294,6 +295,7 @@ function getCreateError(error: unknown) {
 
 export default function CrearScreen() {
   const router = useRouter()
+  const insets = useSafeAreaInsets()
   const [name, setName] = useState('')
   const [category, setCategory] = useState<Category | null>(null)
   const [subcategory, setSubcategory] = useState('')
@@ -551,6 +553,13 @@ export default function CrearScreen() {
     setIsAdditionalVisible(false)
   }
 
+  const safeBackStyle = { top: Math.max(insets.top + 8, 18) }
+  const safeCreateStyle = { bottom: Math.max(insets.bottom + 12, 18), top: undefined }
+  const safeAdditionalScrollStyle = {
+    paddingBottom: Math.max(insets.bottom + 28, 38),
+    paddingTop: Math.max(insets.top + 18, 28),
+  }
+
   return (
     <View style={styles.screen}>
       <ScrollView
@@ -560,7 +569,7 @@ export default function CrearScreen() {
         showsVerticalScrollIndicator={false}
       >
         <ImageBackground source={createActivityImage} resizeMode="stretch" style={styles.image}>
-        <Pressable accessibilityLabel="Volver" accessibilityRole="button" onPress={() => router.back()} style={styles.backHitArea} />
+        <Pressable accessibilityLabel="Volver" accessibilityRole="button" onPress={() => router.back()} style={[styles.backHitArea, safeBackStyle]} />
 
         <View style={styles.nameInputShell}>
           <TextInput
@@ -665,14 +674,14 @@ export default function CrearScreen() {
 
         {message ? <Text style={styles.messageText}>{message}</Text> : null}
 
-        <Pressable accessibilityLabel="Crear actividad" accessibilityRole="button" disabled={isSaving} onPress={createActivity} style={styles.createHitArea}>
+        <Pressable accessibilityLabel="Crear actividad" accessibilityRole="button" disabled={isSaving} onPress={createActivity} style={[styles.createHitArea, safeCreateStyle]}>
           {isSaving ? <ActivityIndicator color="#FFFFFF" /> : null}
         </Pressable>
 
         {isAdditionalVisible ? (
           <View style={styles.additionalScreen}>
             <ScrollView
-              contentContainerStyle={styles.additionalScrollContent}
+              contentContainerStyle={[styles.additionalScrollContent, safeAdditionalScrollStyle]}
               keyboardShouldPersistTaps="handled"
               showsVerticalScrollIndicator={false}
             >

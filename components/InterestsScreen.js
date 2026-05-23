@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { ActivityIndicator, ImageBackground, Pressable, Text, View } from 'react-native'
 import { useRouter } from 'expo-router'
 import { serverTimestamp, setDoc, doc } from 'firebase/firestore'
+import { useSafeAreaInsets } from 'react-native-safe-area-context'
 
 import { getFirebaseServices } from '../firebaseConfig'
 import { styles } from './InterestsScreen.styles'
@@ -53,6 +54,7 @@ function getFriendlySaveError(error) {
 
 export default function InterestsScreen() {
   const router = useRouter()
+  const insets = useSafeAreaInsets()
   const [selectedInterests, setSelectedInterests] = useState(
     outdoorActivities.map((activity) => activity.label),
   )
@@ -133,6 +135,10 @@ export default function InterestsScreen() {
     }
   }
 
+  const safeBackStyle = { top: Math.max(insets.top + 6, 16) }
+  const safeContinueStyle = { bottom: Math.max(insets.bottom + 34, 50), top: undefined }
+  const safeSkipStyle = { bottom: Math.max(insets.bottom + 8, 20), top: undefined }
+
   return (
     <View style={styles.screen}>
       <ImageBackground source={interestsImage} resizeMode="stretch" style={styles.image}>
@@ -140,7 +146,7 @@ export default function InterestsScreen() {
           accessibilityLabel="Volver"
           accessibilityRole="button"
           onPress={() => router.back()}
-          style={styles.backHitArea}
+          style={[styles.backHitArea, safeBackStyle]}
         />
 
         {allActivities.map((activity) => {
@@ -167,7 +173,7 @@ export default function InterestsScreen() {
           accessibilityRole="button"
           disabled={isSaving}
           onPress={saveInterests}
-          style={styles.continueHitArea}
+          style={[styles.continueHitArea, safeContinueStyle]}
         >
           {isSaving ? <ActivityIndicator color="#FFFFFF" /> : null}
         </Pressable>
@@ -177,7 +183,7 @@ export default function InterestsScreen() {
           accessibilityRole="button"
           disabled={isSaving}
           onPress={skipInterests}
-          style={styles.skipHitArea}
+          style={[styles.skipHitArea, safeSkipStyle]}
         />
       </ImageBackground>
     </View>

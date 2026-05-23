@@ -10,7 +10,7 @@ import {
   TextInput,
   View,
 } from 'react-native'
-import { SafeAreaView } from 'react-native-safe-area-context'
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { useLocalSearchParams, useRouter } from 'expo-router'
 import { onAuthStateChanged } from 'firebase/auth'
 import {
@@ -64,6 +64,7 @@ function isChatSource(value: unknown): value is ChatSource {
 
 export default function ChatScreen() {
   const router = useRouter()
+  const insets = useSafeAreaInsets()
   const listRef = useRef<FlatList<ChatMessage>>(null)
   const { chatId, source } = useLocalSearchParams<{ chatId?: string; source?: string }>()
   const chatSource: ChatSource = isChatSource(source) ? source : 'activity'
@@ -218,6 +219,10 @@ export default function ChatScreen() {
     }
   }
 
+  const composerSafeStyle = {
+    paddingBottom: Math.max(insets.bottom + 8, Platform.OS === 'ios' ? 16 : 12),
+  }
+
   if (isLoading) {
     return (
       <SafeAreaView style={styles.safeArea}>
@@ -276,7 +281,7 @@ export default function ChatScreen() {
           showsVerticalScrollIndicator={false}
         />
 
-        <View style={styles.composer}>
+        <View style={[styles.composer, composerSafeStyle]}>
           <TextInput
             multiline
             onChangeText={setText}

@@ -7,25 +7,28 @@ import {
   UserRound,
 } from 'lucide-react-native'
 import { Platform, View } from 'react-native'
-
-const tabBarStyle = {
-  backgroundColor: '#FFFFFF',
-  borderTopColor: '#EFE9DF',
-  borderTopWidth: 1,
-  borderTopLeftRadius: 26,
-  borderTopRightRadius: 26,
-  height: Platform.OS === 'ios' ? 88 : 76,
-  paddingBottom: Platform.OS === 'ios' ? 24 : 12,
-  paddingTop: 9,
-  position: 'absolute' as const,
-  shadowColor: '#07392D',
-  shadowOffset: { width: 0, height: -8 },
-  shadowOpacity: 0.08,
-  shadowRadius: 18,
-  elevation: 12,
-}
+import { useSafeAreaInsets } from 'react-native-safe-area-context'
 
 export default function TabsLayout() {
+  const insets = useSafeAreaInsets()
+  const bottomInset = Math.max(insets.bottom, Platform.OS === 'ios' ? 18 : 10)
+  const tabBarStyle = {
+    backgroundColor: '#FFFFFF',
+    borderTopColor: '#EFE9DF',
+    borderTopWidth: 1,
+    borderTopLeftRadius: 26,
+    borderTopRightRadius: 26,
+    height: 64 + bottomInset,
+    paddingBottom: bottomInset,
+    paddingTop: 9,
+    position: 'absolute' as const,
+    shadowColor: '#07392D',
+    shadowOffset: { width: 0, height: -8 },
+    shadowOpacity: 0.08,
+    shadowRadius: 18,
+    elevation: 12,
+  }
+
   return (
     <Tabs
       screenOptions={{
