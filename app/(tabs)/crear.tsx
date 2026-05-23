@@ -11,8 +11,10 @@ import {
   TextInput,
   View,
 } from 'react-native'
+import * as Location from 'expo-location'
 import { useRouter } from 'expo-router'
 import { addDoc, collection, serverTimestamp } from 'firebase/firestore'
+import MapView, { Marker, type Region } from 'react-native-maps'
 
 import { getFirebaseServices } from '../../firebaseConfig'
 
@@ -20,7 +22,7 @@ const createActivityImage = require('../../assets/images/create-activity-fullscr
 const additionalSettingsImage = require('../../assets/images/additional-settings-fullscreen.png')
 
 type CategoryId = 'outdoor' | 'sports' | 'wellness' | 'groups' | 'private'
-type PickerMode = 'category' | 'subcategory' | 'date' | 'time' | 'location' | 'currency' | null
+type PickerMode = 'category' | 'subcategory' | 'date' | 'time' | 'currency' | null
 
 type Category = {
   id: CategoryId
@@ -29,6 +31,12 @@ type Category = {
   color: string
   backgroundColor: string
   subcategories: string[]
+}
+
+type LocationSelection = {
+  address: string
+  latitude: number
+  longitude: number
 }
 
 const categories: Category[] = [
@@ -132,10 +140,14 @@ const categories: Category[] = [
   },
 ]
 
-const dateOptions = ['Hoy', 'Mañana', 'Sábado', 'Domingo', 'Próxima semana']
-const timeOptions = ['08:00', '09:00', '10:00', '12:00', '16:00', '18:00', '19:00', '20:00', '21:00']
-const locationOptions = ['Parque Sarmiento', 'Costanera Norte', 'Palermo', 'Tigre', 'Villa Devoto']
+const dateOptions = ['Hoy', 'Mañana', 'Pasado mañana', 'Próxima semana']
 const currencyOptions = ['ARS', 'USD', 'UYU', 'BRL', 'EUR']
+const initialLocationRegion: Region = {
+  latitude: -34.4251,
+  longitude: -58.5797,
+  latitudeDelta: 0.045,
+  longitudeDelta: 0.045,
+}
 
 const additionalOptions = {
   privacy: ['Pública', 'Privada', 'Con aprobación'],
@@ -143,6 +155,62 @@ const additionalOptions = {
   environment: ['Tranquilo', 'Social', 'Deportivo', 'Familiar', 'Relax'],
   cost: ['Gratis', 'A la gorra', 'Pago'],
   quick: ['Mascotas permitidas', 'Lluvia se suspende', 'Tengo lugar en auto', 'Punto de encuentro'],
+}
+
+function formatDate(value: Date) {
+  const day = String(value.getDate()).padStart(2, '0')
+  const month = String(value.getMonth() + 1).padStart(2, '0')
+  const year = value.getFullYear()
+
+  return `${day}/${month}/${year}`
+}
+
+function generateTimeOptions(startHour: number, endHour: number, intervalMinutes: number) {
+  const options: string[] = []
+  const startMinutes = startHour * 60
+  const endMinutes = endHour * 60
+
+  for (let minutes = startMinutes; minutes <= endMinutes; minutes += intervalMinutes) {
+    const hour = String(Math.floor(minutes / 60)).padStart(2, '0')
+    const minute = String(minutes % 60).padStart(2, '0')
+
+    options.push(`${hour}:${minute}`)
+  }
+
+  return options
+}
+
+const timeOptions = generateTimeOptions(8, 22, 30)
+
+function getQuickDateValue(option: string) {
+  const dateValue = new Date()
+
+  if (option === 'Mañana') {
+    dateValue.setDate(dateValue.getDate() + 1)
+  }
+
+  if (option === 'Pasado mañana') {
+    dateValue.setDate(dateValue.getDate() + 2)
+  }
+
+  if (option === 'Próxima semana') {
+    dateValue.setDate(dateValue.getDate() + 7)
+  }
+
+  return formatDate(dateValue)
+}
+
+function formatCoordinateAddress(latitude: number, longitude: number) {
+  return `${latitude.toFixed(5)}, ${longitude.toFixed(5)}`
+}
+
+function getAddressFromGeocode(place: Location.LocationGeocodedAddress) {
+  return [
+    place.name,
+    place.street,
+    place.city || place.district,
+    place.region,
+  ].filter(Boolean).join(', ')
 }
 
 function getCreateError(error: unknown) {
@@ -170,10 +238,18 @@ export default function CrearScreen() {
   const [date, setDate] = useState('')
   const [time, setTime] = useState('')
   const [location, setLocation] = useState('')
+  const [selectedLocation, setSelectedLocation] = useState<LocationSelection | null>(null)
+  const [mapRegion, setMapRegion] = useState<Region>(initialLocationRegion)
+  const [draftPin, setDraftPin] = useState({
+    latitude: initialLocationRegion.latitude,
+    longitude: initialLocationRegion.longitude,
+  })
   const [pickerMode, setPickerMode] = useState<PickerMode>(null)
   const [isSaving, setIsSaving] = useState(false)
   const [message, setMessage] = useState('')
   const [isAdditionalVisible, setIsAdditionalVisible] = useState(false)
+  const [isLocationPickerVisible, setIsLocationPickerVisible] = useState(false)
+  const [isResolvingLocation, setIsResolvingLocation] = useState(false)
   const [privacy, setPrivacy] = useState('Pública')
   const [maxParticipants, setMaxParticipants] = useState(10)
   const [level, setLevel] = useState('Principiante')
@@ -193,18 +269,116 @@ export default function CrearScreen() {
     if (pickerMode === 'subcategory') return 'Elegí una subcategoría'
     if (pickerMode === 'date') return 'Elegí una fecha'
     if (pickerMode === 'time') return 'Elegí una hora'
-    if (pickerMode === 'location') return 'Elegí una ubicación'
     if (pickerMode === 'currency') return 'Elegí una moneda'
     return ''
   }, [pickerMode])
 
   const openGoogleMaps = async () => {
-    const query = encodeURIComponent(location || 'Parque Sarmiento Buenos Aires')
+    const query = encodeURIComponent(selectedLocation
+      ? `${selectedLocation.latitude},${selectedLocation.longitude}`
+      : (location || 'Parque Sarmiento Buenos Aires'))
+
     await Linking.openURL(`https://www.google.com/maps/search/?api=1&query=${query}`)
   }
 
+  const openLocationPicker = async () => {
+    setMessage('')
+    setIsLocationPickerVisible(true)
+
+    if (selectedLocation) {
+      const region = {
+        latitude: selectedLocation.latitude,
+        longitude: selectedLocation.longitude,
+        latitudeDelta: 0.02,
+        longitudeDelta: 0.02,
+      }
+
+      setMapRegion(region)
+      setDraftPin({
+        latitude: selectedLocation.latitude,
+        longitude: selectedLocation.longitude,
+      })
+      return
+    }
+
+    const permission = await Location.requestForegroundPermissionsAsync()
+
+    if (permission.status !== 'granted') {
+      setMessage('Podés seleccionar la ubicación manualmente en el mapa.')
+      setMapRegion(initialLocationRegion)
+      setDraftPin({
+        latitude: initialLocationRegion.latitude,
+        longitude: initialLocationRegion.longitude,
+      })
+      return
+    }
+
+    const currentLocation = await Location.getCurrentPositionAsync({})
+    const region = {
+      latitude: currentLocation.coords.latitude,
+      longitude: currentLocation.coords.longitude,
+      latitudeDelta: 0.02,
+      longitudeDelta: 0.02,
+    }
+
+    setMapRegion(region)
+    setDraftPin({
+      latitude: region.latitude,
+      longitude: region.longitude,
+    })
+  }
+
+  const updateDraftPin = (event: {
+    nativeEvent: {
+      coordinate: {
+        latitude: number
+        longitude: number
+      }
+    }
+  }) => {
+    const coordinate = event.nativeEvent.coordinate
+    setDraftPin({
+      latitude: coordinate.latitude,
+      longitude: coordinate.longitude,
+    })
+  }
+
+  const confirmLocation = async () => {
+    setIsResolvingLocation(true)
+
+    try {
+      const [geocode] = await Location.reverseGeocodeAsync(draftPin)
+      const address = geocode
+        ? getAddressFromGeocode(geocode)
+        : formatCoordinateAddress(draftPin.latitude, draftPin.longitude)
+      const resolvedAddress = address || formatCoordinateAddress(draftPin.latitude, draftPin.longitude)
+
+      setSelectedLocation({
+        address: resolvedAddress,
+        latitude: draftPin.latitude,
+        longitude: draftPin.longitude,
+      })
+      setLocation(resolvedAddress)
+      setIsLocationPickerVisible(false)
+      setMessage('')
+    } catch {
+      const fallbackAddress = formatCoordinateAddress(draftPin.latitude, draftPin.longitude)
+
+      setSelectedLocation({
+        address: fallbackAddress,
+        latitude: draftPin.latitude,
+        longitude: draftPin.longitude,
+      })
+      setLocation(fallbackAddress)
+      setIsLocationPickerVisible(false)
+      setMessage('')
+    } finally {
+      setIsResolvingLocation(false)
+    }
+  }
+
   const createActivity = async () => {
-    if (!name.trim() || !category || !subcategory || !description.trim() || !date || !time || !location) {
+    if (!name.trim() || !category || !subcategory || !description.trim() || !date || !time || !selectedLocation) {
       setMessage('Completá todos los campos para crear la actividad.')
       return
     }
@@ -238,6 +412,14 @@ export default function CrearScreen() {
         date,
         time,
         location,
+        locationAddress: selectedLocation.address,
+        locationLatitude: selectedLocation.latitude,
+        locationLongitude: selectedLocation.longitude,
+        locationPin: {
+          address: selectedLocation.address,
+          latitude: selectedLocation.latitude,
+          longitude: selectedLocation.longitude,
+        },
         city: getCityFromLocation(location),
         additionalSettings: {
           privacy,
@@ -269,9 +451,8 @@ export default function CrearScreen() {
     }
 
     if (pickerMode === 'subcategory' && typeof value === 'string') setSubcategory(value)
-    if (pickerMode === 'date' && typeof value === 'string') setDate(value)
+    if (pickerMode === 'date' && typeof value === 'string') setDate(getQuickDateValue(value))
     if (pickerMode === 'time' && typeof value === 'string') setTime(value)
-    if (pickerMode === 'location' && typeof value === 'string') setLocation(value)
     if (pickerMode === 'currency' && typeof value === 'string') setCurrency(value)
 
     setPickerMode(null)
@@ -304,17 +485,25 @@ export default function CrearScreen() {
 
   return (
     <View style={styles.screen}>
-      <ImageBackground source={createActivityImage} resizeMode="stretch" style={styles.image}>
+      <ScrollView
+        bounces={false}
+        contentContainerStyle={styles.scrollContent}
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
+      >
+        <ImageBackground source={createActivityImage} resizeMode="stretch" style={styles.image}>
         <Pressable accessibilityLabel="Volver" accessibilityRole="button" onPress={() => router.back()} style={styles.backHitArea} />
 
-        <TextInput
-          maxLength={70}
-          onChangeText={setName}
-          placeholder=""
-          style={[styles.input, styles.nameInput]}
-          underlineColorAndroid="transparent"
-          value={name}
-        />
+        <View style={styles.nameInputShell}>
+          <TextInput
+            maxLength={70}
+            onChangeText={setName}
+            placeholder=""
+            style={styles.input}
+            underlineColorAndroid="transparent"
+            value={name}
+          />
+        </View>
 
         <Pressable accessibilityLabel="Seleccionar categoría" accessibilityRole="button" onPress={() => setPickerMode('category')} style={styles.categoryHitArea}>
           {category ? (
@@ -338,16 +527,18 @@ export default function CrearScreen() {
           </View>
         ) : null}
 
-        <TextInput
-          maxLength={300}
-          multiline
-          onChangeText={setDescription}
-          placeholder=""
-          style={[styles.input, styles.descriptionInput]}
-          textAlignVertical="top"
-          underlineColorAndroid="transparent"
-          value={description}
-        />
+        <View style={styles.descriptionInputShell}>
+          <TextInput
+            maxLength={300}
+            multiline
+            onChangeText={setDescription}
+            placeholder=""
+            style={[styles.input, styles.descriptionInput]}
+            textAlignVertical="top"
+            underlineColorAndroid="transparent"
+            value={description}
+          />
+        </View>
         <Text style={styles.counterText}>{description.length}/300</Text>
 
         <Pressable accessibilityLabel="Seleccionar fecha" accessibilityRole="button" onPress={() => setPickerMode('date')} style={styles.dateHitArea}>
@@ -358,9 +549,38 @@ export default function CrearScreen() {
           {time ? <Text style={styles.selectedFieldText}>{time}</Text> : null}
         </Pressable>
 
-        <Pressable accessibilityLabel="Abrir Google Maps" accessibilityRole="button" onPress={openGoogleMaps} style={styles.mapHitArea} />
+        {selectedLocation ? (
+          <View pointerEvents="none" style={styles.mapPreview}>
+            <MapView
+              initialRegion={{
+                latitude: selectedLocation.latitude,
+                longitude: selectedLocation.longitude,
+                latitudeDelta: 0.018,
+                longitudeDelta: 0.018,
+              }}
+              scrollEnabled={false}
+              style={styles.mapPreviewMap}
+              zoomEnabled={false}
+            >
+              <Marker
+                coordinate={{
+                  latitude: selectedLocation.latitude,
+                  longitude: selectedLocation.longitude,
+                }}
+                pinColor="#0E5A44"
+              />
+            </MapView>
+          </View>
+        ) : null}
 
-        <Pressable accessibilityLabel="Seleccionar ubicación" accessibilityRole="button" onPress={() => setPickerMode('location')} style={styles.locationHitArea}>
+        <Pressable
+          accessibilityLabel={selectedLocation ? 'Abrir Google Maps' : 'Seleccionar ubicación en el mapa'}
+          accessibilityRole="button"
+          onPress={selectedLocation ? openGoogleMaps : openLocationPicker}
+          style={styles.mapHitArea}
+        />
+
+        <Pressable accessibilityLabel="Seleccionar ubicación" accessibilityRole="button" onPress={openLocationPicker} style={styles.locationHitArea}>
           {location ? <Text style={styles.locationText}>{location}</Text> : null}
         </Pressable>
 
@@ -535,6 +755,59 @@ export default function CrearScreen() {
           </View>
         ) : null}
 
+        <Modal animationType="slide" visible={isLocationPickerVisible} onRequestClose={() => setIsLocationPickerVisible(false)}>
+          <View style={styles.locationPickerScreen}>
+            <View style={styles.locationPickerHeader}>
+              <Pressable
+                accessibilityLabel="Cerrar selector de ubicación"
+                accessibilityRole="button"
+                onPress={() => setIsLocationPickerVisible(false)}
+                style={styles.locationPickerBack}
+              >
+                <Text style={styles.locationPickerBackText}>←</Text>
+              </Pressable>
+              <View style={styles.locationPickerCopy}>
+                <Text style={styles.locationPickerTitle}>Elegí la ubicación</Text>
+                <Text style={styles.locationPickerSubtitle}>Tocá el mapa o arrastrá el pin.</Text>
+              </View>
+            </View>
+
+            <MapView
+              onLongPress={updateDraftPin}
+              onPress={updateDraftPin}
+              onRegionChangeComplete={setMapRegion}
+              region={mapRegion}
+              style={styles.locationPickerMap}
+            >
+              <Marker
+                coordinate={draftPin}
+                draggable
+                onDragEnd={(event) => setDraftPin(event.nativeEvent.coordinate)}
+                pinColor="#0E5A44"
+              />
+            </MapView>
+
+            <View style={styles.locationPickerFooter}>
+              <Text numberOfLines={2} style={styles.locationPickerHint}>
+                Pin: {formatCoordinateAddress(draftPin.latitude, draftPin.longitude)}
+              </Text>
+              <Pressable
+                accessibilityLabel="Confirmar ubicación"
+                accessibilityRole="button"
+                disabled={isResolvingLocation}
+                onPress={confirmLocation}
+                style={styles.confirmLocationButton}
+              >
+                {isResolvingLocation ? (
+                  <ActivityIndicator color="#FFFFFF" />
+                ) : (
+                  <Text style={styles.confirmLocationText}>Confirmar ubicación</Text>
+                )}
+              </Pressable>
+            </View>
+          </View>
+        </Modal>
+
         <Modal animationType="fade" transparent visible={pickerMode !== null} onRequestClose={() => setPickerMode(null)}>
           <Pressable style={styles.modalBackdrop} onPress={() => setPickerMode(null)}>
             <Pressable style={styles.modalCard}>
@@ -568,13 +841,6 @@ export default function CrearScreen() {
                     </Pressable>
                   ))
                   : null}
-                {pickerMode === 'location'
-                  ? locationOptions.map((item) => (
-                    <Pressable key={item} onPress={() => selectOption(item)} style={styles.optionRow}>
-                      <Text style={styles.optionText}>{item}</Text>
-                    </Pressable>
-                  ))
-                  : null}
                 {pickerMode === 'currency'
                   ? currencyOptions.map((item) => (
                     <Pressable key={item} onPress={() => selectOption(item)} style={styles.optionRow}>
@@ -586,32 +852,77 @@ export default function CrearScreen() {
             </Pressable>
           </Pressable>
         </Modal>
-      </ImageBackground>
+        </ImageBackground>
+      </ScrollView>
     </View>
   )
 }
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: '#FCFAF3' },
-  image: { flex: 1, height: '100%', width: '100%' },
+  scrollContent: { flexGrow: 1 },
+  image: { flex: 1, minHeight: '100%', width: '100%' },
   backHitArea: { position: 'absolute', left: '4%', top: '2%', height: '6%', width: '12%' },
-  input: { position: 'absolute', color: '#123F38', fontSize: 17, fontWeight: '600', letterSpacing: 0, padding: 0 },
-  nameInput: { left: '13%', right: '7%', top: '22.8%', height: '4.8%' },
-  categoryHitArea: { position: 'absolute', left: '3.5%', top: '29.8%', width: '46%', height: '5.5%', justifyContent: 'center', paddingLeft: '10%' },
-  subcategoryHitArea: { position: 'absolute', right: '3.7%', top: '29.8%', width: '46%', height: '5.5%', justifyContent: 'center', paddingLeft: '9%', paddingRight: '8%' },
-  subcategoryPlaceholderPatch: { position: 'absolute', left: '60%', top: '31.4%', width: '22%', height: '2.4%', backgroundColor: '#FFFFFF', justifyContent: 'center' },
+  input: {
+    flex: 1,
+    height: '100%',
+    color: '#123F38',
+    fontSize: 17,
+    lineHeight: 22,
+    fontWeight: '600',
+    letterSpacing: 0,
+    includeFontPadding: false,
+    paddingHorizontal: 0,
+    paddingVertical: 0,
+    paddingTop: 0,
+    paddingBottom: 0,
+    textAlignVertical: 'center',
+  },
+  nameInputShell: {
+    position: 'absolute',
+    left: '13%',
+    right: '7%',
+    top: '24%',
+    height: '2.8%',
+    justifyContent: 'center',
+  },
+  categoryHitArea: { position: 'absolute', left: '3.5%', top: '28.5%', width: '46%', height: '4.5%', justifyContent: 'flex-end', paddingLeft: '10%', paddingBottom: 4 },
+  subcategoryHitArea: { position: 'absolute', right: '3.7%', top: '28.5%', width: '46%', height: '4.5%', justifyContent: 'flex-end', paddingLeft: '9%', paddingRight: '8%', paddingBottom: 8 },
+  subcategoryPlaceholderPatch: { position: 'absolute', left: '60%', top: '29.2%', width: '22%', height: '2.4%', backgroundColor: '#FFFFFF', justifyContent: 'center' },
   placeholderPatchText: { color: '#34445F', fontSize: 18, fontWeight: '500', letterSpacing: 0 },
-  descriptionInput: { left: '13%', right: '7%', top: '37.5%', height: '9.7%', lineHeight: 22 },
-  counterText: { position: 'absolute', right: '7%', top: '45.4%', color: '#34445F', fontSize: 16, fontWeight: '600' },
-  dateHitArea: { position: 'absolute', left: '3.7%', top: '53.5%', width: '46%', height: '6%', justifyContent: 'center', paddingLeft: '13%' },
-  timeHitArea: { position: 'absolute', right: '3.7%', top: '53.5%', width: '46%', height: '6%', justifyContent: 'center', paddingLeft: '13%' },
-  mapHitArea: { position: 'absolute', left: '5%', right: '5%', top: '62.8%', height: '8.2%' },
-  locationHitArea: { position: 'absolute', left: '5%', right: '5%', top: '72.2%', height: '4.7%', justifyContent: 'center', alignItems: 'center' },
-  additionalTitlePatch: { position: 'absolute', left: '9%', top: '80.8%', width: '45%', height: '3%', backgroundColor: '#FCFAF8', justifyContent: 'center' },
+  descriptionInputShell: {
+    position: 'absolute',
+    left: '13%',
+    right: '12%',
+    top: '37.9%',
+    height: '5.5%',
+  },
+  descriptionInput: {
+    lineHeight: 22,
+    textAlignVertical: 'top',
+  },
+  counterText: { position: 'absolute', right: '7%', top: '41.3%', color: '#34445F', fontSize: 16, lineHeight: 20, fontWeight: '600' },
+  dateHitArea: { position: 'absolute', left: '3.7%', top: '49.2%', width: '46%', height: '4.9%', justifyContent: 'flex-end', paddingLeft: '13%', paddingBottom: 9 },
+  timeHitArea: { position: 'absolute', right: '3.7%', top: '49.2%', width: '46%', height: '4.9%', justifyContent: 'flex-end', paddingLeft: '13%', paddingBottom: 9 },
+  mapHitArea: { position: 'absolute', left: '5%', right: '5%', top: '58.2%', height: '12.2%' },
+  mapPreview: {
+    position: 'absolute',
+    left: '5%',
+    right: '5%',
+    top: '58.2%',
+    height: '12.2%',
+    borderRadius: 12,
+    overflow: 'hidden',
+  },
+  mapPreviewMap: {
+    flex: 1,
+  },
+  locationHitArea: { position: 'absolute', left: '5%', right: '5%', top: '70.1%', height: '4.7%', justifyContent: 'center', alignItems: 'center' },
+  additionalTitlePatch: { position: 'absolute', left: '9%', top: '77.3%', width: '45%', height: '3%', backgroundColor: '#FCFAF8', justifyContent: 'center' },
   additionalTitle: { color: '#0E5A44', fontSize: 18, fontWeight: '900', letterSpacing: 0 },
-  additionalHitArea: { position: 'absolute', left: '3.5%', right: '3.5%', top: '83.8%', height: '5.8%' },
-  messageText: { position: 'absolute', left: '8%', right: '8%', top: '90.3%', color: '#B42318', fontSize: 13, fontWeight: '800', textAlign: 'center' },
-  createHitArea: { position: 'absolute', left: '3.5%', right: '3.5%', top: '93.1%', height: '5.8%', alignItems: 'center', justifyContent: 'center' },
+  additionalHitArea: { position: 'absolute', left: '3.5%', right: '3.5%', top: '80.7%', height: '5.8%' },
+  messageText: { position: 'absolute', left: '8%', right: '8%', top: '88.2%', color: '#B42318', fontSize: 13, lineHeight: 17, fontWeight: '800', textAlign: 'center' },
+  createHitArea: { position: 'absolute', left: '3.5%', right: '3.5%', top: '92%', height: '5.8%', alignItems: 'center', justifyContent: 'center' },
   additionalScreen: { ...StyleSheet.absoluteFillObject, backgroundColor: '#FCFAF3', zIndex: 20 },
   additionalBackHitArea: { position: 'absolute', left: '4%', top: '2%', height: '6%', width: '12%' },
   additionalOptionHitArea: { position: 'absolute', alignItems: 'flex-end', justifyContent: 'flex-start', paddingTop: 6, paddingRight: 7 },
@@ -643,13 +954,86 @@ const styles = StyleSheet.create({
   quickThree: { left: '50.2%', top: '86.9%', width: '20.5%', height: '5.4%' },
   quickFour: { left: '72.4%', top: '86.9%', width: '22%', height: '5.4%' },
   additionalContinueHitArea: { position: 'absolute', left: '4%', right: '4%', top: '96%', height: '4.8%' },
-  selectedPill: { alignSelf: 'flex-start', borderRadius: 999, paddingHorizontal: 10, paddingVertical: 6 },
-  selectedText: { fontSize: 14, fontWeight: '900' },
-  selectedFieldText: { color: '#0E5A44', fontSize: 15, fontWeight: '900' },
-  locationText: { color: '#0E5A44', fontSize: 18, fontWeight: '900', backgroundColor: 'rgba(255,255,255,0.75)', borderRadius: 999, paddingHorizontal: 16, paddingVertical: 8 },
+  selectedPill: { alignSelf: 'flex-start', borderRadius: 999, paddingHorizontal: 10, paddingVertical: 5 },
+  selectedText: { fontSize: 14, lineHeight: 18, fontWeight: '900' },
+  selectedFieldText: { color: '#0E5A44', fontSize: 15, lineHeight: 19, fontWeight: '900' },
+  locationText: { color: '#0E5A44', fontSize: 18, lineHeight: 22, fontWeight: '900', backgroundColor: 'rgba(255,255,255,0.75)', borderRadius: 999, paddingHorizontal: 16, paddingVertical: 7 },
   modalBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.25)', justifyContent: 'flex-end' },
   modalCard: { maxHeight: '62%', backgroundColor: '#FFFFFF', borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 20 },
   modalTitle: { color: '#0E5A44', fontSize: 20, fontWeight: '900', marginBottom: 14, textAlign: 'center' },
   optionRow: { borderRadius: 16, marginBottom: 10, paddingHorizontal: 16, paddingVertical: 14 },
   optionText: { color: '#123F38', fontSize: 17, fontWeight: '800' },
+  locationPickerScreen: {
+    flex: 1,
+    backgroundColor: '#FCFAF3',
+  },
+  locationPickerHeader: {
+    minHeight: 112,
+    paddingHorizontal: 20,
+    paddingTop: 48,
+    paddingBottom: 18,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FCFAF3',
+  },
+  locationPickerBack: {
+    width: 44,
+    height: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 10,
+  },
+  locationPickerBackText: {
+    color: '#0E5A44',
+    fontSize: 34,
+    lineHeight: 38,
+    fontWeight: '500',
+  },
+  locationPickerCopy: {
+    flex: 1,
+  },
+  locationPickerTitle: {
+    color: '#0E5A44',
+    fontSize: 25,
+    lineHeight: 31,
+    fontWeight: '900',
+    letterSpacing: 0,
+  },
+  locationPickerSubtitle: {
+    color: '#34445F',
+    fontSize: 15,
+    lineHeight: 20,
+    fontWeight: '600',
+    marginTop: 3,
+  },
+  locationPickerMap: {
+    flex: 1,
+  },
+  locationPickerFooter: {
+    paddingHorizontal: 20,
+    paddingTop: 14,
+    paddingBottom: 28,
+    backgroundColor: '#FCFAF3',
+  },
+  locationPickerHint: {
+    color: '#34445F',
+    fontSize: 13,
+    lineHeight: 18,
+    fontWeight: '700',
+    textAlign: 'center',
+    marginBottom: 12,
+  },
+  confirmLocationButton: {
+    minHeight: 58,
+    borderRadius: 20,
+    backgroundColor: '#00613F',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  confirmLocationText: {
+    color: '#FFFFFF',
+    fontSize: 18,
+    lineHeight: 24,
+    fontWeight: '900',
+  },
 })

@@ -20,23 +20,37 @@ export const styles = StyleSheet.create({
     width: '12%',
     height: '6%',
   },
-  input: {
+  inputShell: {
     position: 'absolute',
     left: '22%',
     right: '14%',
+    height: '5.4%',
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  input: {
+    flex: 1,
+    height: '100%',
     color: '#123F38',
     fontSize: 18,
+    lineHeight: 24,
     fontWeight: '600',
     letterSpacing: 0,
-    padding: 0,
+    includeFontPadding: false,
+    paddingHorizontal: 0,
+    paddingVertical: 0,
+    paddingTop: 0,
+    paddingBottom: 0,
+    textAlignVertical: 'center',
   },
-  emailInput: {
+  filledInput: {
+    backgroundColor: '#FAF7F4',
+  },
+  emailInputShell: {
     top: '41.1%',
-    height: '5.4%',
   },
-  passwordInput: {
+  passwordInputShell: {
     top: '48.1%',
-    height: '5.4%',
     right: '21%',
   },
   eyeHitArea: {
@@ -72,6 +86,23 @@ export const styles = StyleSheet.create({
     height: '7%',
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  socialHitArea: {
+    position: 'absolute',
+    top: '68.7%',
+    width: '13.2%',
+    height: '6.3%',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  googleHitArea: {
+    left: '25.8%',
+  },
+  appleHitArea: {
+    left: '43.1%',
+  },
+  facebookHitArea: {
+    left: '60.4%',
   },
   createAccountHitArea: {
     position: 'absolute',
