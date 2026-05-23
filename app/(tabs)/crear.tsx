@@ -546,6 +546,11 @@ export default function CrearScreen() {
     }
   }
 
+  const returnToCreateActivity = () => {
+    setPickerMode(null)
+    setIsAdditionalVisible(false)
+  }
+
   return (
     <View style={styles.screen}>
       <ScrollView
@@ -675,7 +680,7 @@ export default function CrearScreen() {
                 <Pressable
                   accessibilityLabel="Volver a crear actividad"
                   accessibilityRole="button"
-                  onPress={() => setIsAdditionalVisible(false)}
+                  onPress={returnToCreateActivity}
                   style={styles.additionalBackButton}
                 >
                   <ArrowLeft color="#0E5A44" size={33} strokeWidth={2.2} />
@@ -843,7 +848,7 @@ export default function CrearScreen() {
               <Pressable
                 accessibilityLabel="Continuar"
                 accessibilityRole="button"
-                onPress={() => setIsAdditionalVisible(false)}
+                onPress={returnToCreateActivity}
                 style={styles.additionalContinueButton}
               >
                 <Text style={styles.additionalContinueText}>Continuar</Text>
@@ -863,7 +868,7 @@ export default function CrearScreen() {
               <Pressable
                 accessibilityLabel="Volver a crear actividad"
                 accessibilityRole="button"
-                onPress={() => setIsAdditionalVisible(false)}
+                onPress={returnToCreateActivity}
                 style={styles.additionalBackHitArea}
               />
 
@@ -1000,7 +1005,7 @@ export default function CrearScreen() {
               <Pressable
                 accessibilityLabel="Continuar"
                 accessibilityRole="button"
-                onPress={() => setIsAdditionalVisible(false)}
+                onPress={returnToCreateActivity}
                 style={styles.additionalContinueHitArea}
               />
             </ImageBackground>
