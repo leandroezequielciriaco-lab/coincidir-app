@@ -145,28 +145,28 @@ export function InviteFriendsSheet({ onClose, target, visible }: InviteFriendsSh
             Icon={MessageCircle}
             color="#0FA958"
             description="Invitá a tus amigos a sumarse."
-            label="Compartir actividad por WhatsApp"
+            label="WhatsApp"
             onPress={() => shareWithWhatsApp(shareMessage)}
           />
           <InviteOption
             Icon={Copy}
             color="#5A35D6"
             description={`Copia el link ${deepLink ? 'y dejalo listo para abrir la app.' : 'y envialo como quieras.'}`}
-            label="Copiar link de la actividad"
+            label="Copiar enlace"
             onPress={copyLink}
           />
           <InviteOption
             Icon={Send}
             color="#D93B9C"
             description="Compartí desde las opciones del teléfono."
-            label="Compartir por Instagram"
+            label="Instagram"
             onPress={nativeShare}
           />
           <InviteOption
             Icon={Rocket}
             color="#F2A900"
             description="Invitá a tus amigos a descubrir COINCIDIR."
-            label="Invitar a usar COINCIDIR"
+            label="Compartir en otras apps"
             onPress={() => Share.share({ message: getShareMessage({ type: 'app' }) })}
           />
 
@@ -196,10 +196,12 @@ function InviteOption({ Icon, color, description, label, onPress }: InviteOption
         <Icon color={color} size={23} strokeWidth={2.3} />
       </View>
       <View style={styles.optionCopy}>
-        <Text style={styles.optionTitle}>{label}</Text>
+        <Text numberOfLines={1} style={styles.optionTitle}>{label}</Text>
         <Text style={styles.optionDescription}>{description}</Text>
       </View>
-      <ChevronRight color="#10231F" size={20} strokeWidth={2.3} />
+      <View style={styles.optionArrow}>
+        <ChevronRight color="#10231F" size={20} strokeWidth={2.3} />
+      </View>
     </PressScale>
   )
 }
@@ -274,27 +276,30 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     borderWidth: 1,
     flexDirection: 'row',
-    gap: 12,
     marginBottom: 10,
     minHeight: 72,
     paddingHorizontal: 12,
+    paddingVertical: 10,
   },
   optionIcon: {
     alignItems: 'center',
     borderRadius: 999,
     height: 42,
     justifyContent: 'center',
+    marginRight: 12,
     width: 42,
   },
   optionCopy: {
     flex: 1,
+    minWidth: 0,
+    paddingRight: 10,
   },
   optionTitle: {
     color: '#10231F',
-    fontSize: 14,
+    fontSize: 16,
     fontWeight: '900',
     letterSpacing: 0,
-    lineHeight: 18,
+    lineHeight: 21,
   },
   optionDescription: {
     color: '#586A64',
@@ -303,6 +308,13 @@ const styles = StyleSheet.create({
     letterSpacing: 0,
     lineHeight: 17,
     marginTop: 2,
+  },
+  optionArrow: {
+    alignItems: 'center',
+    flexShrink: 0,
+    height: 32,
+    justifyContent: 'center',
+    width: 24,
   },
   feedback: {
     color: '#17803C',

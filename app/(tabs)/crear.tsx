@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react'
+import type { ReactNode } from 'react'
 import {
   ActivityIndicator,
   ImageBackground,
@@ -14,6 +15,34 @@ import {
 import * as Location from 'expo-location'
 import { useRouter } from 'expo-router'
 import { addDoc, collection, serverTimestamp } from 'firebase/firestore'
+import {
+  ArrowLeft,
+  ArrowRight,
+  BadgeDollarSign,
+  BarChart3,
+  Car,
+  ChevronDown,
+  CloudRain,
+  Dumbbell,
+  Globe2,
+  Heart,
+  Leaf,
+  Lightbulb,
+  LockKeyhole,
+  MapPin,
+  Minus,
+  PawPrint,
+  Plus,
+  ShieldCheck,
+  SlidersHorizontal,
+  Sparkles,
+  Star,
+  Tag,
+  UsersRound,
+  WalletCards,
+  Zap,
+} from 'lucide-react-native'
+import type { LucideIcon } from 'lucide-react-native'
 import MapView, { Marker, type Region } from 'react-native-maps'
 
 import { getFirebaseServices } from '../../firebaseConfig'
@@ -156,6 +185,40 @@ const additionalOptions = {
   cost: ['Gratis', 'A la gorra', 'Pago'],
   quick: ['Mascotas permitidas', 'Lluvia se suspende', 'Tengo lugar en auto', 'Punto de encuentro'],
 }
+
+const privacyDetails = [
+  { label: 'Pública', description: 'Cualquiera puede ver y sumarse', Icon: Globe2 },
+  { label: 'Privada', description: 'Solo personas invitadas', Icon: LockKeyhole },
+  { label: 'Con aprobación', description: 'Debo aprobar participantes', Icon: ShieldCheck },
+]
+
+const levelDetails = [
+  { label: 'Principiante', description: 'Ideal para empezar', Icon: Star },
+  { label: 'Intermedio', description: 'Algo de experiencia', Icon: Sparkles },
+  { label: 'Avanzado', description: 'Nivel alto', Icon: BarChart3 },
+  { label: 'Todos los niveles', description: 'Para cualquiera', Icon: UsersRound },
+]
+
+const environmentDetails = [
+  { label: 'Tranquilo', description: 'Relajado y sin presión', color: '#168A37', backgroundColor: '#F2FAF3', Icon: Leaf },
+  { label: 'Social', description: 'Enfocado en conectar', color: '#F07A00', backgroundColor: '#FFF7EC', Icon: UsersRound },
+  { label: 'Deportivo', description: 'Activo y con energía', color: '#2563EB', backgroundColor: '#F0F5FF', Icon: Dumbbell },
+  { label: 'Familiar', description: 'Apto para todas las edades', color: '#7A22C7', backgroundColor: '#F8F0FF', Icon: Heart },
+  { label: 'Relax', description: 'Bienestar y desconexión', color: '#E6378A', backgroundColor: '#FFF0F6', Icon: Sparkles },
+]
+
+const costDetails = [
+  { label: 'Gratis', description: 'Sin costo', Icon: BadgeDollarSign },
+  { label: 'A la gorra', description: 'Cada uno aporta lo que quiere', Icon: WalletCards },
+  { label: 'Pago', description: 'Se requiere un pago para participar', Icon: Tag },
+]
+
+const quickDetails = [
+  { label: 'Mascotas permitidas', shortLabel: 'Mascotas', description: 'Permitidas', Icon: PawPrint },
+  { label: 'Lluvia se suspende', shortLabel: 'Lluvia', description: 'Se suspende', Icon: CloudRain },
+  { label: 'Tengo lugar en auto', shortLabel: 'Tengo lugar', description: 'en auto', Icon: Car },
+  { label: 'Punto de encuentro', shortLabel: 'Punto de', description: 'encuentro', Icon: MapPin },
+]
 
 function formatDate(value: Date) {
   const day = String(value.getDate()).padStart(2, '0')
@@ -603,6 +666,195 @@ export default function CrearScreen() {
 
         {isAdditionalVisible ? (
           <View style={styles.additionalScreen}>
+            <ScrollView
+              contentContainerStyle={styles.additionalScrollContent}
+              keyboardShouldPersistTaps="handled"
+              showsVerticalScrollIndicator={false}
+            >
+              <View style={styles.additionalHeader}>
+                <Pressable
+                  accessibilityLabel="Volver a crear actividad"
+                  accessibilityRole="button"
+                  onPress={() => setIsAdditionalVisible(false)}
+                  style={styles.additionalBackButton}
+                >
+                  <ArrowLeft color="#0E5A44" size={33} strokeWidth={2.2} />
+                </Pressable>
+                <View style={styles.additionalLogo}>
+                  <Text style={styles.additionalLogoText}>OC</Text>
+                  <Text style={styles.additionalLogoBrand}>coincidir</Text>
+                </View>
+              </View>
+
+              <View style={styles.additionalTitleRow}>
+                <View style={styles.additionalTitleIcon}>
+                  <SlidersHorizontal color="#0E5A44" size={25} strokeWidth={2.4} />
+                </View>
+                <Text style={styles.additionalScreenTitle}>Ajustes adicionales</Text>
+              </View>
+              <Text style={styles.additionalSubtitle}>Completá los detalles para que otros sepan qué esperar.</Text>
+
+              <AdditionalSection Icon={LockKeyhole} title="Privacidad">
+                <View style={styles.additionalGrid}>
+                  {privacyDetails.map((item) => (
+                    <AdditionalChoiceCard
+                      active={privacy === item.label}
+                      description={item.description}
+                      Icon={item.Icon}
+                      key={item.label}
+                      label={item.label}
+                      onPress={() => setPrivacy(item.label)}
+                    />
+                  ))}
+                </View>
+              </AdditionalSection>
+
+              <AdditionalSection Icon={UsersRound} title="Participantes">
+                <View style={styles.participantsCard}>
+                  <Text style={styles.participantsLabel}>Cupos máximos (opcional)</Text>
+                  <View style={styles.participantsRow}>
+                    <View style={styles.participantsStepper}>
+                      <Pressable
+                        accessibilityLabel="Restar cupo"
+                        accessibilityRole="button"
+                        onPress={() => setMaxParticipants((value) => Math.max(2, value - 1))}
+                        style={styles.stepperButton}
+                      >
+                        <Minus color="#0E5A44" size={24} strokeWidth={2.5} />
+                      </Pressable>
+                      <Text style={styles.stepperValue}>{maxParticipants}</Text>
+                      <Pressable
+                        accessibilityLabel="Sumar cupo"
+                        accessibilityRole="button"
+                        onPress={() => setMaxParticipants((value) => Math.min(99, value + 1))}
+                        style={styles.stepperButton}
+                      >
+                        <Plus color="#0E5A44" size={24} strokeWidth={2.5} />
+                      </Pressable>
+                    </View>
+                    <Text style={styles.participantsHelp}>Incluyéndote a vos</Text>
+                  </View>
+                  <Text style={styles.participantsNote}>Podés cambiarlo más adelante.</Text>
+                </View>
+              </AdditionalSection>
+
+              <AdditionalSection Icon={BarChart3} title="Nivel de la actividad">
+                <View style={styles.levelGrid}>
+                  {levelDetails.map((item) => (
+                    <AdditionalChoiceCard
+                      active={level === item.label}
+                      description={item.description}
+                      Icon={item.Icon}
+                      key={item.label}
+                      label={item.label}
+                      onPress={() => setLevel(item.label)}
+                    />
+                  ))}
+                </View>
+              </AdditionalSection>
+
+              <AdditionalSection Icon={Leaf} title="Tipo de ambiente">
+                <View style={styles.environmentGrid}>
+                  {environmentDetails.map((item) => (
+                    <EnvironmentCard
+                      active={environment === item.label}
+                      backgroundColor={item.backgroundColor}
+                      color={item.color}
+                      description={item.description}
+                      Icon={item.Icon}
+                      key={item.label}
+                      label={item.label}
+                      onPress={() => setEnvironment(item.label)}
+                    />
+                  ))}
+                </View>
+              </AdditionalSection>
+
+              <AdditionalSection Icon={Tag} title="Costo de la actividad">
+                <View style={styles.additionalGrid}>
+                  {costDetails.map((item) => (
+                    <AdditionalChoiceCard
+                      active={cost === item.label}
+                      description={item.description}
+                      Icon={item.Icon}
+                      key={item.label}
+                      label={item.label}
+                      onPress={() => setCostOption(item.label)}
+                    />
+                  ))}
+                </View>
+
+                <View style={styles.priceRow}>
+                  <View style={styles.priceField}>
+                    <Text style={styles.priceLabel}>Precio (opcional)</Text>
+                    <TextInput
+                      editable={cost !== 'Gratis'}
+                      keyboardType="numeric"
+                      onChangeText={setPrice}
+                      placeholder="Ej: $2500"
+                      placeholderTextColor="#7A8790"
+                      style={[
+                        styles.priceInput,
+                        cost === 'Gratis' && styles.additionalDisabledInput,
+                      ]}
+                      underlineColorAndroid="transparent"
+                      value={price}
+                    />
+                  </View>
+                  <View style={styles.currencyField}>
+                    <Text style={styles.priceLabel}>Moneda</Text>
+                    <Pressable
+                      accessibilityLabel="Seleccionar moneda"
+                      accessibilityRole="button"
+                      disabled={cost === 'Gratis'}
+                      onPress={() => setPickerMode('currency')}
+                      style={[
+                        styles.currencyButton,
+                        cost === 'Gratis' && styles.additionalDisabledInput,
+                      ]}
+                    >
+                      <Text style={styles.currencyButtonText}>{currency}</Text>
+                      <ChevronDown color="#0E5A44" size={20} strokeWidth={2.4} />
+                    </Pressable>
+                  </View>
+                </View>
+              </AdditionalSection>
+
+              <AdditionalSection Icon={Zap} title="Ajustes rápidos">
+                <View style={styles.quickGrid}>
+                  {quickDetails.map((item) => (
+                    <QuickCard
+                      active={quickSettings.includes(item.label)}
+                      description={item.description}
+                      Icon={item.Icon}
+                      key={item.label}
+                      label={item.shortLabel}
+                      onPress={() => toggleQuickSetting(item.label)}
+                    />
+                  ))}
+                </View>
+              </AdditionalSection>
+
+              <View style={styles.additionalTip}>
+                <Lightbulb color="#0E5A44" size={22} strokeWidth={2.2} />
+                <Text style={styles.additionalTipText}>Podés agregar más detalles en la descripción de tu actividad.</Text>
+              </View>
+
+              <Pressable
+                accessibilityLabel="Continuar"
+                accessibilityRole="button"
+                onPress={() => setIsAdditionalVisible(false)}
+                style={styles.additionalContinueButton}
+              >
+                <Text style={styles.additionalContinueText}>Continuar</Text>
+                <ArrowRight color="#FFFFFF" size={34} strokeWidth={2.2} style={styles.additionalContinueArrow} />
+              </Pressable>
+            </ScrollView>
+          </View>
+        ) : null}
+
+        {false && isAdditionalVisible ? (
+          <View style={styles.additionalScreen}>
             <ImageBackground
               source={additionalSettingsImage}
               resizeMode="stretch"
@@ -858,6 +1110,103 @@ export default function CrearScreen() {
   )
 }
 
+type AdditionalSectionProps = {
+  children: ReactNode
+  Icon: LucideIcon
+  title: string
+}
+
+function AdditionalSection({ children, Icon, title }: AdditionalSectionProps) {
+  return (
+    <View style={styles.additionalSection}>
+      <View style={styles.additionalSectionHeader}>
+        <Icon color="#0E5A44" size={25} strokeWidth={2.2} />
+        <Text style={styles.additionalSectionTitle}>{title}</Text>
+      </View>
+      {children}
+    </View>
+  )
+}
+
+type AdditionalChoiceCardProps = {
+  active: boolean
+  description: string
+  Icon: LucideIcon
+  label: string
+  onPress: () => void
+}
+
+function AdditionalChoiceCard({ active, description, Icon, label, onPress }: AdditionalChoiceCardProps) {
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityState={{ selected: active }}
+      onPress={onPress}
+      style={[
+        styles.additionalChoiceCard,
+        active && styles.additionalChoiceCardActive,
+      ]}
+    >
+      <Icon color="#0E5A44" size={31} strokeWidth={2.1} />
+      <View style={styles.additionalChoiceCopy}>
+        <Text style={styles.additionalChoiceTitle}>{label}</Text>
+        <Text style={styles.additionalChoiceDescription}>{description}</Text>
+      </View>
+      {active ? <View style={styles.additionalCheck}><Text style={styles.additionalCheckText}>✓</Text></View> : null}
+    </Pressable>
+  )
+}
+
+type EnvironmentCardProps = AdditionalChoiceCardProps & {
+  backgroundColor: string
+  color: string
+}
+
+function EnvironmentCard({ active, backgroundColor, color, description, Icon, label, onPress }: EnvironmentCardProps) {
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityState={{ selected: active }}
+      onPress={onPress}
+      style={[
+        styles.environmentCard,
+        { backgroundColor, borderColor: active ? color : '#E2E6E3' },
+      ]}
+    >
+      <Icon color={color} size={32} strokeWidth={2.2} />
+      <Text style={[styles.environmentTitle, { color }]}>{label}</Text>
+      <Text style={styles.environmentDescription}>{description}</Text>
+      {active ? <View style={[styles.additionalCheck, styles.environmentCheck]}><Text style={styles.additionalCheckText}>✓</Text></View> : null}
+    </Pressable>
+  )
+}
+
+type QuickCardProps = {
+  active: boolean
+  description: string
+  Icon: LucideIcon
+  label: string
+  onPress: () => void
+}
+
+function QuickCard({ active, description, Icon, label, onPress }: QuickCardProps) {
+  return (
+    <Pressable
+      accessibilityRole="checkbox"
+      accessibilityState={{ checked: active }}
+      onPress={onPress}
+      style={[styles.quickCard, active && styles.additionalChoiceCardActive]}
+    >
+      <Icon color="#0E5A44" size={28} strokeWidth={2.2} />
+      <View style={styles.quickCopy}>
+        <Text style={styles.quickTitle}>{label}</Text>
+        <Text style={styles.quickDescription}>{description}</Text>
+      </View>
+      {active ? <View style={styles.quickCheck}><Text style={styles.additionalCheckText}>✓</Text></View> : null}
+    </Pressable>
+  )
+}
+
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: '#FCFAF3' },
   scrollContent: { flexGrow: 1 },
@@ -924,6 +1273,365 @@ const styles = StyleSheet.create({
   messageText: { position: 'absolute', left: '8%', right: '8%', top: '88.2%', color: '#B42318', fontSize: 13, lineHeight: 17, fontWeight: '800', textAlign: 'center' },
   createHitArea: { position: 'absolute', left: '3.5%', right: '3.5%', top: '92%', height: '5.8%', alignItems: 'center', justifyContent: 'center' },
   additionalScreen: { ...StyleSheet.absoluteFillObject, backgroundColor: '#FCFAF3', zIndex: 20 },
+  additionalScrollContent: {
+    paddingBottom: 34,
+    paddingHorizontal: 16,
+    paddingTop: 28,
+  },
+  additionalHeader: {
+    minHeight: 86,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  additionalBackButton: {
+    position: 'absolute',
+    left: 0,
+    top: 8,
+    width: 48,
+    height: 48,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  additionalLogo: {
+    alignItems: 'center',
+  },
+  additionalLogoText: {
+    color: '#0E5A44',
+    fontSize: 42,
+    lineHeight: 45,
+    fontWeight: '900',
+    letterSpacing: 0,
+  },
+  additionalLogoBrand: {
+    color: '#0E5A44',
+    fontSize: 18,
+    lineHeight: 22,
+    fontWeight: '900',
+    letterSpacing: 0,
+  },
+  additionalTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 16,
+  },
+  additionalTitleIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
+    backgroundColor: '#EFF7EB',
+  },
+  additionalScreenTitle: {
+    color: '#0E5A44',
+    fontSize: 30,
+    lineHeight: 37,
+    fontWeight: '900',
+    letterSpacing: 0,
+  },
+  additionalSubtitle: {
+    color: '#34445F',
+    fontSize: 16,
+    lineHeight: 23,
+    fontWeight: '600',
+    marginBottom: 26,
+    marginTop: 8,
+    textAlign: 'center',
+  },
+  additionalSection: {
+    marginBottom: 26,
+  },
+  additionalSectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 14,
+  },
+  additionalSectionTitle: {
+    color: '#0E5A44',
+    fontSize: 19,
+    lineHeight: 25,
+    fontWeight: '900',
+    letterSpacing: 0,
+    marginLeft: 12,
+  },
+  additionalGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 10,
+  },
+  additionalChoiceCard: {
+    flexGrow: 1,
+    flexBasis: '30%',
+    minHeight: 116,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#E2E6E3',
+    backgroundColor: '#FFFFFF',
+    paddingHorizontal: 14,
+    paddingVertical: 14,
+  },
+  additionalChoiceCardActive: {
+    borderColor: '#70B97A',
+    backgroundColor: '#F1FAF0',
+  },
+  additionalChoiceCopy: {
+    marginTop: 10,
+  },
+  additionalChoiceTitle: {
+    color: '#14211D',
+    fontSize: 16,
+    lineHeight: 21,
+    fontWeight: '900',
+    letterSpacing: 0,
+  },
+  additionalChoiceDescription: {
+    color: '#34445F',
+    fontSize: 13,
+    lineHeight: 19,
+    fontWeight: '600',
+    marginTop: 3,
+  },
+  additionalCheck: {
+    position: 'absolute',
+    right: 10,
+    top: 10,
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#168A37',
+  },
+  additionalCheckText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    lineHeight: 19,
+    fontWeight: '900',
+  },
+  participantsCard: {
+    minHeight: 136,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#E2E6E3',
+    backgroundColor: '#FFFFFF',
+    padding: 18,
+  },
+  participantsLabel: {
+    color: '#34445F',
+    fontSize: 15,
+    lineHeight: 20,
+    fontWeight: '700',
+  },
+  participantsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 12,
+  },
+  participantsStepper: {
+    width: 188,
+    minHeight: 56,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#E2E6E3',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 14,
+  },
+  stepperButton: {
+    width: 44,
+    height: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  stepperValue: {
+    color: '#168A37',
+    fontSize: 20,
+    lineHeight: 26,
+    fontWeight: '900',
+  },
+  participantsHelp: {
+    flex: 1,
+    color: '#34445F',
+    fontSize: 14,
+    lineHeight: 20,
+    fontWeight: '700',
+    marginLeft: 14,
+  },
+  participantsNote: {
+    color: '#34445F',
+    fontSize: 13,
+    lineHeight: 18,
+    fontWeight: '600',
+    marginTop: 10,
+  },
+  levelGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 10,
+  },
+  environmentGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 10,
+  },
+  environmentCard: {
+    flexGrow: 1,
+    flexBasis: '30%',
+    minHeight: 128,
+    borderRadius: 14,
+    borderWidth: 1,
+    alignItems: 'center',
+    paddingHorizontal: 10,
+    paddingVertical: 13,
+  },
+  environmentTitle: {
+    fontSize: 15,
+    lineHeight: 20,
+    fontWeight: '900',
+    letterSpacing: 0,
+    marginTop: 8,
+    textAlign: 'center',
+  },
+  environmentDescription: {
+    color: '#34445F',
+    fontSize: 12,
+    lineHeight: 17,
+    fontWeight: '600',
+    marginTop: 2,
+    textAlign: 'center',
+  },
+  environmentCheck: {
+    right: 8,
+    top: 8,
+  },
+  priceRow: {
+    flexDirection: 'row',
+    gap: 12,
+    marginTop: 14,
+  },
+  priceField: {
+    flex: 1.4,
+  },
+  currencyField: {
+    flex: 0.9,
+  },
+  priceLabel: {
+    color: '#34445F',
+    fontSize: 13,
+    lineHeight: 18,
+    fontWeight: '800',
+    marginBottom: 6,
+  },
+  priceInput: {
+    height: 50,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#E2E6E3',
+    backgroundColor: '#FFFFFF',
+    color: '#123F38',
+    fontSize: 16,
+    lineHeight: 20,
+    fontWeight: '800',
+    paddingHorizontal: 14,
+    paddingVertical: 0,
+  },
+  currencyButton: {
+    height: 50,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#E2E6E3',
+    backgroundColor: '#FFFFFF',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 14,
+  },
+  currencyButtonText: {
+    color: '#0E5A44',
+    fontSize: 16,
+    lineHeight: 20,
+    fontWeight: '900',
+  },
+  quickGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 10,
+  },
+  quickCard: {
+    flexGrow: 1,
+    flexBasis: '45%',
+    minHeight: 82,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#E2E6E3',
+    backgroundColor: '#FFFFFF',
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+  },
+  quickCopy: {
+    flex: 1,
+    marginLeft: 10,
+  },
+  quickTitle: {
+    color: '#0E5A44',
+    fontSize: 15,
+    lineHeight: 20,
+    fontWeight: '900',
+  },
+  quickDescription: {
+    color: '#34445F',
+    fontSize: 13,
+    lineHeight: 18,
+    fontWeight: '600',
+  },
+  quickCheck: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#168A37',
+  },
+  additionalTip: {
+    minHeight: 58,
+    borderRadius: 13,
+    backgroundColor: '#F1F8EF',
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 18,
+    marginBottom: 20,
+  },
+  additionalTipText: {
+    flex: 1,
+    color: '#0E5A44',
+    fontSize: 15,
+    lineHeight: 21,
+    fontWeight: '700',
+    marginLeft: 12,
+  },
+  additionalContinueButton: {
+    minHeight: 70,
+    borderRadius: 20,
+    backgroundColor: '#00613F',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 8,
+  },
+  additionalContinueText: {
+    color: '#FFFFFF',
+    fontSize: 22,
+    lineHeight: 28,
+    fontWeight: '900',
+  },
+  additionalContinueArrow: {
+    position: 'absolute',
+    right: 28,
+  },
   additionalBackHitArea: { position: 'absolute', left: '4%', top: '2%', height: '6%', width: '12%' },
   additionalOptionHitArea: { position: 'absolute', alignItems: 'flex-end', justifyContent: 'flex-start', paddingTop: 6, paddingRight: 7 },
   additionalSelectedBadge: { width: 18, height: 18, borderRadius: 999, backgroundColor: '#188A2D', borderColor: '#FFFFFF', borderWidth: 2 },
