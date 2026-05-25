@@ -1,18 +1,181 @@
-import { Platform, ScrollView, StyleSheet, Text, View } from 'react-native'
+import { useEffect, useState } from 'react'
+import {
+  Alert,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Switch,
+  Text,
+  View,
+} from 'react-native'
+import AsyncStorage from '@react-native-async-storage/async-storage'
 import { useRouter } from 'expo-router'
+import type { Href } from 'expo-router'
 import { SafeAreaView } from 'react-native-safe-area-context'
-import { ChevronLeft, LockKeyhole } from 'lucide-react-native'
+import { deleteUser, signOut } from 'firebase/auth'
+import {
+  Bell,
+  ChevronLeft,
+  ChevronRight,
+  Eye,
+  LockKeyhole,
+  MapPin,
+  MessageCircle,
+  ShieldCheck,
+  Trash2,
+} from 'lucide-react-native'
+import type { LucideIcon } from 'lucide-react-native'
 
 import { PressScale } from '../components/home/PressScale'
+import { getFirebaseServices } from '../firebaseConfig'
+
+const LOGIN_ROUTE = '/login' as Href
+const PRIVACY_SETTINGS_STORAGE_KEY = 'privacy:settings'
+const LOCAL_KEYS_TO_CLEAR_ON_DELETE = [
+  PRIVACY_SETTINGS_STORAGE_KEY,
+  'home:selectedCity',
+]
+
+type PrivacySettings = {
+  approximateLocation: boolean
+  publicProfile: boolean
+  allowMessages: boolean
+  receiveNotifications: boolean
+}
+
+type PrivacyOption = {
+  key: keyof PrivacySettings
+  label: string
+  Icon: LucideIcon
+}
+
+const defaultSettings: PrivacySettings = {
+  allowMessages: true,
+  approximateLocation: true,
+  publicProfile: true,
+  receiveNotifications: true,
+}
+
+const privacyOptions: PrivacyOption[] = [
+  { key: 'approximateLocation', label: 'Compartir ubicación aproximada', Icon: MapPin },
+  { key: 'publicProfile', label: 'Mostrar perfil públicamente', Icon: Eye },
+  { key: 'allowMessages', label: 'Permitir mensajes', Icon: MessageCircle },
+  { key: 'receiveNotifications', label: 'Recibir notificaciones', Icon: Bell },
+]
+
+function getErrorCode(error: unknown) {
+  return typeof error === 'object' && error && 'code' in error
+    ? String((error as { code?: unknown }).code)
+    : ''
+}
 
 export default function PrivacidadScreen() {
   const router = useRouter()
+  const [settings, setSettings] = useState<PrivacySettings>(defaultSettings)
+
+  useEffect(() => {
+    let mounted = true
+
+    AsyncStorage.getItem(PRIVACY_SETTINGS_STORAGE_KEY)
+      .then((savedSettings) => {
+        if (!mounted || !savedSettings) return
+
+        const parsed = JSON.parse(savedSettings) as Partial<PrivacySettings>
+        setSettings({ ...defaultSettings, ...parsed })
+      })
+      .catch(() => {
+        if (mounted) setSettings(defaultSettings)
+      })
+
+    return () => {
+      mounted = false
+    }
+  }, [])
+
+  const saveSettings = async (nextSettings: PrivacySettings) => {
+    setSettings(nextSettings)
+
+    try {
+      await AsyncStorage.setItem(PRIVACY_SETTINGS_STORAGE_KEY, JSON.stringify(nextSettings))
+    } catch {
+      Alert.alert('No pudimos guardar el cambio', 'Probá nuevamente en unos segundos.')
+    }
+  }
+
+  const toggleSetting = (key: keyof PrivacySettings) => {
+    const nextSettings = {
+      ...settings,
+      [key]: !settings[key],
+    }
+
+    void saveSettings(nextSettings)
+  }
+
+  const showComingSoon = () => {
+    Alert.alert('Próximamente')
+  }
+
+  const goToLogin = () => {
+    router.replace(LOGIN_ROUTE)
+  }
+
+  const deleteAccount = async () => {
+    try {
+      const { auth } = getFirebaseServices()
+      const { currentUser } = auth
+
+      if (!currentUser) {
+        await signOut(auth)
+        goToLogin()
+        return
+      }
+
+      await deleteUser(currentUser)
+      await AsyncStorage.multiRemove(LOCAL_KEYS_TO_CLEAR_ON_DELETE)
+      goToLogin()
+    } catch (error) {
+      const { auth } = getFirebaseServices()
+
+      if (getErrorCode(error) === 'auth/requires-recent-login') {
+        Alert.alert('Por seguridad, iniciá sesión nuevamente antes de eliminar tu cuenta.')
+        await signOut(auth)
+        goToLogin()
+        return
+      }
+
+      Alert.alert('No pudimos eliminar la cuenta. Intentá nuevamente.')
+    }
+  }
+
+  const confirmDeleteAccount = () => {
+    Alert.alert(
+      '¿Querés eliminar tu cuenta?',
+      'Esta acción cerrará tu sesión y eliminará tu usuario de Firebase Authentication.',
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        {
+          onPress: () => {
+            void deleteAccount()
+          },
+          style: 'destructive',
+          text: 'Eliminar cuenta',
+        },
+      ],
+    )
+  }
 
   return (
     <SafeAreaView edges={['top']} style={styles.safeArea}>
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
         <View style={styles.header}>
-          <PressScale accessibilityLabel="Volver a ajustes" accessibilityRole="button" onPress={() => router.back()} scaleTo={0.94} style={styles.backButton}>
+          <PressScale
+            accessibilityLabel="Volver a ajustes"
+            accessibilityRole="button"
+            onPress={() => router.back()}
+            scaleTo={0.94}
+            style={styles.backButton}
+          >
             <ChevronLeft color="#063C31" size={27} strokeWidth={2.5} />
           </PressScale>
           <Text style={styles.title}>Privacidad</Text>
@@ -21,13 +184,88 @@ export default function PrivacidadScreen() {
 
         <View style={styles.card}>
           <View style={styles.iconCircle}>
-            <LockKeyhole color="#17803C" size={32} strokeWidth={2.1} />
+            <ShieldCheck color="#17803C" size={34} strokeWidth={2.1} />
           </View>
-          <Text style={styles.cardTitle}>Control de privacidad</Text>
-          <Text style={styles.cardText}>Próximamente vas a poder ajustar qué información compartís dentro de COINCIDIR.</Text>
+          <Text style={styles.cardTitle}>Privacidad y seguridad</Text>
+          <Text style={styles.cardText}>
+            Configurá cómo querés compartir tu información durante la beta. Estos ajustes quedan guardados en este dispositivo.
+          </Text>
+        </View>
+
+        <View style={styles.sectionCard}>
+          {privacyOptions.map((option) => (
+            <PrivacyRow
+              Icon={option.Icon}
+              key={option.key}
+              label={option.label}
+              onValueChange={() => toggleSetting(option.key)}
+              value={settings[option.key]}
+            />
+          ))}
+        </View>
+
+        <View style={styles.legalCard}>
+          <LegalRow Icon={LockKeyhole} label="Política de privacidad" onPress={showComingSoon} />
+          <LegalRow Icon={ShieldCheck} label="Términos y condiciones" onPress={showComingSoon} />
+          <LegalRow destructive Icon={Trash2} label="Eliminar mi cuenta" onPress={confirmDeleteAccount} />
         </View>
       </ScrollView>
     </SafeAreaView>
+  )
+}
+
+function PrivacyRow({
+  Icon,
+  label,
+  onValueChange,
+  value,
+}: {
+  Icon: LucideIcon
+  label: string
+  onValueChange: () => void
+  value: boolean
+}) {
+  return (
+    <View style={styles.settingRow}>
+      <View style={styles.rowIcon}>
+        <Icon color="#063C31" size={21} strokeWidth={2.2} />
+      </View>
+      <Text numberOfLines={2} style={styles.rowLabel}>{label}</Text>
+      <Switch
+        onValueChange={onValueChange}
+        thumbColor={value ? '#FFFFFF' : '#FFFFFF'}
+        trackColor={{ false: '#D8DED9', true: '#17803C' }}
+        value={value}
+      />
+    </View>
+  )
+}
+
+function LegalRow({
+  destructive,
+  Icon,
+  label,
+  onPress,
+}: {
+  destructive?: boolean
+  Icon: LucideIcon
+  label: string
+  onPress: () => void
+}) {
+  const color = destructive ? '#B42318' : '#063C31'
+
+  return (
+    <Pressable
+      accessibilityRole="button"
+      onPress={onPress}
+      style={({ pressed }) => [styles.legalRow, pressed && styles.rowPressed]}
+    >
+      <View style={[styles.rowIcon, destructive && styles.rowIconDestructive]}>
+        <Icon color={color} size={21} strokeWidth={2.2} />
+      </View>
+      <Text numberOfLines={1} style={[styles.rowLabel, destructive && styles.destructiveText]}>{label}</Text>
+      <ChevronRight color={color} size={20} strokeWidth={2.2} />
+    </Pressable>
   )
 }
 
@@ -115,5 +353,67 @@ const styles = StyleSheet.create({
     lineHeight: 22,
     marginTop: 8,
     textAlign: 'center',
+  },
+  sectionCard: {
+    backgroundColor: '#FFFFFF',
+    borderColor: '#E7E7E1',
+    borderRadius: 20,
+    borderWidth: 1,
+    marginTop: 18,
+    overflow: 'hidden',
+    ...shadow,
+  },
+  legalCard: {
+    backgroundColor: '#FFFFFF',
+    borderColor: '#E7E7E1',
+    borderRadius: 20,
+    borderWidth: 1,
+    marginTop: 18,
+    overflow: 'hidden',
+    ...shadow,
+  },
+  settingRow: {
+    alignItems: 'center',
+    borderBottomColor: '#EFEEE9',
+    borderBottomWidth: 1,
+    flexDirection: 'row',
+    gap: 12,
+    minHeight: 70,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+  },
+  legalRow: {
+    alignItems: 'center',
+    borderBottomColor: '#EFEEE9',
+    borderBottomWidth: 1,
+    flexDirection: 'row',
+    gap: 12,
+    minHeight: 66,
+    paddingHorizontal: 14,
+  },
+  rowPressed: {
+    opacity: 0.82,
+  },
+  rowIcon: {
+    alignItems: 'center',
+    backgroundColor: '#EFF6E9',
+    borderRadius: 14,
+    height: 42,
+    justifyContent: 'center',
+    width: 42,
+  },
+  rowIconDestructive: {
+    backgroundColor: '#FFF2F0',
+  },
+  rowLabel: {
+    color: '#071D19',
+    flex: 1,
+    fontSize: 15,
+    fontWeight: '900',
+    letterSpacing: 0,
+    lineHeight: 20,
+  },
+  destructiveText: {
+    color: '#B42318',
   },
 })

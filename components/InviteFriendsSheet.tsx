@@ -221,20 +221,22 @@ type InviteOptionProps = {
 
 function InviteOption({ Icon, color, description, label, onPress }: InviteOptionProps) {
   return (
-    <View style={styles.optionWrap}>
-      <PressScale accessibilityRole="button" onPress={onPress} scaleTo={0.98} style={styles.option}>
-        <View style={[styles.optionIcon, { backgroundColor: `${color}18` }]}>
-          <Icon color={color} size={23} strokeWidth={2.3} />
-        </View>
-        <View style={styles.optionCopy}>
-          <Text numberOfLines={1} style={styles.optionTitle}>{label}</Text>
-          <Text numberOfLines={1} style={styles.optionDescription}>{description}</Text>
-        </View>
-        <View style={styles.optionArrow}>
-          <ChevronRight color="#10231F" size={20} strokeWidth={2.3} />
-        </View>
-      </PressScale>
-    </View>
+    <Pressable
+      accessibilityRole="button"
+      onPress={onPress}
+      style={({ pressed }) => [styles.option, pressed && styles.optionPressed]}
+    >
+      <View style={[styles.optionIcon, { backgroundColor: `${color}18` }]}>
+        <Icon color={color} size={23} strokeWidth={2.3} />
+      </View>
+      <View style={styles.optionCopy}>
+        <Text numberOfLines={1} style={styles.optionTitle}>{label}</Text>
+        <Text numberOfLines={1} style={styles.optionDescription}>{description}</Text>
+      </View>
+      <View style={styles.optionArrow}>
+        <ChevronRight color="#10231F" size={20} strokeWidth={2.3} />
+      </View>
+    </Pressable>
   )
 }
 
@@ -326,9 +328,8 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     width: '100%',
   },
-  optionWrap: {
-    alignSelf: 'stretch',
-    width: '100%',
+  optionPressed: {
+    opacity: 0.82,
   },
   optionIcon: {
     alignItems: 'center',
@@ -344,13 +345,11 @@ const styles = StyleSheet.create({
     paddingRight: 10,
   },
   optionTitle: {
-    color: '#10231F',
-    flex: 1,
-    flexShrink: 1,
-    fontSize: 16,
-    fontWeight: '900',
+    color: '#073B35',
+    fontSize: 17,
+    fontWeight: '700',
     letterSpacing: 0,
-    lineHeight: 21,
+    lineHeight: 22,
     textAlign: 'left',
   },
   optionDescription: {
@@ -368,6 +367,7 @@ const styles = StyleSheet.create({
     flexShrink: 0,
     height: 32,
     justifyContent: 'center',
+    marginLeft: 'auto',
     width: 24,
   },
   feedback: {
