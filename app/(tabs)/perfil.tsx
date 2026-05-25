@@ -30,7 +30,6 @@ import {
   MapPin,
   Mountain,
   Pencil,
-  Settings,
   Star,
   Trees,
   Trophy,
@@ -233,9 +232,6 @@ export default function PerfilScreen() {
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
         <View style={styles.headerRow}>
           <Text style={styles.screenTitle}>Mi perfil</Text>
-          <PressScale style={styles.settingsButton} scaleTo={0.94}>
-            <Settings color="#063C31" size={25} strokeWidth={2.3} />
-          </PressScale>
         </View>
 
         <View style={styles.profileHeader}>
@@ -641,12 +637,6 @@ const styles = StyleSheet.create({
     fontSize: 26,
     fontWeight: '900',
     letterSpacing: 0,
-  },
-  settingsButton: {
-    alignItems: 'center',
-    height: 42,
-    justifyContent: 'center',
-    width: 42,
   },
   profileHeader: {
     alignItems: 'center',

@@ -19,6 +19,7 @@ import {
   UsersRound,
 } from 'lucide-react-native'
 import type { LucideIcon } from 'lucide-react-native'
+import Svg, { Circle, Rect } from 'react-native-svg'
 
 import { PressScale } from './home/PressScale'
 
@@ -103,6 +104,36 @@ async function shareWithWhatsApp(message: string) {
   await Share.share({ message })
 }
 
+async function shareWithTelegram(message: string, link: string) {
+  const telegramUrl = `tg://msg_url?url=${encodeURIComponent(link)}&text=${encodeURIComponent(message)}`
+
+  try {
+    await Linking.openURL(telegramUrl)
+  } catch {
+    await Share.share({ message })
+  }
+}
+
+async function shareWithInstagram(message: string) {
+  const instagramShareUrl = `instagram://sharesheet?text=${encodeURIComponent(message)}`
+  const instagramAppUrl = 'instagram://app'
+
+  try {
+    await Linking.openURL(instagramShareUrl)
+    return
+  } catch {
+    const canOpenInstagram = await Linking.canOpenURL(instagramAppUrl)
+
+    if (canOpenInstagram) {
+      await Clipboard.setStringAsync(message)
+      await Linking.openURL(instagramAppUrl)
+      return
+    }
+
+    await Share.share({ message })
+  }
+}
+
 export function InviteFriendsSheet({ onClose, target, visible }: InviteFriendsSheetProps) {
   const [feedback, setFeedback] = useState('')
   const shareMessage = useMemo(() => getShareMessage(target), [target])
@@ -118,14 +149,6 @@ export function InviteFriendsSheet({ onClose, target, visible }: InviteFriendsSh
   const copyLink = async () => {
     await Clipboard.setStringAsync(shareLink)
     closeWithFeedback('Link copiado')
-  }
-
-  const nativeShare = async () => {
-    await Share.share({
-      message: shareMessage,
-      title: target?.title ?? 'COINCIDIR',
-      url: Platform.OS === 'ios' ? shareLink : undefined,
-    })
   }
 
   return (
@@ -157,10 +180,17 @@ export function InviteFriendsSheet({ onClose, target, visible }: InviteFriendsSh
           />
           <InviteOption
             Icon={Send}
-            color="#D93B9C"
-            description="Compartí desde las opciones del teléfono."
+            color="#229ED9"
+            description="Compartí el mensaje por Telegram."
+            label="Telegram"
+            onPress={() => shareWithTelegram(shareMessage, shareLink)}
+          />
+          <InviteOption
+            Icon={InstagramIcon}
+            color="#E4405F"
+            description="Abrí Instagram con el mensaje listo para pegar."
             label="Instagram"
-            onPress={nativeShare}
+            onPress={() => shareWithInstagram(shareMessage)}
           />
           <InviteOption
             Icon={Rocket}
@@ -182,7 +212,7 @@ export function InviteFriendsSheet({ onClose, target, visible }: InviteFriendsSh
 }
 
 type InviteOptionProps = {
-  Icon: LucideIcon
+  Icon: LucideIcon | typeof InstagramIcon
   color: string
   description: string
   label: string
@@ -191,18 +221,30 @@ type InviteOptionProps = {
 
 function InviteOption({ Icon, color, description, label, onPress }: InviteOptionProps) {
   return (
-    <PressScale accessibilityRole="button" onPress={onPress} scaleTo={0.98} style={styles.option}>
-      <View style={[styles.optionIcon, { backgroundColor: `${color}18` }]}>
-        <Icon color={color} size={23} strokeWidth={2.3} />
-      </View>
-      <View style={styles.optionCopy}>
+    <View style={styles.optionWrap}>
+      <PressScale accessibilityRole="button" onPress={onPress} scaleTo={0.98} style={styles.option}>
+        <View style={[styles.optionIcon, { backgroundColor: `${color}18` }]}>
+          <Icon color={color} size={23} strokeWidth={2.3} />
+        </View>
+        <View style={styles.optionCopy}>
           <Text numberOfLines={1} style={styles.optionTitle}>{label}</Text>
           <Text numberOfLines={1} style={styles.optionDescription}>{description}</Text>
-      </View>
-      <View style={styles.optionArrow}>
-        <ChevronRight color="#10231F" size={20} strokeWidth={2.3} />
-      </View>
-    </PressScale>
+        </View>
+        <View style={styles.optionArrow}>
+          <ChevronRight color="#10231F" size={20} strokeWidth={2.3} />
+        </View>
+      </PressScale>
+    </View>
+  )
+}
+
+function InstagramIcon({ color, size = 24, strokeWidth = 2.3 }: { color: string; size?: number; strokeWidth?: number }) {
+  return (
+    <Svg fill="none" height={size} viewBox="0 0 24 24" width={size}>
+      <Rect height="17" rx="5" stroke={color} strokeLinecap="round" strokeLinejoin="round" strokeWidth={strokeWidth} width="17" x="3.5" y="3.5" />
+      <Circle cx="12" cy="12" r="3.8" stroke={color} strokeLinecap="round" strokeLinejoin="round" strokeWidth={strokeWidth} />
+      <Circle cx="17.2" cy="6.8" fill={color} r="1.2" />
+    </Svg>
   )
 }
 
@@ -284,6 +326,10 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     width: '100%',
   },
+  optionWrap: {
+    alignSelf: 'stretch',
+    width: '100%',
+  },
   optionIcon: {
     alignItems: 'center',
     borderRadius: 999,
@@ -299,6 +345,7 @@ const styles = StyleSheet.create({
   },
   optionTitle: {
     color: '#10231F',
+    flex: 1,
     flexShrink: 1,
     fontSize: 16,
     fontWeight: '900',

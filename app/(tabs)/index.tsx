@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
 import type { ReactElement } from 'react'
+import type { Href } from 'expo-router'
 import {
+  Alert,
   FlatList,
   ImageSourcePropType,
   Modal,
@@ -65,6 +67,8 @@ const image = (uri: string): ImageSourcePropType => ({ uri })
 type CategoryId = 'outdoor' | 'sports' | 'wellness' | 'groups' | 'private'
 
 const DEFAULT_CITY = 'Tandil'
+const NOTIFICATIONS_ROUTE = '/notificaciones' as Href
+const SETTINGS_ROUTE = '/ajustes' as Href
 const SELECTED_CITY_STORAGE_KEY = 'home:selectedCity'
 const cityOptions = ['Tandil', 'Buenos Aires', 'Mar del Plata', 'Córdoba', 'Rosario']
 
@@ -440,6 +444,8 @@ export default function HomeScreen() {
   const [pendingJoinKeys, setPendingJoinKeys] = useState<string[]>([])
   const [selectedCity, setSelectedCity] = useState(DEFAULT_CITY)
   const [isCitySelectorVisible, setIsCitySelectorVisible] = useState(false)
+  const [isCitySearchVisible, setIsCitySearchVisible] = useState(false)
+  const [citySearchQuery, setCitySearchQuery] = useState('')
   const [isInviteVisible, setIsInviteVisible] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
   const [debouncedSearchQuery, setDebouncedSearchQuery] = useState('')
@@ -451,8 +457,8 @@ export default function HomeScreen() {
 
     AsyncStorage.getItem(SELECTED_CITY_STORAGE_KEY)
       .then((savedCity) => {
-        if (mounted && savedCity && cityOptions.includes(savedCity)) {
-          setSelectedCity(savedCity)
+        if (mounted && typeof savedCity === 'string' && savedCity.trim()) {
+          setSelectedCity(savedCity.trim())
         }
       })
       .catch(() => {
@@ -604,14 +610,25 @@ export default function HomeScreen() {
     [filteredGroups, userInterests],
   )
   const selectCity = async (city: string) => {
-    setSelectedCity(city)
+    const nextCity = city.trim()
+    if (!nextCity) return
+
+    setSelectedCity(nextCity)
     setIsCitySelectorVisible(false)
+    setIsCitySearchVisible(false)
+    setCitySearchQuery('')
 
     try {
-      await AsyncStorage.setItem(SELECTED_CITY_STORAGE_KEY, city)
+      await AsyncStorage.setItem(SELECTED_CITY_STORAGE_KEY, nextCity)
     } catch {
       // The selector still works in-memory if local persistence is unavailable.
     }
+  }
+  const useCurrentLocation = () => {
+    Alert.alert('Usar mi ubicación actual', 'Próximamente vamos a pedir permiso para detectar tu ciudad.')
+  }
+  const openCitySearch = () => {
+    setIsCitySearchVisible(true)
   }
   const toggleJoin = async (record: CreatedRecord, collectionName: JoinableCollection) => {
     if (!currentUserId) return
@@ -721,11 +738,22 @@ export default function HomeScreen() {
             <Text style={styles.prompt}>¿Qué vamos a hacer hoy?</Text>
           </View>
           <View style={styles.headerActions}>
-            <PressScale style={styles.iconButton} scaleTo={0.94}>
+            <PressScale
+              accessibilityLabel="Abrir notificaciones"
+              accessibilityRole="button"
+              onPress={() => router.push(NOTIFICATIONS_ROUTE)}
+              style={styles.iconButton}
+              scaleTo={0.94}
+            >
               <Bell color="#05372D" size={30} strokeWidth={2.2} />
-              <View style={styles.notificationDot} />
             </PressScale>
-            <PressScale style={styles.iconButton} scaleTo={0.94}>
+            <PressScale
+              accessibilityLabel="Abrir ajustes"
+              accessibilityRole="button"
+              onPress={() => router.push(SETTINGS_ROUTE)}
+              style={styles.iconButton}
+              scaleTo={0.94}
+            >
               <Settings color="#05372D" size={31} strokeWidth={2.2} />
             </PressScale>
           </View>
@@ -769,6 +797,15 @@ export default function HomeScreen() {
           <Pressable style={styles.cityModalBackdrop} onPress={() => setIsCitySelectorVisible(false)}>
             <Pressable accessibilityRole="menu" style={styles.cityModalCard}>
               <Text style={styles.cityModalTitle}>Elegí una ciudad</Text>
+              <Pressable
+                accessibilityRole="menuitem"
+                onPress={useCurrentLocation}
+                style={styles.cityActionOption}
+              >
+                <MapPin color="#006A32" size={21} strokeWidth={2.2} />
+                <Text numberOfLines={1} style={styles.cityActionText}>Usar mi ubicación actual</Text>
+              </Pressable>
+              <Text style={styles.cityModalSectionTitle}>Ciudades populares</Text>
               {cityOptions.map((city) => {
                 const selected = city === selectedCity
 
@@ -781,12 +818,49 @@ export default function HomeScreen() {
                     style={[styles.cityOption, selected && styles.cityOptionSelected]}
                   >
                     <MapPin color={selected ? '#006A32' : '#05372D'} size={20} strokeWidth={2.1} />
-                    <Text style={[styles.cityOptionText, selected && styles.cityOptionTextSelected]}>
+                    <Text numberOfLines={1} style={[styles.cityOptionText, selected && styles.cityOptionTextSelected]}>
                       {city}
                     </Text>
                   </Pressable>
                 )
               })}
+              <Pressable
+                accessibilityRole="menuitem"
+                onPress={openCitySearch}
+                style={styles.citySearchTrigger}
+              >
+                <Search color="#05372D" size={20} strokeWidth={2.1} />
+                <Text numberOfLines={1} style={styles.citySearchTriggerText}>Buscar otra ciudad</Text>
+              </Pressable>
+              {isCitySearchVisible ? (
+                <View style={styles.citySearchBox}>
+                  <View style={styles.citySearchInputWrap}>
+                    <Search color="#05372D" size={19} strokeWidth={2.1} />
+                    <TextInput
+                      autoCapitalize="words"
+                      autoCorrect={false}
+                      onChangeText={setCitySearchQuery}
+                      placeholder="Escribí una ciudad"
+                      placeholderTextColor="#85858B"
+                      returnKeyType="done"
+                      style={styles.citySearchInput}
+                      value={citySearchQuery}
+                    />
+                  </View>
+                  {citySearchQuery.trim() ? (
+                    <Pressable
+                      accessibilityRole="menuitem"
+                      onPress={() => selectCity(citySearchQuery)}
+                      style={styles.cityCustomOption}
+                    >
+                      <MapPin color="#006A32" size={20} strokeWidth={2.1} />
+                      <Text numberOfLines={1} style={styles.cityCustomOptionText}>
+                        Usar “{citySearchQuery.trim()}”
+                      </Text>
+                    </Pressable>
+                  ) : null}
+                </View>
+              ) : null}
             </Pressable>
           </Pressable>
         </Modal>
@@ -1022,17 +1096,6 @@ const styles = StyleSheet.create({
     position: 'relative',
     width: 42,
   },
-  notificationDot: {
-    backgroundColor: '#218B35',
-    borderColor: '#FAFAF8',
-    borderRadius: 999,
-    borderWidth: 2,
-    height: 11,
-    position: 'absolute',
-    right: 6,
-    top: 4,
-    width: 11,
-  },
   searchCard: {
     alignItems: 'center',
     backgroundColor: '#FFFFFF',
@@ -1101,6 +1164,32 @@ const styles = StyleSheet.create({
     marginBottom: 10,
     paddingHorizontal: 4,
   },
+  cityModalSectionTitle: {
+    color: '#596A65',
+    fontSize: 12,
+    fontWeight: '900',
+    letterSpacing: 0,
+    marginBottom: 6,
+    marginTop: 12,
+    paddingHorizontal: 4,
+    textTransform: 'uppercase',
+  },
+  cityActionOption: {
+    alignItems: 'center',
+    backgroundColor: '#F0F5E9',
+    borderRadius: 12,
+    flexDirection: 'row',
+    gap: 10,
+    minHeight: 50,
+    paddingHorizontal: 12,
+  },
+  cityActionText: {
+    color: '#006A32',
+    flex: 1,
+    fontSize: 16,
+    fontWeight: '900',
+    letterSpacing: 0,
+  },
   cityOption: {
     alignItems: 'center',
     borderRadius: 12,
@@ -1114,6 +1203,7 @@ const styles = StyleSheet.create({
   },
   cityOptionText: {
     color: '#10231F',
+    flex: 1,
     fontSize: 17,
     fontWeight: '800',
     letterSpacing: 0,
@@ -1121,6 +1211,65 @@ const styles = StyleSheet.create({
   cityOptionTextSelected: {
     color: '#006A32',
     fontWeight: '900',
+  },
+  citySearchTrigger: {
+    alignItems: 'center',
+    borderRadius: 12,
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 8,
+    minHeight: 48,
+    paddingHorizontal: 12,
+  },
+  citySearchTriggerText: {
+    color: '#10231F',
+    flex: 1,
+    fontSize: 16,
+    fontWeight: '900',
+    letterSpacing: 0,
+  },
+  citySearchBox: {
+    backgroundColor: '#FAFAF8',
+    borderColor: '#E1E1DD',
+    borderRadius: 14,
+    borderWidth: 1,
+    marginTop: 8,
+    padding: 10,
+  },
+  citySearchInputWrap: {
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    borderColor: '#E1E1DD',
+    borderRadius: 12,
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: 10,
+    minHeight: 46,
+    paddingHorizontal: 12,
+  },
+  citySearchInput: {
+    color: '#10231F',
+    flex: 1,
+    fontSize: 15,
+    fontWeight: '700',
+    letterSpacing: 0,
+    minWidth: 0,
+    padding: 0,
+  },
+  cityCustomOption: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 10,
+    minHeight: 44,
+    paddingHorizontal: 4,
+    paddingTop: 8,
+  },
+  cityCustomOptionText: {
+    color: '#006A32',
+    flex: 1,
+    fontSize: 15,
+    fontWeight: '900',
+    letterSpacing: 0,
   },
   categoryList: {
     gap: 16,
