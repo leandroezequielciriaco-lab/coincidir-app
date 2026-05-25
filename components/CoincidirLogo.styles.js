@@ -1,36 +1,32 @@
-import { StyleSheet } from 'react-native'
+import { Platform, StyleSheet } from 'react-native'
 
 export const logoStyles = StyleSheet.create({
   logo: {
     alignItems: 'center',
     justifyContent: 'center',
   },
-  mark: {
-    position: 'relative',
+  compactLogo: {
+    marginBottom: 0,
+  },
+  logoFrame: {
     alignItems: 'center',
+    backgroundColor: '#FCFAF3',
     justifyContent: 'center',
+    overflow: 'hidden',
+    ...Platform.select({
+      web: {
+        boxShadow: '0 8px 18px rgba(14, 90, 68, 0.12)',
+      },
+      default: {
+        shadowColor: '#0E5A44',
+        shadowOffset: { width: 0, height: 7 },
+        shadowOpacity: 0.12,
+        shadowRadius: 16,
+        elevation: 3,
+      },
+    }),
   },
-  ring: {
-    position: 'absolute',
-    top: 0,
-    backgroundColor: 'transparent',
-  },
-  leftRing: {
-    borderColor: 'rgba(115, 207, 174, 0.82)',
-    left: 0,
-    zIndex: 1,
-  },
-  rightRing: {
-    borderColor: 'rgba(0, 97, 107, 0.9)',
-    zIndex: 2,
-  },
-  cutout: {
-    position: 'absolute',
-  },
-  brand: {
-    color: '#005461',
-    fontWeight: '900',
-    letterSpacing: 0,
-    textAlign: 'center',
+  officialLogo: {
+    flexShrink: 0,
   },
 })

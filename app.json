@@ -4,34 +4,42 @@
     "slug": "coincidir-app",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/images/icon.png",
+    "icon": "./assets/images/coincidir-logo-official.png",
     "scheme": "coincidirapp",
     "userInterfaceStyle": "automatic",
     "ios": {
-      "icon": "./assets/expo.icon"
+      "icon": "./assets/images/coincidir-logo-official.png"
     },
     "android": {
       "adaptiveIcon": {
-        "backgroundColor": "#E6F4FE",
-        "foregroundImage": "./assets/images/android-icon-foreground.png",
-        "backgroundImage": "./assets/images/android-icon-background.png",
-        "monochromeImage": "./assets/images/android-icon-monochrome.png"
+        "backgroundColor": "#FCFAF3",
+        "foregroundImage": "./assets/images/coincidir-logo-official.png",
+        "monochromeImage": "./assets/images/coincidir-logo-official.png"
       },
       "predictiveBackGestureEnabled": false
     },
     "web": {
       "output": "static",
-      "favicon": "./assets/images/favicon.png"
+      "favicon": "./assets/images/coincidir-logo-official.png"
     },
     "plugins": [
       "expo-router",
       [
         "expo-splash-screen",
         {
-          "backgroundColor": "#208AEF",
+          "image": "./assets/images/coincidir-logo-official.png",
+          "imageWidth": 180,
+          "resizeMode": "contain",
+          "backgroundColor": "#FCFAF3",
           "android": {
-            "image": "./assets/images/splash-icon.png",
-            "imageWidth": 76
+            "image": "./assets/images/coincidir-logo-official.png",
+            "imageWidth": 180,
+            "backgroundColor": "#FCFAF3"
+          },
+          "ios": {
+            "image": "./assets/images/coincidir-logo-official.png",
+            "imageWidth": 180,
+            "backgroundColor": "#FCFAF3"
           }
         }
       ],
@@ -39,6 +47,14 @@
         "expo-location",
         {
           "locationWhenInUsePermission": "COINCIDIR usa tu ubicación para ayudarte a fijar el punto exacto de una actividad."
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "COINCIDIR usa tus fotos para actualizar tu foto de perfil.",
+          "cameraPermission": "COINCIDIR usa la cámara para tomar tu foto de perfil.",
+          "microphonePermission": false
         }
       ]
     ],

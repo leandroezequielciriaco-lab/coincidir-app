@@ -2,9 +2,9 @@ import { useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
 import {
   ActivityIndicator,
-  ImageBackground,
-  Linking,
+  type GestureResponderEvent,
   Modal,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -15,7 +15,7 @@ import {
 import * as Location from 'expo-location'
 import { useRouter } from 'expo-router'
 import { addDoc, collection, serverTimestamp } from 'firebase/firestore'
-import { useSafeAreaInsets } from 'react-native-safe-area-context'
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import {
   ArrowLeft,
   ArrowRight,
@@ -23,6 +23,8 @@ import {
   BarChart3,
   Car,
   ChevronDown,
+  ChevronLeft,
+  ChevronRight,
   CloudRain,
   Dumbbell,
   Globe2,
@@ -44,12 +46,10 @@ import {
   Zap,
 } from 'lucide-react-native'
 import type { LucideIcon } from 'lucide-react-native'
-import MapView, { Marker, type Region } from 'react-native-maps'
+import MapView, { Marker, PROVIDER_GOOGLE, type Region } from 'react-native-maps'
 
+import CoincidirLogo from '../../components/CoincidirLogo'
 import { getFirebaseServices } from '../../firebaseConfig'
-
-const createActivityImage = require('../../assets/images/create-activity-fullscreen.png')
-const additionalSettingsImage = require('../../assets/images/additional-settings-fullscreen.png')
 
 type CategoryId = 'outdoor' | 'sports' | 'wellness' | 'groups' | 'private'
 type PickerMode = 'category' | 'subcategory' | 'date' | 'time' | 'currency' | null
@@ -69,11 +69,30 @@ type LocationSelection = {
   longitude: number
 }
 
+const hasGoogleMapsApiKey = Boolean(process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY)
+const shouldShowMapConfigNotice = Platform.OS === 'android' && !hasGoogleMapsApiKey
+const mapProvider = Platform.OS === 'android' && hasGoogleMapsApiKey ? PROVIDER_GOOGLE : undefined
+const weekDays = ['L', 'M', 'M', 'J', 'V', 'S', 'D']
+const monthNames = [
+  'enero',
+  'febrero',
+  'marzo',
+  'abril',
+  'mayo',
+  'junio',
+  'julio',
+  'agosto',
+  'septiembre',
+  'octubre',
+  'noviembre',
+  'diciembre',
+]
+
 const categories: Category[] = [
   {
     id: 'outdoor',
     label: 'Al aire libre',
-    icon: '🌿',
+    icon: 'AL',
     color: '#0E5A44',
     backgroundColor: '#E9F4D9',
     subcategories: [
@@ -94,7 +113,7 @@ const categories: Category[] = [
   {
     id: 'sports',
     label: 'Deportes',
-    icon: '⚽',
+    icon: 'DEP',
     color: '#16823A',
     backgroundColor: '#DDF2D8',
     subcategories: [
@@ -114,7 +133,7 @@ const categories: Category[] = [
   {
     id: 'wellness',
     label: 'Bienestar',
-    icon: '🧘',
+    icon: 'BI',
     color: '#2F8D5A',
     backgroundColor: '#EAF7E4',
     subcategories: [
@@ -133,7 +152,7 @@ const categories: Category[] = [
   {
     id: 'groups',
     label: 'Grupales',
-    icon: '👥',
+    icon: 'GR',
     color: '#2A9B37',
     backgroundColor: '#E2F4DD',
     subcategories: [
@@ -152,7 +171,7 @@ const categories: Category[] = [
   {
     id: 'private',
     label: 'Espacios privados',
-    icon: '🏠',
+    icon: 'EP',
     color: '#543D78',
     backgroundColor: '#F2ECF8',
     subcategories: [
@@ -170,21 +189,21 @@ const categories: Category[] = [
   },
 ]
 
-const dateOptions = ['Hoy', 'Mañana', 'Pasado mañana', 'Próxima semana']
+function getCategoryIcon(categoryId: CategoryId) {
+  if (categoryId === 'outdoor') return Leaf
+  if (categoryId === 'sports') return Dumbbell
+  if (categoryId === 'wellness') return Sparkles
+  if (categoryId === 'groups') return UsersRound
+
+  return LockKeyhole
+}
+
 const currencyOptions = ['ARS', 'USD', 'UYU', 'BRL', 'EUR']
 const initialLocationRegion: Region = {
   latitude: -34.4251,
   longitude: -58.5797,
   latitudeDelta: 0.045,
   longitudeDelta: 0.045,
-}
-
-const additionalOptions = {
-  privacy: ['Pública', 'Privada', 'Con aprobación'],
-  level: ['Principiante', 'Intermedio', 'Avanzado', 'Todos los niveles'],
-  environment: ['Tranquilo', 'Social', 'Deportivo', 'Familiar', 'Relax'],
-  cost: ['Gratis', 'A la gorra', 'Pago'],
-  quick: ['Mascotas permitidas', 'Lluvia se suspende', 'Tengo lugar en auto', 'Punto de encuentro'],
 }
 
 const privacyDetails = [
@@ -244,24 +263,51 @@ function generateTimeOptions(startHour: number, endHour: number, intervalMinutes
   return options
 }
 
-const timeOptions = generateTimeOptions(8, 22, 30)
+const timeOptions = generateTimeOptions(6, 23, 30)
 
-function getQuickDateValue(option: string) {
-  const dateValue = new Date()
+function startOfDay(value: Date) {
+  return new Date(value.getFullYear(), value.getMonth(), value.getDate())
+}
 
-  if (option === 'Mañana') {
-    dateValue.setDate(dateValue.getDate() + 1)
+function addDays(value: Date, days: number) {
+  const nextDate = new Date(value)
+  nextDate.setDate(nextDate.getDate() + days)
+  return nextDate
+}
+
+function isSameDay(left: Date, right: Date) {
+  return startOfDay(left).getTime() === startOfDay(right).getTime()
+}
+
+function getDateLabel(value: Date) {
+  const today = startOfDay(new Date())
+
+  if (isSameDay(value, today)) return 'Hoy'
+  if (isSameDay(value, addDays(today, 1))) return 'Mañana'
+  if (isSameDay(value, addDays(today, 2))) return 'Pasado mañana'
+
+  return formatDate(value)
+}
+
+function getCalendarMonthTitle(value: Date) {
+  return `${monthNames[value.getMonth()]} ${value.getFullYear()}`
+}
+
+function getCalendarDays(monthDate: Date) {
+  const firstDay = new Date(monthDate.getFullYear(), monthDate.getMonth(), 1)
+  const lastDay = new Date(monthDate.getFullYear(), monthDate.getMonth() + 1, 0)
+  const leadingEmptyDays = (firstDay.getDay() + 6) % 7
+  const days: (Date | null)[] = Array.from({ length: leadingEmptyDays }, () => null)
+
+  for (let day = 1; day <= lastDay.getDate(); day += 1) {
+    days.push(new Date(monthDate.getFullYear(), monthDate.getMonth(), day))
   }
 
-  if (option === 'Pasado mañana') {
-    dateValue.setDate(dateValue.getDate() + 2)
+  while (days.length % 7 !== 0) {
+    days.push(null)
   }
 
-  if (option === 'Próxima semana') {
-    dateValue.setDate(dateValue.getDate() + 7)
-  }
-
-  return formatDate(dateValue)
+  return days
 }
 
 function formatCoordinateAddress(latitude: number, longitude: number) {
@@ -301,6 +347,8 @@ export default function CrearScreen() {
   const [subcategory, setSubcategory] = useState('')
   const [description, setDescription] = useState('')
   const [date, setDate] = useState('')
+  const [selectedDate, setSelectedDate] = useState<Date | null>(null)
+  const [calendarMonth, setCalendarMonth] = useState(startOfDay(new Date()))
   const [time, setTime] = useState('')
   const [location, setLocation] = useState('')
   const [selectedLocation, setSelectedLocation] = useState<LocationSelection | null>(null)
@@ -315,6 +363,7 @@ export default function CrearScreen() {
   const [isAdditionalVisible, setIsAdditionalVisible] = useState(false)
   const [isLocationPickerVisible, setIsLocationPickerVisible] = useState(false)
   const [isResolvingLocation, setIsResolvingLocation] = useState(false)
+  const [fallbackMapSize, setFallbackMapSize] = useState({ width: 1, height: 1 })
   const [privacy, setPrivacy] = useState('Pública')
   const [maxParticipants, setMaxParticipants] = useState(10)
   const [level, setLevel] = useState('Principiante')
@@ -338,13 +387,10 @@ export default function CrearScreen() {
     return ''
   }, [pickerMode])
 
-  const openGoogleMaps = async () => {
-    const query = encodeURIComponent(selectedLocation
-      ? `${selectedLocation.latitude},${selectedLocation.longitude}`
-      : (location || 'Parque Sarmiento Buenos Aires'))
-
-    await Linking.openURL(`https://www.google.com/maps/search/?api=1&query=${query}`)
-  }
+  const calendarDays = useMemo(
+    () => getCalendarDays(calendarMonth),
+    [calendarMonth],
+  )
 
   const openLocationPicker = async () => {
     setMessage('')
@@ -406,6 +452,11 @@ export default function CrearScreen() {
       latitude: coordinate.latitude,
       longitude: coordinate.longitude,
     })
+    setMapRegion((value) => ({
+      ...value,
+      latitude: coordinate.latitude,
+      longitude: coordinate.longitude,
+    }))
   }
 
   const confirmLocation = async () => {
@@ -443,7 +494,7 @@ export default function CrearScreen() {
   }
 
   const createActivity = async () => {
-    if (!name.trim() || !category || !subcategory || !description.trim() || !date || !time || !selectedLocation) {
+    if (!name.trim() || !category || !subcategory || !description.trim() || !selectedDate || !time || !selectedLocation) {
       setMessage('Completá todos los campos para crear la actividad.')
       return
     }
@@ -475,6 +526,8 @@ export default function CrearScreen() {
         subcategory,
         description: description.trim(),
         date,
+        activityDate: selectedDate,
+        activityDateISO: selectedDate.toISOString(),
         time,
         location,
         locationAddress: selectedLocation.address,
@@ -516,7 +569,6 @@ export default function CrearScreen() {
     }
 
     if (pickerMode === 'subcategory' && typeof value === 'string') setSubcategory(value)
-    if (pickerMode === 'date' && typeof value === 'string') setDate(getQuickDateValue(value))
     if (pickerMode === 'time' && typeof value === 'string') setTime(value)
     if (pickerMode === 'currency' && typeof value === 'string') setCurrency(value)
 
@@ -553,474 +605,230 @@ export default function CrearScreen() {
     setIsAdditionalVisible(false)
   }
 
-  const safeBackStyle = { top: Math.max(insets.top + 8, 18) }
-  const safeCreateStyle = { bottom: Math.max(insets.bottom + 12, 18), top: undefined }
+  const openDatePicker = () => {
+    const baseDate = selectedDate ?? startOfDay(new Date())
+    setCalendarMonth(new Date(baseDate.getFullYear(), baseDate.getMonth(), 1))
+    setPickerMode('date')
+  }
+
+  const selectCalendarDate = (value: Date) => {
+    const normalizedDate = startOfDay(value)
+    setSelectedDate(normalizedDate)
+    setDate(getDateLabel(normalizedDate))
+    setPickerMode(null)
+    setMessage('')
+  }
+
+  const moveCalendarMonth = (offset: number) => {
+    setCalendarMonth((value) => new Date(value.getFullYear(), value.getMonth() + offset, 1))
+  }
+
+  const moveFallbackPin = (event: GestureResponderEvent) => {
+    const { locationX, locationY } = event.nativeEvent
+    const width = Math.max(fallbackMapSize.width, 1)
+    const height = Math.max(fallbackMapSize.height, 1)
+    const longitudeOffset = ((locationX / width) - 0.5) * mapRegion.longitudeDelta
+    const latitudeOffset = (0.5 - (locationY / height)) * mapRegion.latitudeDelta
+    const nextPin = {
+      latitude: mapRegion.latitude + latitudeOffset,
+      longitude: mapRegion.longitude + longitudeOffset,
+    }
+
+    setDraftPin(nextPin)
+    setMapRegion((value) => ({
+      ...value,
+      latitude: nextPin.latitude,
+      longitude: nextPin.longitude,
+    }))
+  }
+
   const safeAdditionalScrollStyle = {
     paddingBottom: Math.max(insets.bottom + 28, 38),
     paddingTop: Math.max(insets.top + 18, 28),
   }
 
   return (
-    <View style={styles.screen}>
+    <SafeAreaView edges={['left', 'right']} style={styles.screen}>
       <ScrollView
-        bounces={false}
-        contentContainerStyle={styles.scrollContent}
+        contentContainerStyle={[
+          styles.createScrollContent,
+          { paddingTop: Math.max(insets.top + 18, 28), paddingBottom: Math.max(insets.bottom + 120, 150) },
+        ]}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >
-        <ImageBackground source={createActivityImage} resizeMode="stretch" style={styles.image}>
-        <Pressable accessibilityLabel="Volver" accessibilityRole="button" onPress={() => router.back()} style={[styles.backHitArea, safeBackStyle]} />
+        <View style={styles.createHeader}>
+          <Pressable accessibilityLabel="Volver" accessibilityRole="button" onPress={() => router.back()} style={styles.createBackButton}>
+            <ArrowLeft color="#0E5A44" size={33} strokeWidth={2.2} />
+          </Pressable>
+          <View style={styles.createLogo}>
+            <CoincidirLogo compact markSize={48} textSize={18} />
+          </View>
+        </View>
 
-        <View style={styles.nameInputShell}>
+        <View style={styles.createTitleRow}>
+          <View style={styles.additionalTitleIcon}>
+            <Sparkles color="#0E5A44" size={25} strokeWidth={2.4} />
+          </View>
+          <Text style={styles.createScreenTitle}>Crear actividad</Text>
+        </View>
+        <Text style={styles.createSubtitle}>Completá los datos principales para que otros puedan sumarse.</Text>
+
+        <View style={styles.createCard}>
+          <Text style={styles.createFieldLabel}>Nombre de la actividad</Text>
           <TextInput
             maxLength={70}
             onChangeText={setName}
-            placeholder=""
-            style={styles.input}
+            placeholder="Ej: Caminata al atardecer"
+            placeholderTextColor="#7A8790"
+            style={styles.createTextInput}
             underlineColorAndroid="transparent"
             value={name}
           />
-        </View>
 
-        <Pressable accessibilityLabel="Seleccionar categoría" accessibilityRole="button" onPress={() => setPickerMode('category')} style={styles.categoryHitArea}>
-          {category ? (
-            <View style={[styles.selectedPill, { backgroundColor: category.backgroundColor }]}>
-              <Text style={[styles.selectedText, { color: category.color }]}>{category.icon} {category.label}</Text>
+          <View style={styles.createTwoColumnRow}>
+            <View style={styles.createColumn}>
+              <Text style={styles.createFieldLabel}>Categoría</Text>
+              <Pressable accessibilityLabel="Seleccionar categoría" accessibilityRole="button" onPress={() => setPickerMode('category')} style={styles.createSelectField}>
+                {category ? (
+                  <View style={[styles.selectedPill, { backgroundColor: category.backgroundColor }]}>
+                    {(() => {
+                      const CategoryIcon = getCategoryIcon(category.id)
+
+                      return <CategoryIcon color={category.color} size={17} strokeWidth={2.3} />
+                    })()}
+                    <Text style={[styles.selectedText, { color: category.color }]}>{category.label}</Text>
+                  </View>
+                ) : (
+                  <Text style={styles.createPlaceholder}>Elegir</Text>
+                )}
+                <ChevronDown color="#0E5A44" size={20} strokeWidth={2.4} />
+              </Pressable>
             </View>
-          ) : null}
-        </Pressable>
-
-        <Pressable
-          accessibilityLabel="Seleccionar subcategoría"
-          accessibilityRole="button"
-          onPress={() => setPickerMode(category ? 'subcategory' : 'category')}
-          style={styles.subcategoryHitArea}
-        >
-          {subcategory ? <Text numberOfLines={1} style={styles.selectedFieldText}>{subcategory}</Text> : null}
-        </Pressable>
-        {!subcategory ? (
-          <View pointerEvents="none" style={styles.subcategoryPlaceholderPatch}>
-            <Text style={styles.placeholderPatchText}>Subcategoría</Text>
+            <View style={styles.createColumn}>
+              <Text style={styles.createFieldLabel}>Subcategoría</Text>
+              <Pressable
+                accessibilityLabel="Seleccionar subcategoría"
+                accessibilityRole="button"
+                onPress={() => setPickerMode(category ? 'subcategory' : 'category')}
+                style={styles.createSelectField}
+              >
+                <Text numberOfLines={1} style={subcategory ? styles.createSelectText : styles.createPlaceholder}>
+                  {subcategory || 'Elegir'}
+                </Text>
+                <ChevronDown color="#0E5A44" size={20} strokeWidth={2.4} />
+              </Pressable>
+            </View>
           </View>
-        ) : null}
 
-        <View style={styles.descriptionInputShell}>
+          <Text style={styles.createFieldLabel}>Descripción</Text>
           <TextInput
             maxLength={300}
             multiline
             onChangeText={setDescription}
-            placeholder=""
-            style={[styles.input, styles.descriptionInput]}
+            placeholder="Contá qué van a hacer, qué llevar y cómo encontrarse."
+            placeholderTextColor="#7A8790"
+            style={[styles.createTextInput, styles.createDescriptionInput]}
             textAlignVertical="top"
             underlineColorAndroid="transparent"
             value={description}
           />
+          <Text style={styles.createCounterText}>{description.length}/300</Text>
         </View>
-        <Text style={styles.counterText}>{description.length}/300</Text>
 
-        <Pressable accessibilityLabel="Seleccionar fecha" accessibilityRole="button" onPress={() => setPickerMode('date')} style={styles.dateHitArea}>
-          {date ? <Text style={styles.selectedFieldText}>{date}</Text> : null}
-        </Pressable>
+        <View style={styles.createCard}>
+          <Text style={styles.createSectionTitle}>Fecha y hora</Text>
+          <View style={styles.createTwoColumnRow}>
+            <View style={styles.createColumn}>
+              <Text style={styles.createFieldLabel}>Fecha</Text>
+              <Pressable accessibilityLabel="Seleccionar fecha" accessibilityRole="button" onPress={openDatePicker} style={styles.createSelectField}>
+                <Text style={date ? styles.createSelectText : styles.createPlaceholder}>{date || 'Elegir'}</Text>
+                <ChevronDown color="#0E5A44" size={20} strokeWidth={2.4} />
+              </Pressable>
+            </View>
+            <View style={styles.createColumn}>
+              <Text style={styles.createFieldLabel}>Hora</Text>
+              <Pressable accessibilityLabel="Seleccionar hora" accessibilityRole="button" onPress={() => setPickerMode('time')} style={styles.createSelectField}>
+                <Text style={time ? styles.createSelectText : styles.createPlaceholder}>{time || 'Elegir'}</Text>
+                <ChevronDown color="#0E5A44" size={20} strokeWidth={2.4} />
+              </Pressable>
+            </View>
+          </View>
+        </View>
 
-        <Pressable accessibilityLabel="Seleccionar hora" accessibilityRole="button" onPress={() => setPickerMode('time')} style={styles.timeHitArea}>
-          {time ? <Text style={styles.selectedFieldText}>{time}</Text> : null}
-        </Pressable>
-
-        {selectedLocation ? (
-          <View pointerEvents="none" style={styles.mapPreview}>
-            <MapView
-              initialRegion={{
-                latitude: selectedLocation.latitude,
-                longitude: selectedLocation.longitude,
-                latitudeDelta: 0.018,
-                longitudeDelta: 0.018,
-              }}
-              scrollEnabled={false}
-              style={styles.mapPreviewMap}
-              zoomEnabled={false}
-            >
-              <Marker
-                coordinate={{
+        <View style={styles.createCard}>
+          <View style={styles.createSectionHeader}>
+            <MapPin color="#0E5A44" size={25} strokeWidth={2.2} />
+            <Text style={styles.createSectionTitle}>Ubicación</Text>
+          </View>
+          <Pressable
+            accessibilityLabel="Seleccionar ubicación en el mapa"
+            accessibilityRole="button"
+            onPress={openLocationPicker}
+            style={styles.createMapCard}
+          >
+            {selectedLocation ? (
+              <MapView
+                mapType="standard"
+                provider={mapProvider}
+                region={{
                   latitude: selectedLocation.latitude,
                   longitude: selectedLocation.longitude,
+                  latitudeDelta: 0.018,
+                  longitudeDelta: 0.018,
                 }}
-                pinColor="#0E5A44"
-              />
-            </MapView>
-          </View>
-        ) : null}
-
-        <Pressable
-          accessibilityLabel={selectedLocation ? 'Abrir Google Maps' : 'Seleccionar ubicación en el mapa'}
-          accessibilityRole="button"
-          onPress={selectedLocation ? openGoogleMaps : openLocationPicker}
-          style={styles.mapHitArea}
-        />
-
-        <Pressable accessibilityLabel="Seleccionar ubicación" accessibilityRole="button" onPress={openLocationPicker} style={styles.locationHitArea}>
-          {location ? <Text style={styles.locationText}>{location}</Text> : null}
-        </Pressable>
-
-        <View pointerEvents="none" style={styles.additionalTitlePatch}>
-          <Text style={styles.additionalTitle}>Ajustes adicionales</Text>
+                scrollEnabled={false}
+                style={styles.createMapPreview}
+                toolbarEnabled={false}
+                zoomEnabled={false}
+              >
+                <Marker
+                  coordinate={{
+                    latitude: selectedLocation.latitude,
+                    longitude: selectedLocation.longitude,
+                  }}
+                  pinColor="#0E5A44"
+                />
+              </MapView>
+            ) : (
+              <View style={styles.createMapEmpty}>
+                <MapPin color="#0E5A44" size={34} strokeWidth={2.1} />
+                <Text style={styles.createMapEmptyText}>Seleccionar en el mapa</Text>
+              </View>
+            )}
+            {selectedLocation && shouldShowMapConfigNotice ? <MapConfigNotice compact /> : null}
+          </Pressable>
+          <Pressable accessibilityLabel="Seleccionar ubicación" accessibilityRole="button" onPress={openLocationPicker} style={styles.createLocationField}>
+            <Text numberOfLines={2} style={location ? styles.createSelectText : styles.createPlaceholder}>
+              {location || 'Tocá para definir el punto de encuentro'}
+            </Text>
+            <MapPin color="#0E5A44" size={21} strokeWidth={2.2} />
+          </Pressable>
         </View>
 
-        <Pressable
-          accessibilityLabel="Abrir ajustes adicionales"
-          accessibilityRole="button"
-          onPress={() => setIsAdditionalVisible(true)}
-          style={styles.additionalHitArea}
-        />
-
-        {message ? <Text style={styles.messageText}>{message}</Text> : null}
-
-        <Pressable accessibilityLabel="Crear actividad" accessibilityRole="button" disabled={isSaving} onPress={createActivity} style={[styles.createHitArea, safeCreateStyle]}>
-          {isSaving ? <ActivityIndicator color="#FFFFFF" /> : null}
+        <Pressable accessibilityLabel="Abrir ajustes adicionales" accessibilityRole="button" onPress={() => setIsAdditionalVisible(true)} style={styles.createAdditionalCard}>
+          <View style={styles.createSectionHeader}>
+            <SlidersHorizontal color="#0E5A44" size={25} strokeWidth={2.4} />
+            <View style={styles.createAdditionalCopy}>
+              <Text style={styles.createSectionTitle}>Ajustes adicionales</Text>
+              <Text style={styles.createAdditionalSubtitle}>Privacidad, cupos, nivel, costo y ajustes rápidos.</Text>
+            </View>
+          </View>
+          <ArrowRight color="#0E5A44" size={28} strokeWidth={2.2} />
         </Pressable>
 
-        {isAdditionalVisible ? (
-          <View style={styles.additionalScreen}>
-            <ScrollView
-              contentContainerStyle={[styles.additionalScrollContent, safeAdditionalScrollStyle]}
-              keyboardShouldPersistTaps="handled"
-              showsVerticalScrollIndicator={false}
-            >
-              <View style={styles.additionalHeader}>
-                <Pressable
-                  accessibilityLabel="Volver a crear actividad"
-                  accessibilityRole="button"
-                  onPress={returnToCreateActivity}
-                  style={styles.additionalBackButton}
-                >
-                  <ArrowLeft color="#0E5A44" size={33} strokeWidth={2.2} />
-                </Pressable>
-                <View style={styles.additionalLogo}>
-                  <Text style={styles.additionalLogoText}>OC</Text>
-                  <Text style={styles.additionalLogoBrand}>coincidir</Text>
-                </View>
-              </View>
+        {message ? <Text style={styles.createMessageText}>{message}</Text> : null}
 
-              <View style={styles.additionalTitleRow}>
-                <View style={styles.additionalTitleIcon}>
-                  <SlidersHorizontal color="#0E5A44" size={25} strokeWidth={2.4} />
-                </View>
-                <Text style={styles.additionalScreenTitle}>Ajustes adicionales</Text>
-              </View>
-              <Text style={styles.additionalSubtitle}>Completá los detalles para que otros sepan qué esperar.</Text>
-
-              <AdditionalSection Icon={LockKeyhole} title="Privacidad">
-                <View style={styles.additionalGrid}>
-                  {privacyDetails.map((item) => (
-                    <AdditionalChoiceCard
-                      active={privacy === item.label}
-                      description={item.description}
-                      Icon={item.Icon}
-                      key={item.label}
-                      label={item.label}
-                      onPress={() => setPrivacy(item.label)}
-                    />
-                  ))}
-                </View>
-              </AdditionalSection>
-
-              <AdditionalSection Icon={UsersRound} title="Participantes">
-                <View style={styles.participantsCard}>
-                  <Text style={styles.participantsLabel}>Cupos máximos (opcional)</Text>
-                  <View style={styles.participantsRow}>
-                    <View style={styles.participantsStepper}>
-                      <Pressable
-                        accessibilityLabel="Restar cupo"
-                        accessibilityRole="button"
-                        onPress={() => setMaxParticipants((value) => Math.max(2, value - 1))}
-                        style={styles.stepperButton}
-                      >
-                        <Minus color="#0E5A44" size={24} strokeWidth={2.5} />
-                      </Pressable>
-                      <Text style={styles.stepperValue}>{maxParticipants}</Text>
-                      <Pressable
-                        accessibilityLabel="Sumar cupo"
-                        accessibilityRole="button"
-                        onPress={() => setMaxParticipants((value) => Math.min(99, value + 1))}
-                        style={styles.stepperButton}
-                      >
-                        <Plus color="#0E5A44" size={24} strokeWidth={2.5} />
-                      </Pressable>
-                    </View>
-                    <Text style={styles.participantsHelp}>Incluyéndote a vos</Text>
-                  </View>
-                  <Text style={styles.participantsNote}>Podés cambiarlo más adelante.</Text>
-                </View>
-              </AdditionalSection>
-
-              <AdditionalSection Icon={BarChart3} title="Nivel de la actividad">
-                <View style={styles.levelGrid}>
-                  {levelDetails.map((item) => (
-                    <AdditionalChoiceCard
-                      active={level === item.label}
-                      description={item.description}
-                      Icon={item.Icon}
-                      key={item.label}
-                      label={item.label}
-                      onPress={() => setLevel(item.label)}
-                    />
-                  ))}
-                </View>
-              </AdditionalSection>
-
-              <AdditionalSection Icon={Leaf} title="Tipo de ambiente">
-                <View style={styles.environmentGrid}>
-                  {environmentDetails.map((item) => (
-                    <EnvironmentCard
-                      active={environment === item.label}
-                      backgroundColor={item.backgroundColor}
-                      color={item.color}
-                      description={item.description}
-                      Icon={item.Icon}
-                      key={item.label}
-                      label={item.label}
-                      onPress={() => setEnvironment(item.label)}
-                    />
-                  ))}
-                </View>
-              </AdditionalSection>
-
-              <AdditionalSection Icon={Tag} title="Costo de la actividad">
-                <View style={styles.additionalGrid}>
-                  {costDetails.map((item) => (
-                    <AdditionalChoiceCard
-                      active={cost === item.label}
-                      description={item.description}
-                      Icon={item.Icon}
-                      key={item.label}
-                      label={item.label}
-                      onPress={() => setCostOption(item.label)}
-                    />
-                  ))}
-                </View>
-
-                <View style={styles.priceRow}>
-                  <View style={styles.priceField}>
-                    <Text style={styles.priceLabel}>Precio (opcional)</Text>
-                    <TextInput
-                      editable={cost !== 'Gratis'}
-                      keyboardType="numeric"
-                      onChangeText={setPrice}
-                      placeholder="Ej: $2500"
-                      placeholderTextColor="#7A8790"
-                      style={[
-                        styles.priceInput,
-                        cost === 'Gratis' && styles.additionalDisabledInput,
-                      ]}
-                      underlineColorAndroid="transparent"
-                      value={price}
-                    />
-                  </View>
-                  <View style={styles.currencyField}>
-                    <Text style={styles.priceLabel}>Moneda</Text>
-                    <Pressable
-                      accessibilityLabel="Seleccionar moneda"
-                      accessibilityRole="button"
-                      disabled={cost === 'Gratis'}
-                      onPress={() => setPickerMode('currency')}
-                      style={[
-                        styles.currencyButton,
-                        cost === 'Gratis' && styles.additionalDisabledInput,
-                      ]}
-                    >
-                      <Text style={styles.currencyButtonText}>{currency}</Text>
-                      <ChevronDown color="#0E5A44" size={20} strokeWidth={2.4} />
-                    </Pressable>
-                  </View>
-                </View>
-              </AdditionalSection>
-
-              <AdditionalSection Icon={Zap} title="Ajustes rápidos">
-                <View style={styles.quickGrid}>
-                  {quickDetails.map((item) => (
-                    <QuickCard
-                      active={quickSettings.includes(item.label)}
-                      description={item.description}
-                      Icon={item.Icon}
-                      key={item.label}
-                      label={item.shortLabel}
-                      onPress={() => toggleQuickSetting(item.label)}
-                    />
-                  ))}
-                </View>
-              </AdditionalSection>
-
-              <View style={styles.additionalTip}>
-                <Lightbulb color="#0E5A44" size={22} strokeWidth={2.2} />
-                <Text style={styles.additionalTipText}>Podés agregar más detalles en la descripción de tu actividad.</Text>
-              </View>
-
-              <Pressable
-                accessibilityLabel="Continuar"
-                accessibilityRole="button"
-                onPress={returnToCreateActivity}
-                style={styles.additionalContinueButton}
-              >
-                <Text style={styles.additionalContinueText}>Continuar</Text>
-                <ArrowRight color="#FFFFFF" size={34} strokeWidth={2.2} style={styles.additionalContinueArrow} />
-              </Pressable>
-            </ScrollView>
-          </View>
-        ) : null}
-
-        {false && isAdditionalVisible ? (
-          <View style={styles.additionalScreen}>
-            <ImageBackground
-              source={additionalSettingsImage}
-              resizeMode="stretch"
-              style={styles.image}
-            >
-              <Pressable
-                accessibilityLabel="Volver a crear actividad"
-                accessibilityRole="button"
-                onPress={returnToCreateActivity}
-                style={styles.additionalBackHitArea}
-              />
-
-              {additionalOptions.privacy.map((option, index) => (
-                <Pressable
-                  accessibilityLabel={`Privacidad ${option}`}
-                  accessibilityRole="radio"
-                  accessibilityState={{ checked: privacy === option }}
-                  key={option}
-                  onPress={() => setPrivacy(option)}
-                  style={[
-                    styles.additionalOptionHitArea,
-                    index === 0 && styles.privacyOne,
-                    index === 1 && styles.privacyTwo,
-                    index === 2 && styles.privacyThree,
-                  ]}
-                >
-                  {privacy === option ? <View style={styles.additionalSelectedBadge} /> : null}
-                </Pressable>
-              ))}
-
-              <Pressable
-                accessibilityLabel="Restar cupo"
-                accessibilityRole="button"
-                onPress={() => setMaxParticipants((value) => Math.max(2, value - 1))}
-                style={styles.participantsMinusHitArea}
-              />
-              <Text style={styles.participantsText}>{maxParticipants}</Text>
-              <Pressable
-                accessibilityLabel="Sumar cupo"
-                accessibilityRole="button"
-                onPress={() => setMaxParticipants((value) => Math.min(99, value + 1))}
-                style={styles.participantsPlusHitArea}
-              />
-
-              {additionalOptions.level.map((option, index) => (
-                <Pressable
-                  accessibilityLabel={`Nivel ${option}`}
-                  accessibilityRole="radio"
-                  accessibilityState={{ checked: level === option }}
-                  key={option}
-                  onPress={() => setLevel(option)}
-                  style={[
-                    styles.additionalOptionHitArea,
-                    index === 0 && styles.levelOne,
-                    index === 1 && styles.levelTwo,
-                    index === 2 && styles.levelThree,
-                    index === 3 && styles.levelFour,
-                  ]}
-                >
-                  {level === option ? <View style={styles.additionalSelectedBadge} /> : null}
-                </Pressable>
-              ))}
-
-              {additionalOptions.environment.map((option, index) => (
-                <Pressable
-                  accessibilityLabel={`Ambiente ${option}`}
-                  accessibilityRole="checkbox"
-                  accessibilityState={{ checked: environment === option }}
-                  key={option}
-                  onPress={() => setEnvironment(option)}
-                  style={[
-                    styles.additionalOptionHitArea,
-                    index === 0 && styles.environmentOne,
-                    index === 1 && styles.environmentTwo,
-                    index === 2 && styles.environmentThree,
-                    index === 3 && styles.environmentFour,
-                    index === 4 && styles.environmentFive,
-                  ]}
-                >
-                  {environment === option ? <View style={styles.additionalSelectedBadge} /> : null}
-                </Pressable>
-              ))}
-
-              {additionalOptions.cost.map((option, index) => (
-                <Pressable
-                  accessibilityLabel={`Costo ${option}`}
-                  accessibilityRole="radio"
-                  accessibilityState={{ checked: cost === option }}
-                  key={option}
-                  onPress={() => setCostOption(option)}
-                  style={[
-                    styles.additionalOptionHitArea,
-                    index === 0 && styles.costOne,
-                    index === 1 && styles.costTwo,
-                    index === 2 && styles.costThree,
-                  ]}
-                >
-                  {cost === option ? <View style={styles.additionalSelectedBadge} /> : null}
-                </Pressable>
-              ))}
-
-              <TextInput
-                editable={cost !== 'Gratis'}
-                keyboardType="numeric"
-                onChangeText={setPrice}
-                placeholder=""
-                style={[
-                  styles.additionalPriceInput,
-                  cost === 'Gratis' && styles.additionalDisabledInput,
-                ]}
-                underlineColorAndroid="transparent"
-                value={price}
-              />
-              <Pressable
-                accessibilityLabel="Seleccionar moneda"
-                accessibilityRole="button"
-                disabled={cost === 'Gratis'}
-                onPress={() => setPickerMode('currency')}
-                style={styles.currencyHitArea}
-              >
-                {cost !== 'Gratis' ? <Text style={styles.currencyText}>{currency}</Text> : null}
-              </Pressable>
-
-              {additionalOptions.quick.map((option, index) => (
-                <Pressable
-                  accessibilityLabel={`Ajuste rápido ${option}`}
-                  accessibilityRole="checkbox"
-                  accessibilityState={{ checked: quickSettings.includes(option) }}
-                  key={option}
-                  onPress={() => toggleQuickSetting(option)}
-                  style={[
-                    styles.additionalOptionHitArea,
-                    index === 0 && styles.quickOne,
-                    index === 1 && styles.quickTwo,
-                    index === 2 && styles.quickThree,
-                    index === 3 && styles.quickFour,
-                  ]}
-                >
-                  {quickSettings.includes(option) ? <View style={styles.additionalSelectedBadge} /> : null}
-                </Pressable>
-              ))}
-
-              <Pressable
-                accessibilityLabel="Continuar"
-                accessibilityRole="button"
-                onPress={returnToCreateActivity}
-                style={styles.additionalContinueHitArea}
-              />
-            </ImageBackground>
-          </View>
-        ) : null}
-
+        <Pressable accessibilityLabel="Crear actividad" accessibilityRole="button" disabled={isSaving} onPress={createActivity} style={[styles.createSubmitButton, isSaving && styles.createSubmitButtonDisabled]}>
+          {isSaving ? (
+            <ActivityIndicator color="#FFFFFF" />
+          ) : (
+            <>
+              <Text style={styles.createSubmitText}>Crear actividad</Text>
+              <ArrowRight color="#FFFFFF" size={32} strokeWidth={2.2} style={styles.createSubmitArrow} />
+            </>
+          )}
+        </Pressable>
         <Modal animationType="slide" visible={isLocationPickerVisible} onRequestClose={() => setIsLocationPickerVisible(false)}>
           <View style={styles.locationPickerScreen}>
             <View style={styles.locationPickerHeader}>
@@ -1038,20 +846,49 @@ export default function CrearScreen() {
               </View>
             </View>
 
-            <MapView
-              onLongPress={updateDraftPin}
-              onPress={updateDraftPin}
-              onRegionChangeComplete={setMapRegion}
-              region={mapRegion}
-              style={styles.locationPickerMap}
-            >
-              <Marker
-                coordinate={draftPin}
-                draggable
-                onDragEnd={(event) => setDraftPin(event.nativeEvent.coordinate)}
-                pinColor="#0E5A44"
-              />
-            </MapView>
+            <View style={styles.locationPickerMapFrame}>
+              <MapView
+                loadingEnabled
+                mapType="standard"
+                moveOnMarkerPress={false}
+                onLongPress={updateDraftPin}
+                onPress={updateDraftPin}
+                onRegionChangeComplete={setMapRegion}
+                provider={mapProvider}
+                region={mapRegion}
+                showsCompass
+                showsMyLocationButton
+                style={styles.locationPickerMap}
+                toolbarEnabled={false}
+              >
+                <Marker
+                  coordinate={draftPin}
+                  draggable
+                  onDragEnd={(event) => {
+                    setDraftPin(event.nativeEvent.coordinate)
+                    setMapRegion((value) => ({
+                      ...value,
+                      latitude: event.nativeEvent.coordinate.latitude,
+                      longitude: event.nativeEvent.coordinate.longitude,
+                    }))
+                  }}
+                  pinColor="#0E5A44"
+                />
+              </MapView>
+              <View pointerEvents="none" style={styles.locationCenterPin}>
+                <MapPin color="#00613F" fill="#00613F" size={38} strokeWidth={2.2} />
+              </View>
+              {shouldShowMapConfigNotice ? <MapConfigNotice /> : null}
+              {shouldShowMapConfigNotice ? (
+                <Pressable
+                  accessibilityLabel="Selector alternativo de ubicación"
+                  accessibilityRole="button"
+                  onLayout={(event) => setFallbackMapSize(event.nativeEvent.layout)}
+                  onPress={moveFallbackPin}
+                  style={styles.locationFallbackTapLayer}
+                />
+              ) : null}
+            </View>
 
             <View style={styles.locationPickerFooter}>
               <Text numberOfLines={2} style={styles.locationPickerHint}>
@@ -1082,7 +919,14 @@ export default function CrearScreen() {
                 {pickerMode === 'category'
                   ? categories.map((item) => (
                     <Pressable key={item.id} onPress={() => selectOption(item)} style={[styles.optionRow, { backgroundColor: item.backgroundColor }]}>
-                      <Text style={[styles.optionText, { color: item.color }]}>{item.icon} {item.label}</Text>
+                      <View style={styles.categoryOptionRow}>
+                        {(() => {
+                          const CategoryIcon = getCategoryIcon(item.id)
+
+                          return <CategoryIcon color={item.color} size={21} strokeWidth={2.3} />
+                        })()}
+                        <Text style={[styles.optionText, { color: item.color }]}>{item.label}</Text>
+                      </View>
                     </Pressable>
                   ))
                   : null}
@@ -1093,13 +937,67 @@ export default function CrearScreen() {
                     </Pressable>
                   ))
                   : null}
-                {pickerMode === 'date'
-                  ? dateOptions.map((item) => (
-                    <Pressable key={item} onPress={() => selectOption(item)} style={styles.optionRow}>
-                      <Text style={styles.optionText}>{item}</Text>
-                    </Pressable>
-                  ))
-                  : null}
+                {pickerMode === 'date' ? (
+                  <View style={styles.calendarPicker}>
+                    <View style={styles.calendarHeader}>
+                      <Pressable
+                        accessibilityLabel="Mes anterior"
+                        accessibilityRole="button"
+                        onPress={() => moveCalendarMonth(-1)}
+                        style={styles.calendarNavButton}
+                      >
+                        <ChevronLeft color="#0E5A44" size={24} strokeWidth={2.4} />
+                      </Pressable>
+                      <Text style={styles.calendarMonthTitle}>{getCalendarMonthTitle(calendarMonth)}</Text>
+                      <Pressable
+                        accessibilityLabel="Mes siguiente"
+                        accessibilityRole="button"
+                        onPress={() => moveCalendarMonth(1)}
+                        style={styles.calendarNavButton}
+                      >
+                        <ChevronRight color="#0E5A44" size={24} strokeWidth={2.4} />
+                      </Pressable>
+                    </View>
+
+                    <View style={styles.calendarWeekRow}>
+                      {weekDays.map((item, index) => (
+                        <Text key={`${item}-${index}`} style={styles.calendarWeekText}>{item}</Text>
+                      ))}
+                    </View>
+
+                    <View style={styles.calendarGrid}>
+                      {calendarDays.map((item, index) => {
+                        const isSelected = item && selectedDate ? isSameDay(item, selectedDate) : false
+                        const isToday = item ? isSameDay(item, new Date()) : false
+
+                        return (
+                          <Pressable
+                            accessibilityLabel={item ? `Elegir ${formatDate(item)}` : undefined}
+                            accessibilityRole={item ? 'button' : undefined}
+                            disabled={!item}
+                            key={item ? item.toISOString() : `empty-${index}`}
+                            onPress={() => item && selectCalendarDate(item)}
+                            style={[
+                              styles.calendarDay,
+                              isToday && styles.calendarDayToday,
+                              isSelected && styles.calendarDaySelected,
+                            ]}
+                          >
+                            {item ? (
+                              <Text style={[
+                                styles.calendarDayText,
+                                isSelected && styles.calendarDayTextSelected,
+                              ]}
+                              >
+                                {item.getDate()}
+                              </Text>
+                            ) : null}
+                          </Pressable>
+                        )
+                      })}
+                    </View>
+                  </View>
+                ) : null}
                 {pickerMode === 'time'
                   ? timeOptions.map((item) => (
                     <Pressable key={item} onPress={() => selectOption(item)} style={styles.optionRow}>
@@ -1118,9 +1016,198 @@ export default function CrearScreen() {
             </Pressable>
           </Pressable>
         </Modal>
-        </ImageBackground>
       </ScrollView>
-    </View>
+
+      {isAdditionalVisible ? (
+        <View style={styles.additionalScreen}>
+          <ScrollView
+            bounces={false}
+            contentContainerStyle={[styles.additionalScrollContent, safeAdditionalScrollStyle]}
+            keyboardShouldPersistTaps="handled"
+            nestedScrollEnabled
+            showsVerticalScrollIndicator={false}
+          >
+            <View style={styles.additionalHeader}>
+              <Pressable
+                accessibilityLabel="Volver a crear actividad"
+                accessibilityRole="button"
+                onPress={returnToCreateActivity}
+                style={styles.additionalBackButton}
+              >
+                <ArrowLeft color="#0E5A44" size={33} strokeWidth={2.2} />
+              </Pressable>
+              <View style={styles.additionalLogo}>
+                <CoincidirLogo compact markSize={48} textSize={18} />
+              </View>
+            </View>
+
+            <View style={styles.additionalTitleRow}>
+              <View style={styles.additionalTitleIcon}>
+                <SlidersHorizontal color="#0E5A44" size={25} strokeWidth={2.4} />
+              </View>
+              <Text style={styles.additionalScreenTitle}>Ajustes adicionales</Text>
+            </View>
+            <Text style={styles.additionalSubtitle}>Completá los detalles para que otros sepan qué esperar.</Text>
+
+            <AdditionalSection Icon={LockKeyhole} title="Privacidad">
+              <View style={styles.additionalGrid}>
+                {privacyDetails.map((item) => (
+                  <AdditionalChoiceCard
+                    active={privacy === item.label}
+                    description={item.description}
+                    Icon={item.Icon}
+                    key={item.label}
+                    label={item.label}
+                    onPress={() => setPrivacy(item.label)}
+                  />
+                ))}
+              </View>
+            </AdditionalSection>
+
+            <AdditionalSection Icon={UsersRound} title="Participantes">
+              <View style={styles.participantsCard}>
+                <Text style={styles.participantsLabel}>Cupos máximos (opcional)</Text>
+                <View style={styles.participantsRow}>
+                  <View style={styles.participantsStepper}>
+                    <Pressable
+                      accessibilityLabel="Restar cupo"
+                      accessibilityRole="button"
+                      onPress={() => setMaxParticipants((value) => Math.max(2, value - 1))}
+                      style={styles.stepperButton}
+                    >
+                      <Minus color="#0E5A44" size={24} strokeWidth={2.5} />
+                    </Pressable>
+                    <Text style={styles.stepperValue}>{maxParticipants}</Text>
+                    <Pressable
+                      accessibilityLabel="Sumar cupo"
+                      accessibilityRole="button"
+                      onPress={() => setMaxParticipants((value) => Math.min(99, value + 1))}
+                      style={styles.stepperButton}
+                    >
+                      <Plus color="#0E5A44" size={24} strokeWidth={2.5} />
+                    </Pressable>
+                  </View>
+                  <Text style={styles.participantsHelp}>Incluyéndote a vos</Text>
+                </View>
+                <Text style={styles.participantsNote}>Podés cambiarlo más adelante.</Text>
+              </View>
+            </AdditionalSection>
+
+            <AdditionalSection Icon={BarChart3} title="Nivel de la actividad">
+              <View style={styles.levelGrid}>
+                {levelDetails.map((item) => (
+                  <AdditionalChoiceCard
+                    active={level === item.label}
+                    description={item.description}
+                    Icon={item.Icon}
+                    key={item.label}
+                    label={item.label}
+                    onPress={() => setLevel(item.label)}
+                  />
+                ))}
+              </View>
+            </AdditionalSection>
+
+            <AdditionalSection Icon={Leaf} title="Tipo de ambiente">
+              <View style={styles.environmentGrid}>
+                {environmentDetails.map((item) => (
+                  <EnvironmentCard
+                    active={environment === item.label}
+                    backgroundColor={item.backgroundColor}
+                    color={item.color}
+                    description={item.description}
+                    Icon={item.Icon}
+                    key={item.label}
+                    label={item.label}
+                    onPress={() => setEnvironment(item.label)}
+                  />
+                ))}
+              </View>
+            </AdditionalSection>
+
+            <AdditionalSection Icon={Tag} title="Costo de la actividad">
+              <View style={styles.additionalGrid}>
+                {costDetails.map((item) => (
+                  <AdditionalChoiceCard
+                    active={cost === item.label}
+                    description={item.description}
+                    Icon={item.Icon}
+                    key={item.label}
+                    label={item.label}
+                    onPress={() => setCostOption(item.label)}
+                  />
+                ))}
+              </View>
+
+              <View style={styles.priceRow}>
+                <View style={styles.priceField}>
+                  <Text style={styles.priceLabel}>Precio (opcional)</Text>
+                  <TextInput
+                    editable={cost !== 'Gratis'}
+                    keyboardType="numeric"
+                    onChangeText={setPrice}
+                    placeholder="Ej: $2500"
+                    placeholderTextColor="#7A8790"
+                    style={[
+                      styles.priceInput,
+                      cost === 'Gratis' && styles.additionalDisabledInput,
+                    ]}
+                    underlineColorAndroid="transparent"
+                    value={price}
+                  />
+                </View>
+                <View style={styles.currencyField}>
+                  <Text style={styles.priceLabel}>Moneda</Text>
+                  <Pressable
+                    accessibilityLabel="Seleccionar moneda"
+                    accessibilityRole="button"
+                    disabled={cost === 'Gratis'}
+                    onPress={() => setPickerMode('currency')}
+                    style={[
+                      styles.currencyButton,
+                      cost === 'Gratis' && styles.additionalDisabledInput,
+                    ]}
+                  >
+                    <Text style={styles.currencyButtonText}>{currency}</Text>
+                    <ChevronDown color="#0E5A44" size={20} strokeWidth={2.4} />
+                  </Pressable>
+                </View>
+              </View>
+            </AdditionalSection>
+
+            <AdditionalSection Icon={Zap} title="Ajustes rápidos">
+              <View style={styles.quickGrid}>
+                {quickDetails.map((item) => (
+                  <QuickCard
+                    active={quickSettings.includes(item.label)}
+                    description={item.description}
+                    Icon={item.Icon}
+                    key={item.label}
+                    label={item.shortLabel}
+                    onPress={() => toggleQuickSetting(item.label)}
+                  />
+                ))}
+              </View>
+            </AdditionalSection>
+
+            <View style={styles.additionalTip}>
+              <Lightbulb color="#0E5A44" size={22} strokeWidth={2.2} />
+              <Text style={styles.additionalTipText}>Podés agregar más detalles en la descripción de tu actividad.</Text>
+            </View>
+
+            <Pressable
+              accessibilityLabel="Continuar"
+              accessibilityRole="button"
+              onPress={returnToCreateActivity}
+              style={styles.additionalContinueButton}
+            >
+              <Text style={styles.additionalContinueText}>Continuar</Text>
+              <ArrowRight color="#FFFFFF" size={34} strokeWidth={2.2} style={styles.additionalContinueArrow} />
+            </Pressable>
+          </ScrollView>
+        </View>
+      ) : null}
+    </SafeAreaView>
   )
 }
 
@@ -1221,9 +1308,301 @@ function QuickCard({ active, description, Icon, label, onPress }: QuickCardProps
   )
 }
 
+type MapConfigNoticeProps = {
+  compact?: boolean
+}
+
+function MapConfigNotice({ compact = false }: MapConfigNoticeProps) {
+  return (
+    <View pointerEvents="none" style={[styles.mapConfigNotice, compact && styles.mapConfigNoticeCompact]}>
+      <Text style={[styles.mapFallbackTitle, compact && styles.mapFallbackTitleCompact]}>
+        Google Maps requiere API key en Android
+      </Text>
+      {!compact ? (
+        <Text style={styles.mapFallbackText}>
+          Si ves el mapa beige, creá una Development Build con EXPO_PUBLIC_GOOGLE_MAPS_API_KEY.
+          Podés tocar el área para mover el punto.
+        </Text>
+      ) : null}
+    </View>
+  )
+}
+
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: '#FCFAF3' },
   scrollContent: { flexGrow: 1 },
+  createScrollContent: {
+    flexGrow: 1,
+    paddingHorizontal: 16,
+  },
+  createHeader: {
+    minHeight: 86,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  createBackButton: {
+    position: 'absolute',
+    left: 0,
+    top: 8,
+    width: 48,
+    height: 48,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  createLogo: {
+    alignItems: 'center',
+  },
+  createTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 16,
+  },
+  createScreenTitle: {
+    color: '#0E5A44',
+    fontSize: 31,
+    lineHeight: 38,
+    fontWeight: '900',
+    letterSpacing: 0,
+  },
+  createSubtitle: {
+    color: '#34445F',
+    fontSize: 16,
+    lineHeight: 23,
+    fontWeight: '600',
+    marginBottom: 22,
+    marginTop: 8,
+    textAlign: 'center',
+  },
+  createCard: {
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#E2E6E3',
+    backgroundColor: '#FFFFFF',
+    padding: 16,
+    marginBottom: 14,
+    shadowColor: '#0E5A44',
+    shadowOpacity: 0.06,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 2,
+  },
+  createFieldLabel: {
+    color: '#34445F',
+    fontSize: 13,
+    lineHeight: 18,
+    fontWeight: '800',
+    marginBottom: 7,
+  },
+  createTextInput: {
+    minHeight: 54,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#E2E6E3',
+    backgroundColor: '#FCFAF8',
+    color: '#123F38',
+    fontSize: 16,
+    lineHeight: 21,
+    fontWeight: '700',
+    includeFontPadding: false,
+    paddingHorizontal: 14,
+    paddingVertical: 0,
+    textAlignVertical: 'center',
+    marginBottom: 14,
+  },
+  createDescriptionInput: {
+    minHeight: 116,
+    paddingTop: 14,
+    paddingBottom: 14,
+    textAlignVertical: 'top',
+  },
+  createCounterText: {
+    alignSelf: 'flex-end',
+    color: '#34445F',
+    fontSize: 12,
+    lineHeight: 16,
+    fontWeight: '700',
+    marginTop: -8,
+  },
+  createTwoColumnRow: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  createColumn: {
+    flex: 1,
+  },
+  createSelectField: {
+    minHeight: 54,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#E2E6E3',
+    backgroundColor: '#FCFAF8',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 14,
+    marginBottom: 14,
+  },
+  createSelectText: {
+    flex: 1,
+    color: '#0E5A44',
+    fontSize: 15,
+    lineHeight: 20,
+    fontWeight: '900',
+    marginRight: 8,
+  },
+  createPlaceholder: {
+    flex: 1,
+    color: '#7A8790',
+    fontSize: 15,
+    lineHeight: 20,
+    fontWeight: '700',
+    marginRight: 8,
+  },
+  createSectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  createSectionTitle: {
+    color: '#0E5A44',
+    fontSize: 19,
+    lineHeight: 25,
+    fontWeight: '900',
+    letterSpacing: 0,
+    marginBottom: 12,
+  },
+  createMapCard: {
+    height: 176,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#E2E6E3',
+    backgroundColor: '#F1F8EF',
+    overflow: 'hidden',
+    marginBottom: 12,
+  },
+  createMapPreview: {
+    width: '100%',
+    height: '100%',
+  },
+  createMapEmpty: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  createMapEmptyText: {
+    color: '#0E5A44',
+    fontSize: 16,
+    lineHeight: 21,
+    fontWeight: '900',
+    marginTop: 8,
+  },
+  mapConfigNotice: {
+    position: 'absolute',
+    left: 14,
+    right: 14,
+    top: 14,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#CFE4CE',
+    backgroundColor: 'rgba(248,252,246,0.94)',
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+  },
+  mapConfigNoticeCompact: {
+    top: 10,
+    left: 10,
+    right: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+  },
+  mapFallbackTitle: {
+    color: '#0E5A44',
+    fontSize: 17,
+    lineHeight: 23,
+    fontWeight: '900',
+    textAlign: 'center',
+  },
+  mapFallbackTitleCompact: {
+    fontSize: 13,
+    lineHeight: 18,
+  },
+  mapFallbackText: {
+    color: '#34445F',
+    fontSize: 13,
+    lineHeight: 19,
+    fontWeight: '700',
+    textAlign: 'center',
+    marginTop: 6,
+  },
+  createLocationField: {
+    minHeight: 56,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#E2E6E3',
+    backgroundColor: '#FCFAF8',
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 14,
+  },
+  createAdditionalCard: {
+    minHeight: 82,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#D7E7D7',
+    backgroundColor: '#F1F8EF',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    marginBottom: 14,
+  },
+  createAdditionalCopy: {
+    flex: 1,
+    marginLeft: 12,
+    marginRight: 12,
+  },
+  createAdditionalSubtitle: {
+    color: '#34445F',
+    fontSize: 13,
+    lineHeight: 18,
+    fontWeight: '600',
+  },
+  createMessageText: {
+    color: '#B42318',
+    fontSize: 14,
+    lineHeight: 19,
+    fontWeight: '800',
+    textAlign: 'center',
+    marginBottom: 12,
+  },
+  createSubmitButton: {
+    minHeight: 66,
+    borderRadius: 20,
+    backgroundColor: '#00613F',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 2,
+    shadowColor: '#00613F',
+    shadowOpacity: 0.18,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 3,
+  },
+  createSubmitButtonDisabled: {
+    opacity: 0.72,
+  },
+  createSubmitText: {
+    color: '#FFFFFF',
+    fontSize: 21,
+    lineHeight: 27,
+    fontWeight: '900',
+    letterSpacing: 0,
+  },
+  createSubmitArrow: {
+    position: 'absolute',
+    right: 24,
+  },
   image: { flex: 1, minHeight: '100%', width: '100%' },
   backHitArea: { position: 'absolute', left: '4%', top: '2%', height: '6%', width: '12%' },
   input: {
@@ -1286,9 +1665,15 @@ const styles = StyleSheet.create({
   additionalHitArea: { position: 'absolute', left: '3.5%', right: '3.5%', top: '80.7%', height: '5.8%' },
   messageText: { position: 'absolute', left: '8%', right: '8%', top: '88.2%', color: '#B42318', fontSize: 13, lineHeight: 17, fontWeight: '800', textAlign: 'center' },
   createHitArea: { position: 'absolute', left: '3.5%', right: '3.5%', top: '92%', height: '5.8%', alignItems: 'center', justifyContent: 'center' },
-  additionalScreen: { ...StyleSheet.absoluteFillObject, backgroundColor: '#FCFAF3', zIndex: 20 },
+  additionalScreen: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: '#FCFAF3',
+    elevation: 20,
+    zIndex: 20,
+  },
   additionalScrollContent: {
-    paddingBottom: 34,
+    flexGrow: 1,
+    paddingBottom: 72,
     paddingHorizontal: 16,
     paddingTop: 28,
   },
@@ -1308,20 +1693,6 @@ const styles = StyleSheet.create({
   },
   additionalLogo: {
     alignItems: 'center',
-  },
-  additionalLogoText: {
-    color: '#0E5A44',
-    fontSize: 42,
-    lineHeight: 45,
-    fontWeight: '900',
-    letterSpacing: 0,
-  },
-  additionalLogoBrand: {
-    color: '#0E5A44',
-    fontSize: 18,
-    lineHeight: 22,
-    fontWeight: '900',
-    letterSpacing: 0,
   },
   additionalTitleRow: {
     flexDirection: 'row',
@@ -1676,15 +2047,89 @@ const styles = StyleSheet.create({
   quickThree: { left: '50.2%', top: '86.9%', width: '20.5%', height: '5.4%' },
   quickFour: { left: '72.4%', top: '86.9%', width: '22%', height: '5.4%' },
   additionalContinueHitArea: { position: 'absolute', left: '4%', right: '4%', top: '96%', height: '4.8%' },
-  selectedPill: { alignSelf: 'flex-start', borderRadius: 999, paddingHorizontal: 10, paddingVertical: 5 },
+  selectedPill: {
+    alignSelf: 'flex-start',
+    borderRadius: 999,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+  },
   selectedText: { fontSize: 14, lineHeight: 18, fontWeight: '900' },
   selectedFieldText: { color: '#0E5A44', fontSize: 15, lineHeight: 19, fontWeight: '900' },
   locationText: { color: '#0E5A44', fontSize: 18, lineHeight: 22, fontWeight: '900', backgroundColor: 'rgba(255,255,255,0.75)', borderRadius: 999, paddingHorizontal: 16, paddingVertical: 7 },
   modalBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.25)', justifyContent: 'flex-end' },
-  modalCard: { maxHeight: '62%', backgroundColor: '#FFFFFF', borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 20 },
+  modalCard: { maxHeight: '78%', backgroundColor: '#FFFFFF', borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 20 },
   modalTitle: { color: '#0E5A44', fontSize: 20, fontWeight: '900', marginBottom: 14, textAlign: 'center' },
   optionRow: { borderRadius: 16, marginBottom: 10, paddingHorizontal: 16, paddingVertical: 14 },
   optionText: { color: '#123F38', fontSize: 17, fontWeight: '800' },
+  categoryOptionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  calendarPicker: {
+    paddingBottom: 4,
+  },
+  calendarHeader: {
+    minHeight: 48,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+  },
+  calendarNavButton: {
+    width: 44,
+    height: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  calendarMonthTitle: {
+    color: '#0E5A44',
+    fontSize: 18,
+    lineHeight: 24,
+    fontWeight: '900',
+    textTransform: 'capitalize',
+  },
+  calendarWeekRow: {
+    flexDirection: 'row',
+    marginBottom: 8,
+  },
+  calendarWeekText: {
+    flex: 1,
+    color: '#6D7975',
+    fontSize: 13,
+    lineHeight: 18,
+    fontWeight: '800',
+    textAlign: 'center',
+  },
+  calendarGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+  },
+  calendarDay: {
+    width: `${100 / 7}%`,
+    aspectRatio: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 14,
+  },
+  calendarDayToday: {
+    backgroundColor: '#EFF7EB',
+  },
+  calendarDaySelected: {
+    backgroundColor: '#00613F',
+  },
+  calendarDayText: {
+    color: '#123F38',
+    fontSize: 15,
+    lineHeight: 20,
+    fontWeight: '800',
+  },
+  calendarDayTextSelected: {
+    color: '#FFFFFF',
+  },
   locationPickerScreen: {
     flex: 1,
     backgroundColor: '#FCFAF3',
@@ -1729,7 +2174,24 @@ const styles = StyleSheet.create({
     marginTop: 3,
   },
   locationPickerMap: {
+    width: '100%',
+    height: '100%',
+  },
+  locationPickerMapFrame: {
     flex: 1,
+    minHeight: 320,
+    backgroundColor: '#E7E2D8',
+  },
+  locationCenterPin: {
+    position: 'absolute',
+    left: '50%',
+    top: '50%',
+    marginLeft: -19,
+    marginTop: -38,
+  },
+  locationFallbackTapLayer: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'transparent',
   },
   locationPickerFooter: {
     paddingHorizontal: 20,

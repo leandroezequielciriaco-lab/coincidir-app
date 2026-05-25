@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
 import {
   ActivityIndicator,
+  Alert,
+  Image,
   Modal,
   Platform,
   ScrollView,
@@ -10,22 +12,33 @@ import {
   View,
 } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
+import * as ImagePicker from 'expo-image-picker'
 import { useRouter } from 'expo-router'
 import { onAuthStateChanged } from 'firebase/auth'
 import { collection, doc, onSnapshot, serverTimestamp, setDoc } from 'firebase/firestore'
+import { getDownloadURL, ref, uploadBytes } from 'firebase/storage'
 import {
   CalendarDays,
   Camera,
   ChevronRight,
+  Circle,
+  CircleDot,
+  Coffee,
+  Dumbbell,
+  Footprints,
   Heart,
   MapPin,
+  Mountain,
   Pencil,
   Settings,
-  Sprout,
   Star,
+  Trees,
+  Trophy,
   UserRound,
   UsersRound,
+  Waves,
 } from 'lucide-react-native'
+import type { LucideIcon } from 'lucide-react-native'
 
 import { PressScale } from '../../components/home/PressScale'
 import { getFirebaseServices } from '../../firebaseConfig'
@@ -56,6 +69,22 @@ const editableInterests = [
   'Escalada',
   'Natación',
 ]
+
+function getInterestIcon(label: string): LucideIcon {
+  const value = label.toLowerCase()
+
+  if (value.includes('yoga')) return Dumbbell
+  if (value.includes('running')) return Footprints
+  if (value.includes('paddle') || value.includes('tenis')) return Trophy
+  if (value.includes('caminata')) return Mountain
+  if (value.includes('aire')) return Trees
+  if (value.includes('mate')) return Coffee
+  if (value.includes('fútbol') || value.includes('fÃºtbol')) return Circle
+  if (value.includes('escalada')) return Mountain
+  if (value.includes('nataci')) return Waves
+
+  return CircleDot
+}
 
 function readString(value: unknown, fallback = '') {
   return typeof value === 'string' && value.trim() ? value.trim() : fallback
@@ -211,7 +240,11 @@ export default function PerfilScreen() {
 
         <View style={styles.profileHeader}>
           <View style={styles.avatar}>
-            {profile.photoURL ? <Text style={styles.avatarInitials}>Foto</Text> : <UserRound color="#4B348A" size={46} strokeWidth={2.1} />}
+            {profile.photoURL ? (
+              <Image source={{ uri: profile.photoURL }} style={styles.avatarImage} />
+            ) : (
+              <UserRound color="#4B348A" size={46} strokeWidth={2.1} />
+            )}
             <PressScale onPress={() => setIsEditing(true)} scaleTo={0.94} style={styles.editAvatarButton}>
               <Pencil color="#4B348A" size={16} strokeWidth={2.4} />
             </PressScale>
@@ -297,9 +330,11 @@ function ProfileSection({ children, title }: ProfileSectionProps) {
 }
 
 function InterestChip({ label, selected = false, onPress }: { label: string; selected?: boolean; onPress?: () => void }) {
+  const Icon = getInterestIcon(label)
+
   return (
     <PressScale onPress={onPress} scaleTo={0.97} style={[styles.chip, selected && styles.chipSelected]}>
-      <Sprout color={selected ? '#FFFFFF' : '#006A32'} size={15} strokeWidth={2.1} />
+      <Icon color={selected ? '#FFFFFF' : '#006A32'} size={15} strokeWidth={2.1} />
       <Text style={[styles.chipText, selected && styles.chipTextSelected]}>{label}</Text>
     </PressScale>
   )
@@ -371,6 +406,7 @@ type EditProfileModalProps = {
 function EditProfileModal({ onClose, profile, userId, visible }: EditProfileModalProps) {
   const [draft, setDraft] = useState(profile)
   const [isSaving, setIsSaving] = useState(false)
+  const [isUploadingPhoto, setIsUploadingPhoto] = useState(false)
 
   useEffect(() => {
     if (visible) setDraft(profile)
@@ -383,6 +419,86 @@ function EditProfileModal({ onClose, profile, userId, visible }: EditProfileModa
         ? current.interests.filter((item) => item !== interest)
         : [...current.interests, interest],
     }))
+  }
+
+  const uploadProfilePhoto = async (asset: ImagePicker.ImagePickerAsset) => {
+    if (!userId || isUploadingPhoto) return
+
+    setDraft((current) => ({ ...current, photoURL: asset.uri }))
+    setIsUploadingPhoto(true)
+
+    try {
+      const { db, storage } = getFirebaseServices()
+      const response = await fetch(asset.uri)
+      const blob = await response.blob()
+      const extension = asset.fileName?.split('.').pop() || asset.mimeType?.split('/').pop() || 'jpg'
+      const cleanExtension = extension.replace(/[^a-zA-Z0-9]/g, '') || 'jpg'
+      const storageRef = ref(storage, `users/${userId}/profile-photo-${Date.now()}.${cleanExtension}`)
+
+      await uploadBytes(storageRef, blob, {
+        contentType: asset.mimeType || 'image/jpeg',
+      })
+
+      const photoURL = await getDownloadURL(storageRef)
+      setDraft((current) => ({ ...current, photoURL }))
+      await setDoc(doc(db, 'users', userId), {
+        photoURL,
+        updatedAt: serverTimestamp(),
+      }, { merge: true })
+    } catch {
+      Alert.alert('No pudimos actualizar la foto', 'Probá de nuevo en unos segundos.')
+      setDraft((current) => ({ ...current, photoURL: profile.photoURL }))
+    } finally {
+      setIsUploadingPhoto(false)
+    }
+  }
+
+  const choosePhotoFromLibrary = async () => {
+    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync()
+
+    if (!permission.granted) {
+      Alert.alert('Permiso necesario', 'Necesitamos acceso a tus fotos para elegir una imagen de perfil.')
+      return
+    }
+
+    const result = await ImagePicker.launchImageLibraryAsync({
+      allowsEditing: true,
+      aspect: [1, 1],
+      mediaTypes: ['images'],
+      quality: 0.86,
+    })
+
+    if (!result.canceled && result.assets[0]) {
+      await uploadProfilePhoto(result.assets[0])
+    }
+  }
+
+  const takeProfilePhoto = async () => {
+    const permission = await ImagePicker.requestCameraPermissionsAsync()
+
+    if (!permission.granted) {
+      Alert.alert('Permiso necesario', 'Necesitamos acceso a la cámara para tomar tu foto de perfil.')
+      return
+    }
+
+    const result = await ImagePicker.launchCameraAsync({
+      allowsEditing: true,
+      aspect: [1, 1],
+      mediaTypes: ['images'],
+      quality: 0.86,
+    })
+
+    if (!result.canceled && result.assets[0]) {
+      await uploadProfilePhoto(result.assets[0])
+    }
+  }
+
+  const openPhotoOptions = () => {
+    Alert.alert('Foto de perfil', 'Elegí cómo querés actualizar tu foto.', [
+      { text: 'Tomar foto con cámara', onPress: takeProfilePhoto },
+      { text: 'Elegir foto desde galería', onPress: choosePhotoFromLibrary },
+      { text: 'Cancelar', style: 'cancel' },
+    ])
   }
 
   const save = async () => {
@@ -419,12 +535,21 @@ function EditProfileModal({ onClose, profile, userId, visible }: EditProfileModa
             </PressScale>
           </View>
 
-          <View style={styles.editAvatar}>
-            <UserRound color="#4B348A" size={48} strokeWidth={2.1} />
+          <PressScale onPress={openPhotoOptions} scaleTo={0.96} style={styles.editAvatar}>
+            {draft.photoURL ? (
+              <Image source={{ uri: draft.photoURL }} style={styles.editAvatarImage} />
+            ) : (
+              <UserRound color="#4B348A" size={48} strokeWidth={2.1} />
+            )}
+            {isUploadingPhoto ? (
+              <View style={styles.photoUploadingOverlay}>
+                <ActivityIndicator color="#FFFFFF" />
+              </View>
+            ) : null}
             <View style={styles.cameraBadge}>
               <Camera color="#FFFFFF" size={17} strokeWidth={2.4} />
             </View>
-          </View>
+          </PressScale>
 
           <Field label="Foto" value={draft.photoURL} onChangeText={(photoURL) => setDraft((current) => ({ ...current, photoURL }))} placeholder="URL de foto (opcional)" />
           <Field label="Nombre" value={draft.fullName} onChangeText={(fullName) => setDraft((current) => ({ ...current, fullName }))} />
@@ -540,6 +665,11 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     position: 'relative',
     width: 96,
+    overflow: 'hidden',
+  },
+  avatarImage: {
+    height: '100%',
+    width: '100%',
   },
   avatarInitials: {
     color: '#4B348A',
@@ -775,6 +905,17 @@ const styles = StyleSheet.create({
     marginBottom: 22,
     position: 'relative',
     width: 108,
+    overflow: 'hidden',
+  },
+  editAvatarImage: {
+    height: '100%',
+    width: '100%',
+  },
+  photoUploadingOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: 'center',
+    backgroundColor: 'rgba(7, 29, 25, 0.34)',
+    justifyContent: 'center',
   },
   cameraBadge: {
     alignItems: 'center',

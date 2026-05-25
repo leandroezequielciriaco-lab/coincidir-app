@@ -2,10 +2,10 @@ import { useEffect, useMemo, useState } from 'react'
 import {
   ActivityIndicator,
   Alert,
-  ImageBackground,
   KeyboardAvoidingView,
   Platform,
   Pressable,
+  ScrollView,
   Text,
   TextInput,
   View,
@@ -20,13 +20,16 @@ import {
   signInWithEmailAndPassword,
 } from 'firebase/auth'
 import { doc, getDoc, serverTimestamp, setDoc } from 'firebase/firestore'
+import { FontAwesome5 } from '@expo/vector-icons'
+import { ArrowLeft, ArrowRight, Eye, EyeOff, LockKeyhole, Mail } from 'lucide-react-native'
+import { useSafeAreaInsets } from 'react-native-safe-area-context'
 
 import { getFirebaseServices } from '../firebaseConfig'
+import CoincidirLogo from '../components/CoincidirLogo'
 import { styles } from '../components/LoginScreen.styles'
 
 WebBrowser.maybeCompleteAuthSession()
 
-const loginImage = require('../assets/images/login-fullscreen.png')
 const MISSING_GOOGLE_CLIENT_ID = 'missing-google-client-id'
 const googleWebClientId = process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID
 const googleRedirectUri = makeRedirectUri({
@@ -129,9 +132,11 @@ async function saveGoogleProfile(user) {
 
 export default function LoginScreen() {
   const router = useRouter()
+  const insets = useSafeAreaInsets()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [isPasswordVisible, setIsPasswordVisible] = useState(false)
+  const [focusedField, setFocusedField] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [isGoogleSubmitting, setIsGoogleSubmitting] = useState(false)
   const [error, setError] = useState('')
@@ -316,120 +321,181 @@ export default function LoginScreen() {
 
   return (
     <View style={styles.screen}>
-      <ImageBackground source={loginImage} resizeMode="stretch" style={styles.image}>
-        <KeyboardAvoidingView
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-          style={styles.keyboardLayer}
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        style={styles.keyboardLayer}
+      >
+        <ScrollView
+          contentContainerStyle={[
+            styles.scrollContent,
+            {
+              paddingTop: Math.max(insets.top + 10, 22),
+              paddingBottom: Math.max(insets.bottom + 24, 34),
+            },
+          ]}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
         >
           <Pressable
             accessibilityLabel="Volver"
             accessibilityRole="button"
             onPress={() => router.back()}
             style={styles.backHitArea}
-          />
-
-          <View style={[styles.inputShell, styles.emailInputShell]}>
-            <TextInput
-              autoCapitalize="none"
-              autoComplete="email"
-              autoCorrect={false}
-              keyboardType="email-address"
-              onChangeText={(value) => {
-                setError('')
-                setEmail(value)
-              }}
-              placeholder=""
-              style={[
-                styles.input,
-                email.length > 0 && styles.filledInput,
-              ]}
-              textContentType="emailAddress"
-              underlineColorAndroid="transparent"
-              value={email}
-            />
-          </View>
-
-          <View style={[styles.inputShell, styles.passwordInputShell]}>
-            <TextInput
-              autoCapitalize="none"
-              autoComplete="password"
-              autoCorrect={false}
-              onChangeText={(value) => {
-                setError('')
-                setPassword(value)
-              }}
-              placeholder=""
-              secureTextEntry={!isPasswordVisible}
-              style={[
-                styles.input,
-                password.length > 0 && styles.filledInput,
-              ]}
-              textContentType="password"
-              underlineColorAndroid="transparent"
-              value={password}
-            />
-          </View>
-
-          <Pressable
-            accessibilityLabel={isPasswordVisible ? 'Ocultar contraseña' : 'Mostrar contraseña'}
-            accessibilityRole="button"
-            onPress={() => setIsPasswordVisible((value) => !value)}
-            style={styles.eyeHitArea}
-          />
-
-          <Pressable
-            accessibilityLabel="Recuperar contraseña"
-            accessibilityRole="button"
-            onPress={() => router.push('/forgot-password')}
-            style={styles.forgotPasswordHitArea}
-          />
-
-          {error ? <Text style={styles.errorText}>{error}</Text> : null}
-
-          <Pressable
-            accessibilityLabel="Ingresar"
-            accessibilityRole="button"
-            disabled={isSubmitting || isGoogleSubmitting}
-            onPress={handleLogin}
-            style={styles.submitHitArea}
           >
-            {isSubmitting ? <ActivityIndicator color="#FFFFFF" /> : null}
+            <ArrowLeft color="#0E5A44" size={33} strokeWidth={2.2} />
           </Pressable>
 
-          <Pressable
-            accessibilityLabel="Ingresar con Google"
-            accessibilityRole="button"
-            disabled={isSubmitting || isGoogleSubmitting}
-            onPress={handleGoogleLogin}
-            style={[styles.socialHitArea, styles.googleHitArea]}
-          >
-            {isGoogleSubmitting ? <ActivityIndicator color="#155C47" /> : null}
-          </Pressable>
+          <View style={styles.logoWrap}>
+            <CoincidirLogo markSize={86} textSize={30} cutoutColor="#FCFAF3" compact />
+          </View>
 
-          <Pressable
-            accessibilityLabel="Ingresar con Apple"
-            accessibilityRole="button"
-            disabled={isSubmitting || isGoogleSubmitting}
-            onPress={handleComingSoon}
-            style={[styles.socialHitArea, styles.appleHitArea]}
-          />
+          <View style={styles.titleBlock}>
+            <Text style={styles.title}>Ingresá a tu cuenta</Text>
+            <Text style={styles.subtitle}>Bienvenido de vuelta.</Text>
+          </View>
 
-          <Pressable
-            accessibilityLabel="Ingresar con Facebook"
-            accessibilityRole="button"
-            disabled={isSubmitting || isGoogleSubmitting}
-            onPress={handleComingSoon}
-            style={[styles.socialHitArea, styles.facebookHitArea]}
-          />
+          <View style={styles.formCard}>
+            <View style={[styles.inputShell, focusedField === 'email' && styles.inputFocused]}>
+              <Mail color="#60706B" size={22} strokeWidth={2.2} />
+              <TextInput
+                autoCapitalize="none"
+                autoComplete="email"
+                autoCorrect={false}
+                keyboardType="email-address"
+                onBlur={() => setFocusedField('')}
+                onChangeText={(value) => {
+                  setError('')
+                  setEmail(value)
+                }}
+                onFocus={() => setFocusedField('email')}
+                placeholder="Correo electrónico"
+                placeholderTextColor="#7A8790"
+                style={styles.input}
+                textContentType="emailAddress"
+                underlineColorAndroid="transparent"
+                value={email}
+              />
+            </View>
+
+            <View style={[styles.inputShell, focusedField === 'password' && styles.inputFocused]}>
+              <LockKeyhole color="#60706B" size={22} strokeWidth={2.2} />
+              <TextInput
+                autoCapitalize="none"
+                autoComplete="password"
+                autoCorrect={false}
+                onBlur={() => setFocusedField('')}
+                onChangeText={(value) => {
+                  setError('')
+                  setPassword(value)
+                }}
+                onFocus={() => setFocusedField('password')}
+                placeholder="Contraseña"
+                placeholderTextColor="#7A8790"
+                secureTextEntry={!isPasswordVisible}
+                style={styles.input}
+                textContentType="password"
+                underlineColorAndroid="transparent"
+                value={password}
+              />
+              <Pressable
+                accessibilityLabel={isPasswordVisible ? 'Ocultar contraseña' : 'Mostrar contraseña'}
+                accessibilityRole="button"
+                onPress={() => setIsPasswordVisible((value) => !value)}
+                style={styles.iconButton}
+              >
+                {isPasswordVisible ? (
+                  <EyeOff color="#60706B" size={22} strokeWidth={2.2} />
+                ) : (
+                  <Eye color="#60706B" size={22} strokeWidth={2.2} />
+                )}
+              </Pressable>
+            </View>
+
+            <Pressable
+              accessibilityLabel="Recuperar contraseña"
+              accessibilityRole="button"
+              onPress={() => router.push('/forgot-password')}
+              style={styles.forgotPassword}
+            >
+              <Text style={styles.forgotPasswordText}>¿Olvidaste tu contraseña?</Text>
+            </Pressable>
+
+            {error ? <Text style={styles.errorText}>{error}</Text> : null}
+
+            <Pressable
+              accessibilityLabel="Ingresar"
+              accessibilityRole="button"
+              disabled={isSubmitting || isGoogleSubmitting}
+              onPress={handleLogin}
+              style={[
+                styles.submitButton,
+                (isSubmitting || isGoogleSubmitting) && styles.submitButtonDisabled,
+              ]}
+            >
+              {isSubmitting ? (
+                <ActivityIndicator color="#FFFFFF" />
+              ) : (
+                <>
+                  <Text style={styles.submitText}>Ingresar</Text>
+                  <ArrowRight color="#FFFFFF" size={30} strokeWidth={2.2} style={styles.submitArrow} />
+                </>
+              )}
+            </Pressable>
+
+            <View style={styles.dividerRow}>
+              <View style={styles.divider} />
+              <Text style={styles.dividerText}>O continuá con</Text>
+              <View style={styles.divider} />
+            </View>
+
+            <View style={styles.socialRow}>
+              <Pressable
+                accessibilityLabel="Ingresar con Google"
+                accessibilityRole="button"
+                disabled={isSubmitting || isGoogleSubmitting}
+                onPress={handleGoogleLogin}
+                style={styles.socialButton}
+              >
+                {isGoogleSubmitting ? (
+                  <ActivityIndicator color="#155C47" />
+                ) : (
+                  <FontAwesome5 color="#4285F4" name="google" size={25} />
+                )}
+              </Pressable>
+
+              <Pressable
+                accessibilityLabel="Ingresar con Apple"
+                accessibilityRole="button"
+                disabled={isSubmitting || isGoogleSubmitting}
+                onPress={handleComingSoon}
+                style={styles.socialButton}
+              >
+                <FontAwesome5 color="#111111" name="apple" size={28} />
+              </Pressable>
+
+              <Pressable
+                accessibilityLabel="Ingresar con Facebook"
+                accessibilityRole="button"
+                disabled={isSubmitting || isGoogleSubmitting}
+                onPress={handleComingSoon}
+                style={styles.socialButton}
+              >
+                <FontAwesome5 color="#2E68B8" name="facebook-f" size={25} />
+              </Pressable>
+            </View>
+          </View>
 
           <Pressable
             accessibilityLabel="Crear cuenta"
             accessibilityRole="button"
             onPress={() => router.replace('/register')}
-            style={styles.createAccountHitArea}
-          />
-        </KeyboardAvoidingView>
-      </ImageBackground>
+            style={styles.createAccount}
+          >
+            <Text style={styles.createAccountText}>¿No tenés cuenta?</Text>
+            <Text style={styles.createAccountLink}>Crear cuenta</Text>
+          </Pressable>
+        </ScrollView>
+      </KeyboardAvoidingView>
     </View>
   )
 }

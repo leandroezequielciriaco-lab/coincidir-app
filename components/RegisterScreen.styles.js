@@ -97,10 +97,9 @@ export const styles = StyleSheet.create({
   },
   inputIcon: {
     width: 38,
-    color: '#576767',
-    fontSize: 26,
-    lineHeight: 30,
-    textAlign: 'center',
+    height: 38,
+    alignItems: 'center',
+    justifyContent: 'center',
     marginRight: 16,
   },
   input: {
@@ -118,11 +117,6 @@ export const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     marginLeft: 8,
-  },
-  passwordToggleText: {
-    color: '#576767',
-    fontSize: 24,
-    lineHeight: 28,
   },
   errorText: {
     color: '#9B2F2F',

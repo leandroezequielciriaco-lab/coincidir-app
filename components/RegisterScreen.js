@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import {
   ActivityIndicator,
+  Alert,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -10,14 +11,51 @@ import {
   View,
   useWindowDimensions,
 } from 'react-native'
+import { makeRedirectUri, ResponseType } from 'expo-auth-session'
+import * as Google from 'expo-auth-session/providers/google'
+import * as WebBrowser from 'expo-web-browser'
 import { useRouter } from 'expo-router'
-import { createUserWithEmailAndPassword, updateProfile } from 'firebase/auth'
-import { doc, serverTimestamp, setDoc } from 'firebase/firestore'
+import {
+  createUserWithEmailAndPassword,
+  GoogleAuthProvider,
+  signInWithCredential,
+  updateProfile,
+} from 'firebase/auth'
+import { doc, getDoc, serverTimestamp, setDoc } from 'firebase/firestore'
 import { SafeAreaView } from 'react-native-safe-area-context'
+import {
+  Calendar,
+  Eye,
+  EyeOff,
+  LockKeyhole,
+  Mail,
+  MapPin,
+  UserRound,
+} from 'lucide-react-native'
 
 import CoincidirLogo from './CoincidirLogo'
 import { styles } from './RegisterScreen.styles'
 import { getFirebaseServices } from '../firebaseConfig'
+
+WebBrowser.maybeCompleteAuthSession()
+
+const MISSING_GOOGLE_CLIENT_ID = 'missing-google-client-id'
+const googleWebClientId = process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID
+const googleRedirectUri = makeRedirectUri({
+  scheme: 'coincidirapp',
+  path: 'oauthredirect',
+})
+
+const googleClientConfig = {
+  clientId: googleWebClientId || MISSING_GOOGLE_CLIENT_ID,
+  webClientId: googleWebClientId,
+  iosClientId: process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID,
+  androidClientId: process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID,
+  redirectUri: googleRedirectUri,
+  responseType: ResponseType.IdToken,
+  selectAccount: true,
+  usePKCE: false,
+}
 
 const INITIAL_FORM = {
   fullName: '',
@@ -25,6 +63,10 @@ const INITIAL_FORM = {
   password: '',
   birthDate: '',
   city: '',
+}
+
+function getGoogleIdToken(response) {
+  return response?.params?.id_token || response?.authentication?.idToken || ''
 }
 
 function getFriendlyAuthError(error) {
@@ -51,6 +93,24 @@ function getFriendlyAuthError(error) {
   }
 
   return 'No pudimos crear tu cuenta. Intentá nuevamente en unos segundos.'
+}
+
+function getFriendlyGoogleLoginError(error) {
+  const code = error?.code
+
+  if (error?.message?.includes('Faltan variables')) {
+    return 'Falta configurar Firebase.'
+  }
+
+  if (code === 'auth/account-exists-with-different-credential') {
+    return 'Ya existe una cuenta con ese correo usando otro método de ingreso.'
+  }
+
+  if (code === 'auth/network-request-failed') {
+    return 'No pudimos conectar. Revisá tu conexión e intentá de nuevo.'
+  }
+
+  return 'No pudimos ingresar con Google. Intentá nuevamente en unos segundos.'
 }
 
 function validateForm(form) {
@@ -98,24 +158,64 @@ async function saveRegistrationProfile(user, form, fullName) {
   }
 }
 
+async function saveGoogleProfile(user) {
+  const { db } = getFirebaseServices()
+  const userRef = doc(db, 'users', user.uid)
+  const userSnap = await getDoc(userRef)
+  const profile = {
+    uid: user.uid,
+    fullName: user.displayName || '',
+    displayName: user.displayName || '',
+    email: user.email || '',
+    photoURL: user.photoURL || '',
+    provider: 'google',
+    updatedAt: serverTimestamp(),
+    lastLoginAt: serverTimestamp(),
+  }
+
+  if (!userSnap.exists()) {
+    await setDoc(userRef, {
+      ...profile,
+      createdAt: serverTimestamp(),
+    })
+    return
+  }
+
+  await setDoc(
+    userRef,
+    {
+      provider: 'google',
+      updatedAt: serverTimestamp(),
+      lastLoginAt: serverTimestamp(),
+    },
+    { merge: true },
+  )
+}
+
 function InputIcon({ type }) {
+  const iconProps = {
+    color: '#576767',
+    size: 24,
+    strokeWidth: 2.1,
+  }
+
   if (type === 'mail') {
-    return <Text style={styles.inputIcon}>✉</Text>
+    return <View style={styles.inputIcon}><Mail {...iconProps} /></View>
   }
 
   if (type === 'lock') {
-    return <Text style={styles.inputIcon}>▣</Text>
+    return <View style={styles.inputIcon}><LockKeyhole {...iconProps} /></View>
   }
 
   if (type === 'calendar') {
-    return <Text style={styles.inputIcon}>□</Text>
+    return <View style={styles.inputIcon}><Calendar {...iconProps} /></View>
   }
 
   if (type === 'pin') {
-    return <Text style={styles.inputIcon}>⌖</Text>
+    return <View style={styles.inputIcon}><MapPin {...iconProps} /></View>
   }
 
-  return <Text style={styles.inputIcon}>○</Text>
+  return <View style={styles.inputIcon}><UserRound {...iconProps} /></View>
 }
 
 function FormInput({
@@ -151,7 +251,11 @@ function FormInput({
           onPress={onTogglePassword}
           style={styles.passwordToggle}
         >
-          <Text style={styles.passwordToggleText}>{visiblePassword ? '◉' : '◎'}</Text>
+          {visiblePassword ? (
+            <EyeOff color="#576767" size={22} strokeWidth={2.1} />
+          ) : (
+            <Eye color="#576767" size={22} strokeWidth={2.1} />
+          )}
         </Pressable>
       ) : null}
     </View>
@@ -164,7 +268,12 @@ export default function RegisterScreen() {
   const [form, setForm] = useState(INITIAL_FORM)
   const [error, setError] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [isGoogleSubmitting, setIsGoogleSubmitting] = useState(false)
   const [isPasswordVisible, setIsPasswordVisible] = useState(false)
+
+  const [googleRequest, , promptGoogleAsync] = Google.useIdTokenAuthRequest(
+    googleClientConfig,
+  )
 
   const logoSizes = useMemo(
     () => ({
@@ -210,6 +319,71 @@ export default function RegisterScreen() {
     } finally {
       setIsSubmitting(false)
     }
+  }
+
+  const completeGoogleRegistration = async (googleResponse) => {
+    if (googleResponse.type === 'cancel' || googleResponse.type === 'dismiss') {
+      setIsGoogleSubmitting(false)
+      return
+    }
+
+    if (googleResponse.type !== 'success') {
+      setError('No pudimos completar el ingreso con Google. Revisá la consola para ver el error completo.')
+      setIsGoogleSubmitting(false)
+      return
+    }
+
+    const idToken = getGoogleIdToken(googleResponse)
+
+    if (!idToken) {
+      setError('Google no devolvió un token válido. Revisá la configuración del cliente OAuth.')
+      setIsGoogleSubmitting(false)
+      return
+    }
+
+    try {
+      const { auth } = getFirebaseServices()
+      const credential = GoogleAuthProvider.credential(idToken)
+      const { user } = await signInWithCredential(auth, credential)
+
+      await saveGoogleProfile(user)
+      router.replace('/home')
+    } catch (googleLoginError) {
+      setError(getFriendlyGoogleLoginError(googleLoginError))
+    } finally {
+      setIsGoogleSubmitting(false)
+    }
+  }
+
+  const handleGoogleRegistration = async () => {
+    if (isSubmitting || isGoogleSubmitting) {
+      return
+    }
+
+    if (!googleWebClientId) {
+      setError('Falta configurar el Web Client ID de Google.')
+      return
+    }
+
+    if (!googleRequest) {
+      setError('Google Sign-In todavía se está preparando. Intentá nuevamente en unos segundos.')
+      return
+    }
+
+    setError('')
+    setIsGoogleSubmitting(true)
+
+    try {
+      const result = await promptGoogleAsync()
+      await completeGoogleRegistration(result)
+    } catch (googlePromptError) {
+      setError(getFriendlyGoogleLoginError(googlePromptError))
+      setIsGoogleSubmitting(false)
+    }
+  }
+
+  const handleComingSoon = () => {
+    Alert.alert('Disponible próximamente')
   }
 
   return (
@@ -293,12 +467,12 @@ export default function RegisterScreen() {
 
               <Pressable
                 accessibilityRole="button"
-                disabled={isSubmitting}
+                disabled={isSubmitting || isGoogleSubmitting}
                 onPress={handleSubmit}
                 style={({ pressed }) => [
                   styles.primaryButton,
                   pressed && styles.primaryButtonPressed,
-                  isSubmitting && styles.primaryButtonDisabled,
+                  (isSubmitting || isGoogleSubmitting) && styles.primaryButtonDisabled,
                 ]}
               >
                 {isSubmitting ? (
@@ -319,13 +493,35 @@ export default function RegisterScreen() {
             </View>
 
             <View style={styles.socialRow}>
-              <Pressable style={styles.socialButton}>
-                <Text style={[styles.socialText, styles.googleText]}>G</Text>
+              <Pressable
+                accessibilityLabel="Continuar con Google"
+                accessibilityRole="button"
+                disabled={isSubmitting || isGoogleSubmitting}
+                onPress={handleGoogleRegistration}
+                style={styles.socialButton}
+              >
+                {isGoogleSubmitting ? (
+                  <ActivityIndicator color="#155C47" />
+                ) : (
+                  <Text style={[styles.socialText, styles.googleText]}>G</Text>
+                )}
               </Pressable>
-              <Pressable style={styles.socialButton}>
+              <Pressable
+                accessibilityLabel="Continuar con Apple"
+                accessibilityRole="button"
+                disabled={isSubmitting || isGoogleSubmitting}
+                onPress={handleComingSoon}
+                style={styles.socialButton}
+              >
                 <Text style={styles.appleText}>●</Text>
               </Pressable>
-              <Pressable style={styles.socialButton}>
+              <Pressable
+                accessibilityLabel="Continuar con Facebook"
+                accessibilityRole="button"
+                disabled={isSubmitting || isGoogleSubmitting}
+                onPress={handleComingSoon}
+                style={styles.socialButton}
+              >
                 <Text style={styles.facebookText}>f</Text>
               </Pressable>
             </View>

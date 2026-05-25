@@ -713,7 +713,7 @@ export default function HomeScreen() {
         showsVerticalScrollIndicator={false}
       >
         <View style={styles.header}>
-          <CoincidirLogo markSize={74} textSize={25} cutoutColor="#FAFAF8" compact />
+          <CoincidirLogo markSize={58} textSize={20} cutoutColor="#FAFAF8" compact />
           <View style={styles.greetingBlock}>
             <Text numberOfLines={1} adjustsFontSizeToFit style={styles.greeting}>
               {greeting}
@@ -880,7 +880,7 @@ export default function HomeScreen() {
             Cuanto más uses Coincidir,{'\n'}mejores coincidencias vas a encontrar.
           </Text>
           <PressScale onPress={() => setIsInviteVisible(true)} style={styles.inviteButton} scaleTo={0.96}>
-            <UsersRound color="#FFFFFF" size={20} strokeWidth={2.4} />
+            <UsersRound color="#00613F" size={20} strokeWidth={2.4} />
             <Text style={styles.inviteButtonText}>Invitar amigos</Text>
           </PressScale>
         </View>
@@ -1230,16 +1230,23 @@ const styles = StyleSheet.create({
   },
   inviteButton: {
     alignItems: 'center',
-    backgroundColor: '#006A32',
+    backgroundColor: '#FFFFFF',
+    borderColor: '#B7DC9D',
+    borderWidth: 1,
     borderRadius: 999,
     flexDirection: 'row',
     gap: 10,
     height: 50,
     justifyContent: 'center',
     paddingHorizontal: 20,
+    shadowColor: '#0E5A44',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.08,
+    shadowRadius: 16,
+    elevation: 2,
   },
   inviteButtonText: {
-    color: '#FFFFFF',
+    color: '#00613F',
     fontSize: 15,
     fontWeight: '900',
     letterSpacing: 0,

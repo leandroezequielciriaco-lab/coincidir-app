@@ -166,7 +166,7 @@ export function InviteFriendsSheet({ onClose, target, visible }: InviteFriendsSh
             Icon={Rocket}
             color="#F2A900"
             description="Invitá a tus amigos a descubrir COINCIDIR."
-            label="Compartir en otras apps"
+            label="Más opciones"
             onPress={() => Share.share({ message: getShareMessage({ type: 'app' }) })}
           />
 
@@ -196,8 +196,8 @@ function InviteOption({ Icon, color, description, label, onPress }: InviteOption
         <Icon color={color} size={23} strokeWidth={2.3} />
       </View>
       <View style={styles.optionCopy}>
-        <Text numberOfLines={1} style={styles.optionTitle}>{label}</Text>
-        <Text style={styles.optionDescription}>{description}</Text>
+          <Text numberOfLines={1} style={styles.optionTitle}>{label}</Text>
+          <Text numberOfLines={1} style={styles.optionDescription}>{description}</Text>
       </View>
       <View style={styles.optionArrow}>
         <ChevronRight color="#10231F" size={20} strokeWidth={2.3} />
@@ -226,6 +226,7 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-end',
   },
   sheet: {
+    alignSelf: 'stretch',
     backgroundColor: '#FFFFFF',
     borderTopLeftRadius: 26,
     borderTopRightRadius: 26,
@@ -271,6 +272,7 @@ const styles = StyleSheet.create({
   },
   option: {
     alignItems: 'center',
+    alignSelf: 'stretch',
     backgroundColor: '#FFFFFF',
     borderColor: '#E8E5EE',
     borderRadius: 16,
@@ -280,6 +282,7 @@ const styles = StyleSheet.create({
     minHeight: 72,
     paddingHorizontal: 12,
     paddingVertical: 10,
+    width: '100%',
   },
   optionIcon: {
     alignItems: 'center',
@@ -296,18 +299,22 @@ const styles = StyleSheet.create({
   },
   optionTitle: {
     color: '#10231F',
+    flexShrink: 1,
     fontSize: 16,
     fontWeight: '900',
     letterSpacing: 0,
     lineHeight: 21,
+    textAlign: 'left',
   },
   optionDescription: {
     color: '#586A64',
+    flexShrink: 1,
     fontSize: 12,
     fontWeight: '600',
     letterSpacing: 0,
     lineHeight: 17,
     marginTop: 2,
+    textAlign: 'left',
   },
   optionArrow: {
     alignItems: 'center',

@@ -1,6 +1,7 @@
 import { getApp, getApps, initializeApp } from 'firebase/app'
 import { Auth, getAuth } from 'firebase/auth'
 import { Firestore, getFirestore } from 'firebase/firestore'
+import { FirebaseStorage, getStorage } from 'firebase/storage'
 
 const firebaseConfig = {
   apiKey: process.env.EXPO_PUBLIC_FIREBASE_API_KEY,
@@ -23,7 +24,7 @@ export function assertFirebaseConfig() {
   }
 }
 
-export function getFirebaseServices(): { auth: Auth; db: Firestore } {
+export function getFirebaseServices(): { auth: Auth; db: Firestore; storage: FirebaseStorage } {
   assertFirebaseConfig()
 
   const app = getApps().length ? getApp() : initializeApp(firebaseConfig)
@@ -31,5 +32,6 @@ export function getFirebaseServices(): { auth: Auth; db: Firestore } {
   return {
     auth: getAuth(app),
     db: getFirestore(app),
+    storage: getStorage(app),
   }
 }
