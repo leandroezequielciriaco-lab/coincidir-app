@@ -913,6 +913,10 @@ export default function HomeScreen() {
               renderItem={({ item }) => (
                 <ActivityCard
                   item={item}
+                  onImagePress={() => router.push({
+                    pathname: '/activity/[activityId]',
+                    params: { activityId: item.recordId },
+                  })}
                   onPress={() => {
                     const record = activityRecordsById.get(item.recordId)
                     if (record) toggleJoin(record, 'activities')

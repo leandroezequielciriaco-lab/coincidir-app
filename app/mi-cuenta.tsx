@@ -163,7 +163,7 @@ export default function MiCuentaScreen() {
       const user = auth.currentUser
 
       if (!user) {
-        Alert.alert('No pudimos guardar', 'IniciÃ¡ sesiÃ³n nuevamente para editar tu cuenta.')
+        Alert.alert('No pudimos guardar', 'Iniciá sesión nuevamente para editar tu cuenta.')
         return
       }
 
@@ -181,7 +181,7 @@ export default function MiCuentaScreen() {
       setDraftAccount(nextAccount)
       setIsEditing(false)
     } catch {
-      Alert.alert('No pudimos guardar los cambios', 'IntentÃ¡ nuevamente en unos segundos.')
+      Alert.alert('No pudimos guardar los cambios', 'Intentá nuevamente en unos segundos.')
     } finally {
       setIsSavingProfile(false)
     }
@@ -354,7 +354,7 @@ function EditAccountModal({
         <ScrollView contentContainerStyle={styles.editContent} showsVerticalScrollIndicator={false}>
           <View style={styles.header}>
             <PressScale
-              accessibilityLabel="Cancelar ediciÃ³n"
+              accessibilityLabel="Cancelar edición"
               accessibilityRole="button"
               onPress={onCancel}
               scaleTo={0.94}
@@ -542,11 +542,13 @@ function ActionRow({ Icon, label, onPress }: { Icon: LucideIcon; label: string; 
       onPress={onPress}
       style={({ pressed }) => [styles.actionRow, pressed && styles.rowPressed]}
     >
-      <View style={styles.rowIcon}>
-        <Icon color="#063C31" size={20} strokeWidth={2.2} />
+      <View style={styles.actionContent}>
+        <View style={styles.rowIcon}>
+          <Icon color="#063C31" size={20} strokeWidth={2.2} />
+        </View>
+        <Text numberOfLines={1} style={styles.actionLabel}>{label}</Text>
+        <ChevronRight color="#8A9691" size={20} strokeWidth={2.2} />
       </View>
-      <Text numberOfLines={1} style={styles.actionLabel}>{label}</Text>
-      <ChevronRight color="#40534D" size={20} strokeWidth={2.2} />
     </Pressable>
   )
 }
@@ -699,13 +701,17 @@ const styles = StyleSheet.create({
     ...shadow,
   },
   actionRow: {
-    alignItems: 'center',
     borderBottomColor: '#EFEEE9',
     borderBottomWidth: 1,
+    minHeight: 68,
+  },
+  actionContent: {
+    alignItems: 'center',
     flexDirection: 'row',
     gap: 12,
     minHeight: 68,
     paddingHorizontal: 14,
+    width: '100%',
   },
   rowPressed: {
     opacity: 0.82,

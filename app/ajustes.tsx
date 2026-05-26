@@ -6,7 +6,6 @@ import { signOut } from 'firebase/auth'
 import {
   Bell,
   ChevronLeft,
-  ChevronRight,
   CircleHelp,
   LockKeyhole,
   LogOut,
@@ -124,15 +123,14 @@ function SettingsRow({
         pressed && styles.rowPressed,
       ]}
     >
-      <View style={[styles.rowIcon, destructive && styles.rowIconDestructive]}>
-        <Icon color={color} size={20} strokeWidth={2.2} />
-      </View>
-      <View style={styles.rowCopy}>
-        <Text numberOfLines={1} style={[styles.rowLabel, destructive && styles.rowLabelDestructive]}>{label}</Text>
-        <Text numberOfLines={1} style={[styles.rowSubtitle, destructive && styles.rowSubtitleDestructive]}>{subtitle}</Text>
-      </View>
-      <View style={styles.rowChevron}>
-        <ChevronRight color={destructive ? '#B42318' : '#8A9691'} size={19} strokeWidth={2.2} />
+      <View style={styles.rowContent}>
+        <View style={[styles.rowIcon, destructive && styles.rowIconDestructive]}>
+          <Icon color={color} size={20} strokeWidth={2.2} />
+        </View>
+        <View style={styles.rowCopy}>
+          <Text numberOfLines={1} style={[styles.rowLabel, destructive && styles.rowLabelDestructive]}>{label}</Text>
+          <Text numberOfLines={1} style={[styles.rowSubtitle, destructive && styles.rowSubtitleDestructive]}>{subtitle}</Text>
+        </View>
       </View>
     </Pressable>
   )
@@ -253,10 +251,14 @@ const styles = StyleSheet.create({
     ...shadow,
   },
   row: {
-    alignItems: 'center',
     alignSelf: 'stretch',
     borderBottomColor: '#EFEEE9',
     borderBottomWidth: 1,
+    minHeight: 66,
+    width: '100%',
+  },
+  rowContent: {
+    alignItems: 'center',
     flexDirection: 'row',
     minHeight: 66,
     paddingHorizontal: 14,
@@ -285,13 +287,6 @@ const styles = StyleSheet.create({
   },
   rowIconDestructive: {
     backgroundColor: '#FFF2F0',
-  },
-  rowChevron: {
-    alignItems: 'center',
-    height: 36,
-    justifyContent: 'center',
-    marginLeft: 10,
-    width: 22,
   },
   rowLabel: {
     color: '#071D19',

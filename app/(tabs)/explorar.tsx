@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   ActivityIndicator,
   FlatList,
@@ -263,6 +263,8 @@ function mapExploreCard(item: RecordItem): ExploreCardItem {
 
 export default function ExplorarScreen() {
   const router = useRouter()
+  const scrollRef = useRef<ScrollView>(null)
+  const featuredSectionY = useRef(0)
   const [records, setRecords] = useState<RecordItem[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [query, setQuery] = useState('')
@@ -338,9 +340,16 @@ export default function ExplorarScreen() {
     setQuery('')
   }
 
+  const scrollToFeatured = () => {
+    scrollRef.current?.scrollTo({
+      animated: true,
+      y: Math.max(featuredSectionY.current - 12, 0),
+    })
+  }
+
   return (
     <SafeAreaView edges={['top']} style={styles.safeArea}>
-      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+      <ScrollView ref={scrollRef} contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
         <View style={styles.headerRow}>
           <View style={styles.headerCopy}>
             <Text style={styles.title}>Explorar</Text>
@@ -382,9 +391,14 @@ export default function ExplorarScreen() {
           showsHorizontalScrollIndicator={false}
         />
 
-        <ExploreBanner />
+        <ExploreBanner onPress={scrollToFeatured} />
 
-        <View style={styles.sectionHeader}>
+        <View
+          onLayout={(event) => {
+            featuredSectionY.current = event.nativeEvent.layout.y
+          }}
+          style={styles.sectionHeader}
+        >
           <View style={styles.sectionTitleRow}>
             <Sprout color="#006A32" size={24} strokeWidth={2.4} />
             <Text style={styles.sectionTitle}>Destacados para vos</Text>
@@ -449,16 +463,16 @@ function EmptyResults({ onReset }: { onReset: () => void }) {
   )
 }
 
-function ExploreBanner() {
+function ExploreBanner({ onPress }: { onPress: () => void }) {
   return (
     <View style={styles.banner}>
       <View style={styles.bannerCopy}>
         <Text style={styles.bannerTitle}>Conectá con lo que te hace bien</Text>
         <Text style={styles.bannerText}>Actividades al aire libre, gratuitas y para todos.</Text>
-        <View style={styles.bannerButton}>
-          <Text style={styles.bannerButtonText}>Explorar ahora</Text>
+        <PressScale accessibilityLabel="Ver actividades" accessibilityRole="button" onPress={onPress} scaleTo={0.96} style={styles.bannerButton}>
+          <Text style={styles.bannerButtonText}>Ver actividades</Text>
           <ArrowRight color="#FFFFFF" size={18} strokeWidth={2.5} />
-        </View>
+        </PressScale>
       </View>
       <View style={styles.bannerArt}>
         <View style={styles.sun} />

@@ -6,6 +6,7 @@ import type { ActivityCardItem, PrivateCardItem, SuggestionCardItem } from './ty
 
 type ActivityCardProps = {
   item: ActivityCardItem
+  onImagePress?: () => void
   onPress?: () => void
 }
 
@@ -19,7 +20,7 @@ type SuggestionCardProps = {
   onPress?: () => void
 }
 
-export function ActivityCard({ item, onPress }: ActivityCardProps) {
+export function ActivityCard({ item, onImagePress, onPress }: ActivityCardProps) {
   return (
     <PressScale
       accessibilityLabel={item.cta}
@@ -28,9 +29,16 @@ export function ActivityCard({ item, onPress }: ActivityCardProps) {
       style={styles.activityCard}
       pressedStyle={styles.pressed}
     >
-      <View style={styles.activityImageWrap}>
+      <PressScale
+        accessibilityLabel={`Ver detalle de ${item.title}`}
+        accessibilityRole="button"
+        onPress={onImagePress}
+        pressedStyle={styles.pressed}
+        scaleTo={0.99}
+        style={styles.activityImageWrap}
+      >
         <Image source={item.image} style={styles.activityImage} />
-      </View>
+      </PressScale>
       <View style={styles.activityBody}>
         <View style={styles.activityTopLine}>
           <View style={styles.categoryPill}>

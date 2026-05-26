@@ -86,7 +86,7 @@ function getInterestIcon(label: string): LucideIcon {
   if (value.includes('caminata')) return Mountain
   if (value.includes('aire')) return Trees
   if (value.includes('mate')) return Coffee
-  if (value.includes('fÃºtbol') || value.includes('fÃƒÂºtbol')) return Circle
+  if (value.includes('fútbol')) return Circle
   if (value.includes('escalada')) return Mountain
   if (value.includes('nataci')) return Waves
 
@@ -327,29 +327,31 @@ export default function PerfilScreen() {
               </View>
             ) : (
               <View style={styles.interestsEmptyContent}>
-                <Heart color="#B7C8BF" size={25} strokeWidth={2.1} />
-                <Text style={styles.emptyText}>Agregá tus gustos para mejorar tus coincidencias.</Text>
+                <View style={styles.emptyIcon}>
+                  <Heart color="#8FA59A" size={18} strokeWidth={2.1} />
+                </View>
+                <Text style={styles.emptyText}>Agregá tus intereses para mejorar tus coincidencias.</Text>
               </View>
             )}
           </PressScale>
         </ProfileSection>
 
         <ProfileListSection
-          emptyText="Cuando crees actividades, van a aparecer acÃ¡."
+          emptyText="Cuando crees actividades, van a aparecer acá."
           items={createdActivities}
           onPress={(item) => router.push({ pathname: '/activity/[activityId]', params: { activityId: item.id } })}
           title="Actividades creadas"
         />
 
         <ProfileListSection
-          emptyText="Cuando te sumes a una actividad, la vas a ver acÃ¡."
+          emptyText="Cuando te sumes a una actividad, la vas a ver acá."
           items={joinedActivities}
           onPress={(item) => router.push({ pathname: '/activity/[activityId]', params: { activityId: item.id } })}
-          title="Me sumÃ© a"
+          title="Me sumé a"
         />
 
         <ProfileListSection
-          emptyText="Tus grupos creados o donde participes van a aparecer acÃ¡."
+          emptyText="Tus grupos creados o donde participes van a aparecer acá."
           items={myGroups}
           onPress={(item) => router.push({ pathname: '/group/[groupId]', params: { groupId: item.id } })}
           title="Mis grupos"
@@ -402,7 +404,9 @@ function InterestChip({ label, selected = false, onPress }: { label: string; sel
 function EmptyBlock({ text }: { text: string }) {
   return (
     <View style={styles.emptyBlock}>
-      <Heart color="#B7C8BF" size={25} strokeWidth={2.1} />
+      <View style={styles.emptyIcon}>
+        <Heart color="#8FA59A" size={18} strokeWidth={2.1} />
+      </View>
       <Text style={styles.emptyText}>{text}</Text>
     </View>
   )
@@ -433,24 +437,37 @@ function ProfileListSection({ emptyText, items, onPress, title, variant = 'activ
 }
 
 function ProfileRow({ item, onPress, variant }: { item: FirestoreRecord; onPress: () => void; variant: 'activity' | 'group' }) {
-  const title = readString(item.data.name, readString(item.data.title, variant === 'group' ? 'Grupo sin tÃ­tulo' : 'Actividad sin tÃ­tulo'))
-  const location = readString(item.data.location, variant === 'group' ? 'Grupo de amigos' : 'UbicaciÃ³n a definir')
-  const date = readString(item.data.date, readString(item.data.schedule))
+  const title = readString(item.data.name, readString(item.data.title, variant === 'group' ? 'Grupo sin título' : 'Actividad sin título'))
+  const location = readString(item.data.location, variant === 'group' ? 'Grupo de amigos' : 'Ubicación a definir')
+  const date = readString(item.data.date, readString(item.data.schedule, variant === 'group' ? 'Próximo encuentro' : 'Fecha a definir'))
   const participants = getParticipantCount(item.data)
+  const iconColor = variant === 'group' ? '#4B348A' : '#006A32'
 
   return (
     <PressScale onPress={onPress} scaleTo={0.98} style={styles.profileRow}>
       <View style={[styles.rowThumb, variant === 'group' && styles.rowThumbGroup]}>
-        {variant === 'group' ? <UsersRound color="#4B348A" size={25} strokeWidth={2.2} /> : <CalendarDays color="#006A32" size={24} strokeWidth={2.2} />}
+        {variant === 'group' ? <UsersRound color={iconColor} size={21} strokeWidth={2.2} /> : <CalendarDays color={iconColor} size={20} strokeWidth={2.2} />}
       </View>
       <View style={styles.rowCopy}>
-        <Text numberOfLines={1} style={styles.rowTitle}>{title}</Text>
-        <Text numberOfLines={1} style={styles.rowMeta}>{location}</Text>
-        <Text numberOfLines={1} style={styles.rowHint}>
-          {variant === 'group' ? `${participants} miembros` : `${date}${participants ? ` Â· ${participants} participantes` : ''}`}
-        </Text>
+        <Text ellipsizeMode="tail" numberOfLines={1} style={styles.rowTitle}>{title}</Text>
+        <View style={styles.rowLocation}>
+          <MapPin color="#73827C" size={13} strokeWidth={2.1} />
+          <Text ellipsizeMode="tail" numberOfLines={1} style={styles.rowMeta}>{location}</Text>
+        </View>
+        <View style={styles.rowBadgeLine}>
+          <View style={styles.rowBadge}>
+            <CalendarDays color="#17803C" size={12} strokeWidth={2.2} />
+            <Text ellipsizeMode="tail" numberOfLines={1} style={styles.rowBadgeText}>{date}</Text>
+          </View>
+          <View style={styles.rowBadge}>
+            <UsersRound color="#17803C" size={12} strokeWidth={2.2} />
+            <Text ellipsizeMode="tail" numberOfLines={1} style={styles.rowBadgeText}>
+              {variant === 'group' ? `${participants} miembros` : `${participants} participantes`}
+            </Text>
+          </View>
+        </View>
       </View>
-      <ChevronRight color="#40534D" size={20} strokeWidth={2.2} />
+      <ChevronRight color="#9AA6A1" size={19} strokeWidth={2.2} />
     </PressScale>
   )
 }
@@ -564,7 +581,7 @@ function EditProfileModal({ onClose, profile, userId, visible }: EditProfileModa
         updatedAt: serverTimestamp(),
       }, { merge: true })
     } catch {
-      Alert.alert('No pudimos actualizar la foto', 'ProbÃ¡ de nuevo en unos segundos.')
+      Alert.alert('No pudimos actualizar la foto', 'Probá de nuevo en unos segundos.')
       setDraft((current) => ({ ...current, photoURL: profile.photoURL }))
     } finally {
       setIsUploadingPhoto(false)
@@ -595,7 +612,7 @@ function EditProfileModal({ onClose, profile, userId, visible }: EditProfileModa
     const permission = await ImagePicker.requestCameraPermissionsAsync()
 
     if (!permission.granted) {
-      Alert.alert('Permiso necesario', 'Necesitamos acceso a la cÃ¡mara para tomar tu foto de perfil.')
+      Alert.alert('Permiso necesario', 'Necesitamos acceso a la cámara para tomar tu foto de perfil.')
       return
     }
 
@@ -612,9 +629,9 @@ function EditProfileModal({ onClose, profile, userId, visible }: EditProfileModa
   }
 
   const openPhotoOptions = () => {
-    Alert.alert('Foto de perfil', 'ElegÃ­ cÃ³mo querÃ©s actualizar tu foto.', [
-      { text: 'Tomar foto con cÃ¡mara', onPress: takeProfilePhoto },
-      { text: 'Elegir foto desde galerÃ­a', onPress: choosePhotoFromLibrary },
+    Alert.alert('Foto de perfil', 'Elegí cómo querés actualizar tu foto.', [
+      { text: 'Tomar foto con cámara', onPress: takeProfilePhoto },
+      { text: 'Elegir foto desde galería', onPress: choosePhotoFromLibrary },
       { text: 'Cancelar', style: 'cancel' },
     ])
   }
@@ -671,7 +688,7 @@ function EditProfileModal({ onClose, profile, userId, visible }: EditProfileModa
 
           <Field label="Foto" value={draft.photoURL} onChangeText={(photoURL) => setDraft((current) => ({ ...current, photoURL }))} placeholder="URL de foto (opcional)" />
           <Field label="Nombre" value={draft.fullName} onChangeText={(fullName) => setDraft((current) => ({ ...current, fullName }))} />
-          <Field label="UbicaciÃ³n" value={draft.location} onChangeText={(location) => setDraft((current) => ({ ...current, location }))} />
+          <Field label="Ubicación" value={draft.location} onChangeText={(location) => setDraft((current) => ({ ...current, location }))} />
           <Field label="Bio" multiline value={draft.bio} onChangeText={(bio) => setDraft((current) => ({ ...current, bio }))} />
 
           <Text style={styles.editSectionTitle}>Intereses</Text>
@@ -733,13 +750,26 @@ const shadow = Platform.select({
   },
 })
 
+const cardShadow = Platform.select({
+  web: {
+    boxShadow: '0 8px 18px rgba(7, 57, 45, 0.06)',
+  },
+  default: {
+    elevation: 1,
+    shadowColor: '#07392D',
+    shadowOffset: { width: 0, height: 5 },
+    shadowOpacity: 0.05,
+    shadowRadius: 10,
+  },
+})
+
 const styles = StyleSheet.create({
   safeArea: {
     backgroundColor: '#FAFAF8',
     flex: 1,
   },
   scrollContent: {
-    paddingBottom: 118,
+    paddingBottom: 154,
     paddingHorizontal: 20,
     paddingTop: 16,
   },
@@ -870,14 +900,15 @@ const styles = StyleSheet.create({
     fontWeight: '900',
   },
   section: {
-    marginTop: 22,
+    marginTop: 26,
   },
   sectionTitle: {
     color: '#39206C',
-    fontSize: 19,
+    fontSize: 18,
     fontWeight: '900',
     letterSpacing: 0,
-    marginBottom: 12,
+    lineHeight: 23,
+    marginBottom: 10,
   },
   chipWrap: {
     flexDirection: 'row',
@@ -888,16 +919,16 @@ const styles = StyleSheet.create({
     alignSelf: 'stretch',
     backgroundColor: '#FFFFFF',
     borderColor: '#E7E7E1',
-    borderRadius: 16,
+    borderRadius: 14,
     borderWidth: 1,
-    minHeight: 92,
-    padding: 16,
+    minHeight: 72,
+    padding: 14,
   },
   interestsEmptyContent: {
     alignItems: 'center',
-    gap: 8,
+    gap: 7,
     justifyContent: 'center',
-    minHeight: 60,
+    minHeight: 44,
   },
   chip: {
     alignItems: 'center',
@@ -925,20 +956,31 @@ const styles = StyleSheet.create({
   },
   emptyBlock: {
     alignItems: 'center',
-    backgroundColor: '#FFFFFF',
-    borderColor: '#E7E7E1',
-    borderRadius: 16,
+    backgroundColor: '#F7FAF5',
+    borderColor: '#E3ECE4',
+    borderRadius: 14,
     borderWidth: 1,
-    gap: 8,
-    minHeight: 92,
+    gap: 7,
+    minHeight: 76,
     justifyContent: 'center',
-    padding: 16,
+    paddingHorizontal: 18,
+    paddingVertical: 14,
+  },
+  emptyIcon: {
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    borderColor: '#DCE8E1',
+    borderRadius: 999,
+    borderWidth: 1,
+    height: 34,
+    justifyContent: 'center',
+    width: 34,
   },
   emptyText: {
     color: '#596A65',
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '700',
-    lineHeight: 20,
+    lineHeight: 18,
     textAlign: 'center',
   },
   interestsModalCard: {
@@ -995,28 +1037,28 @@ const styles = StyleSheet.create({
     letterSpacing: 0,
   },
   list: {
-    backgroundColor: '#FFFFFF',
-    borderColor: '#E7E7E1',
-    borderRadius: 16,
-    borderWidth: 1,
-    overflow: 'hidden',
+    gap: 10,
   },
   profileRow: {
     alignItems: 'center',
-    borderBottomColor: '#EFEEE9',
-    borderBottomWidth: 1,
+    backgroundColor: '#FFFFFF',
+    borderColor: '#E7E7E1',
+    borderRadius: 14,
+    borderWidth: 1,
     flexDirection: 'row',
     gap: 12,
-    minHeight: 82,
+    minHeight: 78,
     paddingHorizontal: 12,
+    paddingVertical: 11,
+    ...cardShadow,
   },
   rowThumb: {
     alignItems: 'center',
     backgroundColor: '#EFF6E9',
-    borderRadius: 14,
-    height: 58,
+    borderRadius: 999,
+    height: 46,
     justifyContent: 'center',
-    width: 58,
+    width: 46,
   },
   rowThumbGroup: {
     backgroundColor: '#F4EEF9',
@@ -1031,17 +1073,39 @@ const styles = StyleSheet.create({
     fontWeight: '900',
     letterSpacing: 0,
   },
-  rowMeta: {
-    color: '#40534D',
-    fontSize: 13,
-    fontWeight: '700',
+  rowLocation: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 5,
     marginTop: 4,
   },
-  rowHint: {
-    color: '#17803C',
+  rowMeta: {
+    color: '#5F6E68',
+    flex: 1,
     fontSize: 12,
+    fontWeight: '700',
+  },
+  rowBadgeLine: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 7,
+    marginTop: 8,
+  },
+  rowBadge: {
+    alignItems: 'center',
+    backgroundColor: '#F0F5E9',
+    borderRadius: 999,
+    flexDirection: 'row',
+    gap: 4,
+    maxWidth: '100%',
+    minHeight: 24,
+    paddingHorizontal: 8,
+  },
+  rowBadgeText: {
+    color: '#17803C',
+    flexShrink: 1,
+    fontSize: 11,
     fontWeight: '800',
-    marginTop: 5,
   },
   editContent: {
     paddingBottom: 36,

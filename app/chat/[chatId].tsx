@@ -25,7 +25,7 @@ import {
   serverTimestamp,
   setDoc,
 } from 'firebase/firestore'
-import { ArrowLeft, Info, Send, UsersRound } from 'lucide-react-native'
+import { ArrowLeft, Send, UsersRound } from 'lucide-react-native'
 
 import { PressScale } from '../../components/home/PressScale'
 import { getFirebaseServices } from '../../firebaseConfig'
@@ -267,9 +267,6 @@ export default function ChatScreen() {
             <Text numberOfLines={1} style={styles.chatTitle}>{detail.title}</Text>
             <Text style={styles.chatSubtitle}>{detail.participantCount} {chatSource === 'group' ? 'miembros' : 'participantes'}</Text>
           </View>
-          <View style={styles.iconButton}>
-            <Info color="#8C4BD6" size={24} strokeWidth={2.2} />
-          </View>
         </View>
 
         <FlatList
@@ -300,9 +297,9 @@ export default function ChatScreen() {
             style={[styles.sendButton, !canSend && styles.sendButtonDisabled]}
           >
             {isSending ? (
-              <ActivityIndicator color="#8C4BD6" size="small" />
+              <ActivityIndicator color="#FFFFFF" size="small" />
             ) : (
-              <Send color={canSend ? '#8C4BD6' : '#CFC7D8'} size={24} strokeWidth={2.6} />
+              <Send color="#FFFFFF" size={22} strokeWidth={2.8} />
             )}
           </PressScale>
         </View>
@@ -499,8 +496,8 @@ const styles = StyleSheet.create({
   },
   sendButton: {
     alignItems: 'center',
-    backgroundColor: '#F0E3FF',
-    borderColor: '#DEC8FA',
+    backgroundColor: '#8C4BD6',
+    borderColor: '#8C4BD6',
     borderRadius: 999,
     borderWidth: 1,
     height: 46,
@@ -509,8 +506,8 @@ const styles = StyleSheet.create({
     width: 46,
   },
   sendButtonDisabled: {
-    backgroundColor: '#F3F1F4',
-    borderColor: '#EEEAEF',
+    backgroundColor: '#C9A9EF',
+    borderColor: '#C9A9EF',
   },
   centerState: {
     alignItems: 'center',
