@@ -22,12 +22,13 @@ type SuggestionCardProps = {
 
 export function ActivityCard({ item, onCtaPress, onPress }: ActivityCardProps) {
   return (
-    <Pressable
-      accessibilityLabel={`Ver detalle de ${item.title}`}
-      accessibilityRole="button"
-      onPress={onPress}
-      style={({ pressed }) => [styles.activityCard, pressed && styles.pressed]}
-    >
+    <View style={styles.activityCard}>
+      <Pressable
+        accessibilityLabel={`Ver detalle de ${item.title}`}
+        accessibilityRole="button"
+        onPress={onPress}
+        style={({ pressed }) => [StyleSheet.absoluteFill, pressed && styles.pressed, styles.cardHitArea]}
+      />
       <View style={styles.activityImageWrap}>
         <Image source={item.image} style={styles.activityImage} />
         <View style={styles.imageOverlay} />
@@ -68,7 +69,7 @@ export function ActivityCard({ item, onCtaPress, onPress }: ActivityCardProps) {
           <Text style={styles.greenCtaText}>{item.cta}</Text>
         </Pressable>
       </View>
-    </Pressable>
+    </View>
   )
 }
 
@@ -175,13 +176,18 @@ const styles = StyleSheet.create({
     width: '100%',
     ...cardShadow,
   },
+  cardHitArea: {
+    zIndex: 1,
+  },
   activityImageWrap: {
     backgroundColor: '#EFF6E9',
+    bottom: 0,
     height: '100%',
+    left: 0,
     position: 'relative',
-    flexBasis: 136,
-    flexShrink: 0,
+    top: 0,
     width: 136,
+    zIndex: 2,
   },
   activityImage: {
     height: '100%',
@@ -213,6 +219,7 @@ const styles = StyleSheet.create({
     minWidth: 0,
     paddingHorizontal: 14,
     paddingVertical: 12,
+    zIndex: 2,
   },
   activityTopLine: {
     alignItems: 'center',
@@ -278,6 +285,7 @@ const styles = StyleSheet.create({
     minHeight: 34,
     justifyContent: 'center',
     marginTop: 9,
+    zIndex: 3,
   },
   greenCtaText: {
     color: '#00552E',

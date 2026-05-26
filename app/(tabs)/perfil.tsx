@@ -27,11 +27,18 @@ import {
   Circle,
   CircleDot,
   Coffee,
+  Car,
+  ChefHat,
+  DollarSign,
+  Dumbbell,
   Film,
   Footprints,
   Gamepad2,
+  Globe2,
+  HandHeart,
   Heart,
   Laptop,
+  Mic,
   Music,
   MapPin,
   Mountain,
@@ -40,12 +47,17 @@ import {
   Pencil,
   Plane,
   BookOpen,
+  Bike,
+  Rocket,
+  Scissors,
   Star,
   Trees,
   Trophy,
+  Tv,
   UserRound,
   UsersRound,
   Waves,
+  Wine,
 } from 'lucide-react-native'
 import type { LucideIcon } from 'lucide-react-native'
 
@@ -84,16 +96,48 @@ const editableInterests = [
   'Mascotas',
   'Tecnología',
   'Arte',
+  'Fotografía',
+  'Idiomas',
+  'Meditación',
+  'Gym',
+  'Ciclismo',
+  'Natación',
+  'Paddle / SUP',
+  'Surf',
+  'Trekking',
+  'Cocina',
+  'Streaming / Series',
+  'Gaming',
+  'Voluntariado',
+  'Emprendimientos',
+  'Baile',
+  'Vino',
+  'Finanzas',
+  'Autos',
+  'Podcasts',
+  'Eventos',
+  'Manualidades',
 ]
 
+function normalize(value: unknown) {
+  return readString(value)
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+}
+
 function getInterestIcon(label: string): LucideIcon {
-  const value = label.toLowerCase()
+  const value = normalize(label)
 
   if (value.includes('deporte')) return Trophy
   if (value.includes('yoga')) return Heart
   if (value.includes('running')) return Footprints
+  if (value.includes('gym') || value.includes('gimnasio')) return Dumbbell
+  if (value.includes('ciclismo')) return Bike
   if (value.includes('paddle') || value.includes('tenis')) return Trophy
+  if (value.includes('sup') || value.includes('surf')) return Waves
   if (value.includes('caminata')) return Mountain
+  if (value.includes('trekking')) return Mountain
   if (value.includes('aire')) return Trees
   if (value.includes('mate')) return Coffee
   if (value.includes('café')) return Coffee
@@ -106,6 +150,22 @@ function getInterestIcon(label: string): LucideIcon {
   if (value.includes('mascotas')) return PawPrint
   if (value.includes('tecnología')) return Laptop
   if (value.includes('arte')) return Palette
+  if (value.includes('fotografia')) return Camera
+  if (value.includes('idiomas')) return Globe2
+  if (value.includes('meditacion')) return Heart
+  if (value.includes('cocina')) return ChefHat
+  if (value.includes('streaming') || value.includes('series')) return Tv
+  if (value.includes('gaming')) return Gamepad2
+  if (value.includes('voluntariado')) return HandHeart
+  if (value.includes('emprendimientos')) return Rocket
+  if (value.includes('baile')) return Footprints
+  if (value.includes('vino')) return Wine
+  if (value.includes('finanzas')) return DollarSign
+  if (value.includes('autos')) return Car
+  if (value.includes('podcasts')) return Mic
+  if (value.includes('eventos')) return CalendarDays
+  if (value.includes('manualidades')) return Scissors
+  if (value.includes('futbol')) return Circle
   if (value.includes('fútbol')) return Circle
   if (value.includes('escalada')) return Mountain
   if (value.includes('nataci')) return Waves
@@ -516,8 +576,8 @@ type InterestsModalProps = {
 
 function InterestsModal({ interests, onChange, onClose, onSave, visible }: InterestsModalProps) {
   const insets = useSafeAreaInsets()
-  const footerStyle = {
-    paddingBottom: Math.max(insets.bottom + 12, 18),
+  const saveButtonSpacing = {
+    marginBottom: Math.max(insets.bottom + 24, 32),
   }
 
   const toggleInterest = (interest: string) => {
@@ -561,14 +621,13 @@ function InterestsModal({ interests, onChange, onClose, onSave, visible }: Inter
             </View>
 
           </View>
-        </ScrollView>
-        <View style={[styles.interestsFooter, footerStyle]}>
-          <View style={styles.saveInterestsButtonWrap}>
-            <Pressable onPress={onSave} style={({ pressed }) => [styles.saveInterestsButton, pressed && styles.saveInterestsButtonPressed]}>
+          <Pressable onPress={onSave} style={({ pressed }) => [styles.saveInterestsButtonWrap, saveButtonSpacing, pressed && styles.saveInterestsButtonPressed]}>
+            <View style={styles.saveInterestsButton}>
+              <Heart color="#FFFFFF" size={26} strokeWidth={2.4} />
               <Text style={styles.saveInterestsText}>Guardar intereses</Text>
-            </Pressable>
-          </View>
-        </View>
+            </View>
+          </Pressable>
+        </ScrollView>
       </SafeAreaView>
     </Modal>
   )
@@ -1131,15 +1190,18 @@ const styles = StyleSheet.create({
   },
   saveInterestsButtonWrap: {
     alignSelf: 'center',
+    marginTop: 24,
     width: '85%',
   },
   saveInterestsButton: {
     alignItems: 'center',
     backgroundColor: '#006A32',
     borderColor: '#006A32',
-    borderRadius: 999,
+    borderRadius: 18,
     borderWidth: 1,
-    height: 54,
+    flexDirection: 'row',
+    gap: 12,
+    minHeight: 58,
     justifyContent: 'center',
     width: '100%',
     shadowColor: '#07392D',
@@ -1153,7 +1215,7 @@ const styles = StyleSheet.create({
   },
   saveInterestsText: {
     color: '#FFFFFF',
-    fontSize: 15,
+    fontSize: 17,
     fontWeight: '900',
     letterSpacing: 0,
   },

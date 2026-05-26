@@ -11,6 +11,7 @@ import {
   StyleSheet,
   Text,
   TextInput,
+  useWindowDimensions,
   View,
 } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
@@ -253,6 +254,7 @@ function mapExploreCard(item: RecordItem): ExploreCardItem {
 
 export default function ExplorarScreen() {
   const router = useRouter()
+  const { width } = useWindowDimensions()
   const scrollRef = useRef<ScrollView>(null)
   const featuredSectionY = useRef(0)
   const [records, setRecords] = useState<RecordItem[]>([])
@@ -263,6 +265,9 @@ export default function ExplorarScreen() {
   const [filters, setFilters] = useState<AdvancedFilters>(initialAdvancedFilters)
   const [draftFilters, setDraftFilters] = useState<AdvancedFilters>(initialAdvancedFilters)
   const [isFilterVisible, setIsFilterVisible] = useState(false)
+  const [activeCardIndex, setActiveCardIndex] = useState(0)
+  const carouselCardWidth = Math.min(300, Math.max(236, width - 104))
+  const carouselSnapInterval = carouselCardWidth + 14
 
   useEffect(() => {
     let activities: RecordItem[] = []
@@ -397,6 +402,7 @@ export default function ExplorarScreen() {
             <Text style={styles.seeAllText}>Ver todo</Text>
           </Pressable>
         </View>
+        <Text style={styles.carouselHint}>Deslizá para ver más</Text>
 
         {isLoading ? (
           <View style={styles.centerState}>
@@ -408,10 +414,15 @@ export default function ExplorarScreen() {
           <FlatList
             contentContainerStyle={styles.resultsList}
             data={cards}
+            decelerationRate="fast"
             horizontal
             keyExtractor={(item) => item.id}
+            onMomentumScrollEnd={(event) => {
+              setActiveCardIndex(Math.round(event.nativeEvent.contentOffset.x / carouselSnapInterval))
+            }}
             renderItem={({ item }) => (
               <ExploreCard
+                cardWidth={carouselCardWidth}
                 item={item}
                 onPress={() => router.push(
                   item.source === 'activity'
@@ -421,8 +432,17 @@ export default function ExplorarScreen() {
               />
             )}
             showsHorizontalScrollIndicator={false}
+            snapToAlignment="start"
+            snapToInterval={carouselSnapInterval}
           />
         )}
+        {!isLoading && cards.length > 1 ? (
+          <View style={styles.carouselDots}>
+            {cards.slice(0, 5).map((item, index) => (
+              <View key={item.id} style={[styles.carouselDot, index === Math.min(activeCardIndex, 4) && styles.carouselDotActive]} />
+            ))}
+          </View>
+        ) : null}
       </ScrollView>
 
       <FilterSheet
@@ -473,9 +493,9 @@ function ExploreBanner({ onPress }: { onPress: () => void }) {
   )
 }
 
-function ExploreCard({ item, onPress }: { item: ExploreCardItem; onPress: () => void }) {
+function ExploreCard({ cardWidth, item, onPress }: { cardWidth: number; item: ExploreCardItem; onPress: () => void }) {
   return (
-    <Pressable accessibilityRole="button" onPress={onPress} style={({ pressed }) => [styles.exploreCard, pressed && styles.cardPressed]}>
+    <Pressable accessibilityRole="button" onPress={onPress} style={({ pressed }) => [styles.exploreCard, { width: cardWidth }, pressed && styles.cardPressed]}>
       <View style={styles.cardImageWrap}>
         <Image source={item.image} style={styles.cardImage} />
         <View style={styles.cardIcon}>
@@ -788,10 +808,17 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '900',
   },
+  carouselHint: {
+    color: '#66736E',
+    fontSize: 12,
+    fontWeight: '800',
+    letterSpacing: 0,
+    marginTop: -4,
+  },
   resultsList: {
     gap: 14,
     paddingBottom: 8,
-    paddingRight: 4,
+    paddingRight: 28,
     paddingTop: 14,
   },
   exploreCard: {
@@ -802,7 +829,6 @@ const styles = StyleSheet.create({
     marginBottom: 2,
     minHeight: 292,
     overflow: 'hidden',
-    width: 238,
     ...shadow,
   },
   cardPressed: {
@@ -816,6 +842,7 @@ const styles = StyleSheet.create({
   },
   cardImage: {
     height: '100%',
+    resizeMode: 'cover',
     width: '100%',
   },
   cardIcon: {
@@ -896,6 +923,23 @@ const styles = StyleSheet.create({
     color: '#006A32',
     fontSize: 13,
     fontWeight: '900',
+  },
+  carouselDots: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 6,
+    justifyContent: 'center',
+    marginTop: 4,
+  },
+  carouselDot: {
+    backgroundColor: '#DCE8E1',
+    borderRadius: 999,
+    height: 7,
+    width: 7,
+  },
+  carouselDotActive: {
+    backgroundColor: '#006A32',
+    width: 18,
   },
   centerState: {
     alignItems: 'center',

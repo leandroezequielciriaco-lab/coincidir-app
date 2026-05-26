@@ -43,6 +43,24 @@ function normalize(value: unknown) {
     .toLowerCase()
 }
 
+function getRemoteImage(data: Record<string, unknown>) {
+  const candidates = [
+    data.imageUrl,
+    data.photoUrl,
+    data.photoURL,
+    data.coverImage,
+    data.coverUrl,
+    data.coverURL,
+    data.image,
+    data.imageUri,
+    data.imageURL,
+    data.thumbnailUrl,
+  ]
+
+  const uri = candidates.map(readString).find((value) => /^https?:\/\//i.test(value) || /^file:\/\//i.test(value))
+  return uri ? { uri } : null
+}
+
 const imageRules: { image: ImageSourcePropType; terms: string[] }[] = [
   { image: yogaImage, terms: ['yoga', 'supyoga', 'meditacion', 'mindfulness', 'respiracion', 'relax', 'stretching', 'tai chi', 'sound healing', 'bienestar', 'wellness'] },
   { image: runningImage, terms: ['running', 'correr', 'runner'] },
@@ -59,6 +77,9 @@ const imageRules: { image: ImageSourcePropType; terms: string[] }[] = [
 ]
 
 export function getCategoryImage(data: Record<string, unknown> = {}, fallback = defaultActivityImage) {
+  const remoteImage = getRemoteImage(data)
+  if (remoteImage) return remoteImage
+
   const searchable = normalize([
     data.subcategory,
     data.category,
