@@ -295,17 +295,15 @@ export default function ChatScreen() {
             accessibilityRole="button"
             disabled={!canSend}
             onPress={sendMessage}
-            style={({ pressed }) => [
-              styles.sendButton,
-              hasDraftMessage ? styles.sendButtonActive : styles.sendButtonDisabled,
-              pressed && canSend && styles.sendButtonPressed,
-            ]}
+            style={({ pressed }) => [styles.sendHitArea, pressed && canSend && styles.sendButtonPressed]}
           >
-            {isSending ? (
-              <ActivityIndicator color="#FFFFFF" size="small" />
-            ) : (
-              <Send color={hasDraftMessage ? '#FFFFFF' : '#6F8E7E'} size={22} strokeWidth={2.8} />
-            )}
+            <View style={[styles.sendButton, hasDraftMessage ? styles.sendButtonActive : styles.sendButtonDisabled]}>
+              {isSending ? (
+                <ActivityIndicator color="#FFFFFF" size="small" />
+              ) : (
+                <Send color={hasDraftMessage ? '#FFFFFF' : '#6F8E7E'} size={22} strokeWidth={2.8} />
+              )}
+            </View>
           </Pressable>
         </View>
       </KeyboardAvoidingView>
@@ -499,14 +497,20 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 13,
   },
+  sendHitArea: {
+    alignItems: 'center',
+    height: 46,
+    justifyContent: 'center',
+    marginBottom: 1,
+    opacity: 1,
+    width: 46,
+  },
   sendButton: {
     alignItems: 'center',
     borderRadius: 999,
     borderWidth: 1,
     height: 46,
     justifyContent: 'center',
-    marginBottom: 1,
-    opacity: 1,
     width: 46,
   },
   sendButtonActive: {
