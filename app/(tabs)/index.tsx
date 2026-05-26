@@ -1040,7 +1040,7 @@ function Section<T extends { id: string }>({
       ) : variant === 'vertical' ? (
         <View style={styles.verticalFeed}>
           {data.map((item) => (
-            <View key={item.id}>
+            <View key={item.id} style={styles.verticalFeedItem}>
               {renderItem({ item })}
             </View>
           ))}
@@ -1358,6 +1358,10 @@ const styles = StyleSheet.create({
     lineHeight: 20,
   },
   verticalFeed: {
+    width: '100%',
+  },
+  verticalFeedItem: {
+    alignSelf: 'stretch',
     width: '100%',
   },
   emptySearchState: {
