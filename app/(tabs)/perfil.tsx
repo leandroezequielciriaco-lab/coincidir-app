@@ -5,6 +5,7 @@ import {
   Image,
   Modal,
   Platform,
+  Pressable,
   ScrollView,
   StyleSheet,
   Text,
@@ -12,7 +13,7 @@ import {
   View,
 } from 'react-native'
 import AsyncStorage from '@react-native-async-storage/async-storage'
-import { SafeAreaView } from 'react-native-safe-area-context'
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import * as ImagePicker from 'expo-image-picker'
 import { useRouter } from 'expo-router'
 import { onAuthStateChanged } from 'firebase/auth'
@@ -514,6 +515,11 @@ type InterestsModalProps = {
 }
 
 function InterestsModal({ interests, onChange, onClose, onSave, visible }: InterestsModalProps) {
+  const insets = useSafeAreaInsets()
+  const footerStyle = {
+    paddingBottom: Math.max(insets.bottom + 12, 18),
+  }
+
   const toggleInterest = (interest: string) => {
     onChange(
       interests.includes(interest)
@@ -525,7 +531,7 @@ function InterestsModal({ interests, onChange, onClose, onSave, visible }: Inter
   return (
     <Modal animationType="slide" onRequestClose={onClose} visible={visible}>
       <SafeAreaView edges={['top', 'bottom']} style={styles.safeArea}>
-        <ScrollView contentContainerStyle={[styles.editContent, styles.interestsEditContent]} showsVerticalScrollIndicator={false}>
+        <ScrollView contentContainerStyle={[styles.editContent, styles.interestsEditContent]} showsVerticalScrollIndicator={false} style={styles.interestsScroll}>
           <View style={styles.editHeader}>
             <PressScale onPress={onClose} scaleTo={0.94} style={styles.editHeaderButton}>
               <Text style={styles.cancelEditText}>Cancelar</Text>
@@ -556,10 +562,12 @@ function InterestsModal({ interests, onChange, onClose, onSave, visible }: Inter
 
           </View>
         </ScrollView>
-        <View style={styles.interestsFooter}>
-          <PressScale onPress={onSave} scaleTo={0.97} style={styles.saveInterestsButton}>
-            <Text style={styles.saveInterestsText}>Guardar intereses</Text>
-          </PressScale>
+        <View style={[styles.interestsFooter, footerStyle]}>
+          <View style={styles.saveInterestsButtonWrap}>
+            <Pressable onPress={onSave} style={({ pressed }) => [styles.saveInterestsButton, pressed && styles.saveInterestsButtonPressed]}>
+              <Text style={styles.saveInterestsText}>Guardar intereses</Text>
+            </Pressable>
+          </View>
         </View>
       </SafeAreaView>
     </Modal>
@@ -1113,21 +1121,35 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   interestsFooter: {
+    alignItems: 'center',
     backgroundColor: '#FAFAF8',
     borderTopColor: '#E7E7E1',
     borderTopWidth: 1,
-    paddingBottom: 10,
     paddingHorizontal: 20,
-    paddingTop: 12,
+    paddingTop: 14,
+    zIndex: 10,
+  },
+  saveInterestsButtonWrap: {
+    alignSelf: 'center',
+    width: '85%',
   },
   saveInterestsButton: {
     alignItems: 'center',
-    alignSelf: 'stretch',
     backgroundColor: '#006A32',
+    borderColor: '#006A32',
     borderRadius: 999,
+    borderWidth: 1,
     height: 54,
     justifyContent: 'center',
-    ...shadow,
+    width: '100%',
+    shadowColor: '#07392D',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.16,
+    shadowRadius: 18,
+    elevation: 4,
+  },
+  saveInterestsButtonPressed: {
+    opacity: 0.9,
   },
   saveInterestsText: {
     color: '#FFFFFF',
@@ -1213,6 +1235,9 @@ const styles = StyleSheet.create({
   },
   interestsEditContent: {
     paddingBottom: 112,
+  },
+  interestsScroll: {
+    flex: 1,
   },
   editHeader: {
     alignItems: 'center',

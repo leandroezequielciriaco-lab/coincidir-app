@@ -5,6 +5,7 @@ import {
   Image,
   KeyboardAvoidingView,
   Platform,
+  Pressable,
   StyleSheet,
   Text,
   TextInput,
@@ -75,7 +76,8 @@ export default function ChatScreen() {
   const [text, setText] = useState('')
   const [isLoading, setIsLoading] = useState(true)
   const [isSending, setIsSending] = useState(false)
-  const canSend = text.trim().length > 0 && !isSending
+  const hasDraftMessage = text.trim().length > 0
+  const canSend = hasDraftMessage && !isSending
 
   useEffect(() => {
     try {
@@ -288,20 +290,23 @@ export default function ChatScreen() {
             style={styles.input}
             value={text}
           />
-          <PressScale
+          <Pressable
             accessibilityLabel="Enviar mensaje"
             accessibilityRole="button"
             disabled={!canSend}
             onPress={sendMessage}
-            scaleTo={0.94}
-            style={[styles.sendButton, !canSend && styles.sendButtonDisabled]}
+            style={({ pressed }) => [
+              styles.sendButton,
+              hasDraftMessage ? styles.sendButtonActive : styles.sendButtonDisabled,
+              pressed && canSend && styles.sendButtonPressed,
+            ]}
           >
             {isSending ? (
               <ActivityIndicator color="#FFFFFF" size="small" />
             ) : (
-              <Send color={canSend ? '#FFFFFF' : '#6F8E7E'} size={22} strokeWidth={2.8} />
+              <Send color={hasDraftMessage ? '#FFFFFF' : '#6F8E7E'} size={22} strokeWidth={2.8} />
             )}
-          </PressScale>
+          </Pressable>
         </View>
       </KeyboardAvoidingView>
     </SafeAreaView>
@@ -496,15 +501,21 @@ const styles = StyleSheet.create({
   },
   sendButton: {
     alignItems: 'center',
-    backgroundColor: '#006A32',
-    borderColor: '#006A32',
     borderRadius: 999,
     borderWidth: 1,
     height: 46,
     justifyContent: 'center',
     marginBottom: 1,
+    opacity: 1,
     width: 46,
+  },
+  sendButtonActive: {
+    backgroundColor: '#006A32',
+    borderColor: '#006A32',
     ...shadow,
+  },
+  sendButtonPressed: {
+    opacity: 0.88,
   },
   sendButtonDisabled: {
     backgroundColor: '#E8F3EA',

@@ -1,4 +1,4 @@
-import { Image, Platform, StyleSheet, Text, View } from 'react-native'
+import { Image, Platform, Pressable, StyleSheet, Text, View } from 'react-native'
 import { CalendarDays, MapPin, UserRound, UsersRound } from 'lucide-react-native'
 
 import { PressScale } from './PressScale'
@@ -22,12 +22,11 @@ type SuggestionCardProps = {
 
 export function ActivityCard({ item, onCtaPress, onPress }: ActivityCardProps) {
   return (
-    <PressScale
+    <Pressable
       accessibilityLabel={`Ver detalle de ${item.title}`}
       accessibilityRole="button"
       onPress={onPress}
-      style={styles.activityCard}
-      pressedStyle={styles.pressed}
+      style={({ pressed }) => [styles.activityCard, pressed && styles.pressed]}
     >
       <View style={styles.activityImageWrap}>
         <Image source={item.image} style={styles.activityImage} />
@@ -60,18 +59,16 @@ export function ActivityCard({ item, onCtaPress, onPress }: ActivityCardProps) {
           <UserRound color="#17803C" size={17} strokeWidth={2.2} />
           <Text numberOfLines={1} style={styles.activityMeta}>{item.organizer}</Text>
         </View>
-        <PressScale
+        <Pressable
           accessibilityLabel={item.cta}
           accessibilityRole="button"
           onPress={onCtaPress}
-          scaleTo={0.97}
-          style={styles.activityFooter}
-          pressedStyle={styles.pressed}
+          style={({ pressed }) => [styles.activityFooter, pressed && styles.pressed]}
         >
           <Text style={styles.greenCtaText}>{item.cta}</Text>
-        </PressScale>
+        </Pressable>
       </View>
-    </PressScale>
+    </Pressable>
   )
 }
 
@@ -172,17 +169,19 @@ const styles = StyleSheet.create({
     borderRadius: 18,
     borderWidth: 1,
     flexDirection: 'row',
+    height: 190,
     marginBottom: 14,
-    minHeight: 188,
     overflow: 'hidden',
     width: '100%',
     ...cardShadow,
   },
   activityImageWrap: {
     backgroundColor: '#EFF6E9',
-    height: 188,
+    height: '100%',
     position: 'relative',
-    width: 128,
+    flexBasis: 136,
+    flexShrink: 0,
+    width: 136,
   },
   activityImage: {
     height: '100%',
@@ -196,11 +195,11 @@ const styles = StyleSheet.create({
   dateBadge: {
     backgroundColor: '#FFFFFF',
     borderRadius: 999,
-    left: 10,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
+    left: 12,
+    paddingHorizontal: 11,
+    paddingVertical: 7,
     position: 'absolute',
-    top: 10,
+    top: 12,
   },
   dateBadgeText: {
     color: '#006A32',
@@ -210,16 +209,16 @@ const styles = StyleSheet.create({
   },
   activityBody: {
     flex: 1,
+    justifyContent: 'center',
     minWidth: 0,
     paddingHorizontal: 14,
-    paddingBottom: 14,
-    paddingTop: 13,
+    paddingVertical: 12,
   },
   activityTopLine: {
     alignItems: 'center',
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginBottom: 8,
+    marginBottom: 6,
   },
   categoryPill: {
     alignItems: 'center',
@@ -228,7 +227,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: 7,
     maxWidth: '70%',
-    minHeight: 30,
+    minHeight: 28,
     paddingHorizontal: 10,
   },
   categoryPillText: {
@@ -243,7 +242,7 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     flexDirection: 'row',
     gap: 5,
-    minHeight: 30,
+    minHeight: 28,
     paddingHorizontal: 10,
   },
   peopleText: {
@@ -257,13 +256,13 @@ const styles = StyleSheet.create({
     fontWeight: '900',
     letterSpacing: 0,
     lineHeight: 21,
-    marginBottom: 7,
+    marginBottom: 5,
   },
   activityMetaRow: {
     alignItems: 'center',
     flexDirection: 'row',
     gap: 8,
-    marginTop: 5,
+    marginTop: 3,
   },
   activityMeta: {
     color: '#40534D',
@@ -276,9 +275,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     backgroundColor: '#F0F5E9',
     borderRadius: 999,
-    minHeight: 36,
+    minHeight: 34,
     justifyContent: 'center',
-    marginTop: 11,
+    marginTop: 9,
   },
   greenCtaText: {
     color: '#00552E',
