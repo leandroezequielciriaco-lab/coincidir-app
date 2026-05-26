@@ -2,7 +2,6 @@ import { useEffect, useMemo, useState } from 'react'
 import {
   ActivityIndicator,
   Image,
-  ImageSourcePropType,
   Platform,
   ScrollView,
   StyleSheet,
@@ -39,6 +38,7 @@ import type { LucideIcon } from 'lucide-react-native'
 import { PressScale } from '../../components/home/PressScale'
 import { InviteFriendsSheet, type InviteShareTarget } from '../../components/InviteFriendsSheet'
 import { getFirebaseServices } from '../../firebaseConfig'
+import { getCategoryImage } from '../../utils/categoryImages'
 
 type ActivityData = Record<string, unknown>
 type CategoryId = 'outdoor' | 'sports' | 'wellness' | 'groups' | 'private'
@@ -46,17 +46,6 @@ type OrganizerProfile = {
   name: string
   photoURL: string
   subtitle: string
-}
-
-const image = (uri: string): ImageSourcePropType => ({ uri })
-
-const defaultImagesByCategory: Record<CategoryId | 'default', ImageSourcePropType> = {
-  outdoor: image('https://images.unsplash.com/photo-1441974231531-c6227db76b6e?auto=format&fit=crop&w=1100&q=80'),
-  sports: image('https://images.unsplash.com/photo-1579952363873-27f3bade9f55?auto=format&fit=crop&w=1100&q=80'),
-  wellness: image('https://images.unsplash.com/photo-1506126613408-eca07ce68773?auto=format&fit=crop&w=1100&q=80'),
-  groups: image('https://images.unsplash.com/photo-1529156069898-49953e39b3ac?auto=format&fit=crop&w=1100&q=80'),
-  private: image('https://images.unsplash.com/photo-1626224583764-f87db24ac4ea?auto=format&fit=crop&w=1100&q=80'),
-  default: image('https://images.unsplash.com/photo-1492684223066-81342ee5ff30?auto=format&fit=crop&w=1100&q=80'),
 }
 
 function readString(value: unknown, fallback = '') {
@@ -279,14 +268,12 @@ export default function ActivityDetailScreen() {
     const optimisticCount = participantCount + (optimisticJoined === null || optimisticJoined === persistedJoined ? 0 : optimisticJoined ? 1 : -1)
     const safeCount = Math.max(0, optimisticCount)
     const isFull = safeCount >= maxParticipants && !joined
-    const categoryId = getCategoryId(data)
-
     return {
       category: readString(data.category, 'Espacio privado'),
       date: readString(data.date, 'Fecha a definir'),
       description: readString(data.description, 'Sin descripción por ahora.'),
       Icon: getIcon(data),
-      image: defaultImagesByCategory[categoryId],
+      image: getCategoryImage(data),
       isFull,
       joined,
       location: readString(data.location, 'Ubicación a definir'),

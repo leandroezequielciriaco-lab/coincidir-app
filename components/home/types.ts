@@ -12,6 +12,8 @@ export type ActivityCardItem = {
   people: string
   category: string
   dateTime: string
+  location: string
+  organizer: string
   iconLabel: string
   cta: string
   Icon: LucideIcon

@@ -21,16 +21,24 @@ import { getDownloadURL, ref, uploadBytes } from 'firebase/storage'
 import {
   CalendarDays,
   Camera,
+  Check,
   ChevronRight,
   Circle,
   CircleDot,
   Coffee,
-  Dumbbell,
+  Film,
   Footprints,
+  Gamepad2,
   Heart,
+  Laptop,
+  Music,
   MapPin,
   Mountain,
+  Palette,
+  PawPrint,
   Pencil,
+  Plane,
+  BookOpen,
   Star,
   Trees,
   Trophy,
@@ -80,12 +88,23 @@ const editableInterests = [
 function getInterestIcon(label: string): LucideIcon {
   const value = label.toLowerCase()
 
-  if (value.includes('yoga')) return Dumbbell
+  if (value.includes('deporte')) return Trophy
+  if (value.includes('yoga')) return Heart
   if (value.includes('running')) return Footprints
   if (value.includes('paddle') || value.includes('tenis')) return Trophy
   if (value.includes('caminata')) return Mountain
   if (value.includes('aire')) return Trees
   if (value.includes('mate')) return Coffee
+  if (value.includes('café')) return Coffee
+  if (value.includes('música')) return Music
+  if (value.includes('cine')) return Film
+  if (value.includes('naturaleza')) return Trees
+  if (value.includes('viajes')) return Plane
+  if (value.includes('lectura')) return BookOpen
+  if (value.includes('juegos')) return Gamepad2
+  if (value.includes('mascotas')) return PawPrint
+  if (value.includes('tecnología')) return Laptop
+  if (value.includes('arte')) return Palette
   if (value.includes('fútbol')) return Circle
   if (value.includes('escalada')) return Mountain
   if (value.includes('nataci')) return Waves
@@ -392,11 +411,25 @@ function ProfileSection({ children, title }: ProfileSectionProps) {
 
 function InterestChip({ label, selected = false, onPress }: { label: string; selected?: boolean; onPress?: () => void }) {
   const Icon = getInterestIcon(label)
+  const interactive = Boolean(onPress)
 
   return (
-    <PressScale onPress={onPress} scaleTo={0.97} style={[styles.chip, selected && styles.chipSelected]}>
-      <Icon color={selected ? '#FFFFFF' : '#006A32'} size={15} strokeWidth={2.1} />
-      <Text style={[styles.chipText, selected && styles.chipTextSelected]}>{label}</Text>
+    <PressScale
+      accessibilityRole={interactive ? 'button' : undefined}
+      accessibilityState={interactive ? { selected } : undefined}
+      onPress={onPress}
+      scaleTo={interactive ? 0.96 : 1}
+      style={[styles.chip, !interactive && styles.chipCompact, selected && styles.chipSelected]}
+    >
+      {selected ? (
+        <View style={styles.chipCheck}>
+          <Check color="#FFFFFF" size={12} strokeWidth={3} />
+        </View>
+      ) : null}
+      <View style={[styles.chipIcon, !interactive && styles.chipIconCompact, selected && styles.chipIconSelected]}>
+        <Icon color={selected ? '#006A32' : '#17803C'} size={interactive ? 21 : 18} strokeWidth={2.15} />
+      </View>
+      <Text style={[styles.chipText, !interactive && styles.chipTextCompact, selected && styles.chipTextSelected]}>{label}</Text>
     </PressScale>
   )
 }
@@ -491,8 +524,8 @@ function InterestsModal({ interests, onChange, onClose, onSave, visible }: Inter
 
   return (
     <Modal animationType="slide" onRequestClose={onClose} visible={visible}>
-      <SafeAreaView edges={['top']} style={styles.safeArea}>
-        <ScrollView contentContainerStyle={styles.editContent} showsVerticalScrollIndicator={false}>
+      <SafeAreaView edges={['top', 'bottom']} style={styles.safeArea}>
+        <ScrollView contentContainerStyle={[styles.editContent, styles.interestsEditContent]} showsVerticalScrollIndicator={false}>
           <View style={styles.editHeader}>
             <PressScale onPress={onClose} scaleTo={0.94} style={styles.editHeaderButton}>
               <Text style={styles.cancelEditText}>Cancelar</Text>
@@ -521,11 +554,13 @@ function InterestsModal({ interests, onChange, onClose, onSave, visible }: Inter
               ))}
             </View>
 
-            <PressScale onPress={onSave} scaleTo={0.97} style={styles.saveInterestsButton}>
-              <Text style={styles.saveInterestsText}>Guardar intereses</Text>
-            </PressScale>
           </View>
         </ScrollView>
+        <View style={styles.interestsFooter}>
+          <PressScale onPress={onSave} scaleTo={0.97} style={styles.saveInterestsButton}>
+            <Text style={styles.saveInterestsText}>Guardar intereses</Text>
+          </PressScale>
+        </View>
       </SafeAreaView>
     </Modal>
   )
@@ -911,9 +946,11 @@ const styles = StyleSheet.create({
     marginBottom: 10,
   },
   chipWrap: {
+    alignSelf: 'stretch',
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 9,
+    gap: 11,
+    justifyContent: 'center',
   },
   interestsCard: {
     alignSelf: 'stretch',
@@ -932,27 +969,79 @@ const styles = StyleSheet.create({
   },
   chip: {
     alignItems: 'center',
-    backgroundColor: '#FFFFFF',
-    borderColor: '#E2E5DF',
-    borderRadius: 999,
-    borderWidth: 1,
-    flexDirection: 'row',
-    gap: 6,
-    minHeight: 36,
-    paddingHorizontal: 12,
+    backgroundColor: '#FAFCF8',
+    borderColor: '#DDE7DD',
+    borderRadius: 18,
+    borderWidth: 1.3,
+    flexBasis: '30%',
+    flexGrow: 1,
+    gap: 8,
+    justifyContent: 'center',
+    minHeight: 92,
+    minWidth: 96,
+    paddingHorizontal: 10,
+    paddingVertical: 12,
+    position: 'relative',
   },
   chipSelected: {
-    backgroundColor: '#6C3DE5',
-    borderColor: '#6C3DE5',
+    backgroundColor: '#EAF7E7',
+    borderColor: '#17803C',
+    borderWidth: 1.8,
+  },
+  chipCompact: {
+    borderRadius: 16,
+    flexBasis: 'auto',
+    flexDirection: 'row',
+    flexGrow: 0,
+    minHeight: 46,
+    minWidth: 0,
+    paddingHorizontal: 11,
+    paddingVertical: 8,
+  },
+  chipIcon: {
+    alignItems: 'center',
+    backgroundColor: '#EFF6E9',
+    borderRadius: 999,
+    height: 42,
+    justifyContent: 'center',
+    width: 42,
+  },
+  chipIconSelected: {
+    backgroundColor: '#D6EED5',
+  },
+  chipIconCompact: {
+    height: 30,
+    width: 30,
   },
   chipText: {
     color: '#10231F',
     fontSize: 13,
-    fontWeight: '800',
+    fontWeight: '900',
     letterSpacing: 0,
+    lineHeight: 16,
+    textAlign: 'center',
   },
   chipTextSelected: {
-    color: '#FFFFFF',
+    color: '#063C31',
+    fontWeight: '900',
+  },
+  chipTextCompact: {
+    fontSize: 14,
+    lineHeight: 18,
+  },
+  chipCheck: {
+    alignItems: 'center',
+    backgroundColor: '#17803C',
+    borderColor: '#FFFFFF',
+    borderRadius: 999,
+    borderWidth: 2,
+    height: 24,
+    justifyContent: 'center',
+    position: 'absolute',
+    right: 8,
+    top: 8,
+    width: 24,
+    zIndex: 2,
   },
   emptyBlock: {
     alignItems: 'center',
@@ -984,51 +1073,61 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   interestsModalCard: {
-    alignItems: 'center',
     backgroundColor: '#FFFFFF',
     borderColor: '#E7E7E1',
-    borderRadius: 20,
+    borderRadius: 24,
     borderWidth: 1,
-    padding: 20,
+    paddingBottom: 22,
+    paddingHorizontal: 18,
+    paddingTop: 18,
     ...shadow,
   },
   interestsIcon: {
     alignItems: 'center',
+    alignSelf: 'center',
     backgroundColor: '#EFF6E9',
     borderColor: '#D7E8CC',
     borderRadius: 999,
     borderWidth: 1,
-    height: 72,
+    height: 58,
     justifyContent: 'center',
-    marginBottom: 14,
-    width: 72,
+    marginBottom: 10,
+    width: 58,
   },
   interestsModalTitle: {
     color: '#063C31',
-    fontSize: 22,
+    fontSize: 20,
     fontWeight: '900',
     letterSpacing: 0,
-    lineHeight: 27,
+    lineHeight: 25,
     textAlign: 'center',
   },
   interestsModalText: {
     color: '#596A65',
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '700',
     letterSpacing: 0,
-    lineHeight: 20,
-    marginBottom: 18,
-    marginTop: 8,
+    lineHeight: 18,
+    marginBottom: 16,
+    marginTop: 6,
     textAlign: 'center',
+  },
+  interestsFooter: {
+    backgroundColor: '#FAFAF8',
+    borderTopColor: '#E7E7E1',
+    borderTopWidth: 1,
+    paddingBottom: 10,
+    paddingHorizontal: 20,
+    paddingTop: 12,
   },
   saveInterestsButton: {
     alignItems: 'center',
     alignSelf: 'stretch',
     backgroundColor: '#006A32',
     borderRadius: 999,
-    height: 50,
+    height: 54,
     justifyContent: 'center',
-    marginTop: 20,
+    ...shadow,
   },
   saveInterestsText: {
     color: '#FFFFFF',
@@ -1111,6 +1210,9 @@ const styles = StyleSheet.create({
     paddingBottom: 36,
     paddingHorizontal: 20,
     paddingTop: 12,
+  },
+  interestsEditContent: {
+    paddingBottom: 112,
   },
   editHeader: {
     alignItems: 'center',

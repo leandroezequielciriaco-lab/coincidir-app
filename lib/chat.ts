@@ -1,4 +1,5 @@
 import type { ImageSourcePropType } from 'react-native'
+import { getCategoryImage } from '../utils/categoryImages'
 
 export type ChatSource = 'activity' | 'group'
 
@@ -12,16 +13,6 @@ export type ChatSummaryData = Record<string, unknown>
 type CategoryId = 'outdoor' | 'sports' | 'wellness' | 'groups' | 'private'
 
 const image = (uri: string): ImageSourcePropType => ({ uri })
-
-const defaultImagesByCategory: Record<CategoryId | 'default' | 'group', ImageSourcePropType> = {
-  outdoor: image('https://images.unsplash.com/photo-1441974231531-c6227db76b6e?auto=format&fit=crop&w=900&q=80'),
-  sports: image('https://images.unsplash.com/photo-1579952363873-27f3bade9f55?auto=format&fit=crop&w=900&q=80'),
-  wellness: image('https://images.unsplash.com/photo-1506126613408-eca07ce68773?auto=format&fit=crop&w=900&q=80'),
-  groups: image('https://images.unsplash.com/photo-1529156069898-49953e39b3ac?auto=format&fit=crop&w=900&q=80'),
-  private: image('https://images.unsplash.com/photo-1522163182402-834f871fd851?auto=format&fit=crop&w=900&q=80'),
-  default: image('https://images.unsplash.com/photo-1492684223066-81342ee5ff30?auto=format&fit=crop&w=900&q=80'),
-  group: image('https://images.unsplash.com/photo-1529156069898-49953e39b3ac?auto=format&fit=crop&w=900&q=80'),
-}
 
 export function readString(value: unknown, fallback = '') {
   return typeof value === 'string' && value.trim() ? value.trim() : fallback
@@ -72,9 +63,7 @@ export function getChatTitle(data: Record<string, unknown>, source: ChatSource) 
 export function getChatImage(data: Record<string, unknown>, source: ChatSource) {
   const photoURL = readString(data.imageUrl, readString(data.photoURL, readString(data.coverUrl)))
   if (photoURL) return image(photoURL)
-  if (source === 'group') return defaultImagesByCategory.group
-
-  return defaultImagesByCategory[getCategoryId(data)]
+  return getCategoryImage(source === 'group' ? { category: 'Grupales', ...data } : data)
 }
 
 function collectMapKeys(value: unknown) {

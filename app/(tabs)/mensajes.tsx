@@ -18,7 +18,6 @@ import {
   Camera,
   MessageCircle,
   MessagesSquare,
-  Plus,
   Reply,
   Search,
   SmilePlus,
@@ -206,9 +205,6 @@ export default function MensajesScreen() {
                 <Text style={styles.title}>Mensajes</Text>
                 <Text style={styles.subtitle}>Chats de tus actividades</Text>
               </View>
-              <View style={styles.headerIcon}>
-                <Plus color="#FFFFFF" size={24} strokeWidth={2.7} />
-              </View>
             </View>
 
             <View style={styles.searchBox}>
@@ -339,9 +335,7 @@ const styles = StyleSheet.create({
     paddingTop: 10,
   },
   titleRow: {
-    alignItems: 'center',
-    flexDirection: 'row',
-    justifyContent: 'space-between',
+    alignItems: 'flex-start',
   },
   title: {
     color: '#071D19',
@@ -357,15 +351,6 @@ const styles = StyleSheet.create({
     letterSpacing: 0,
     marginTop: 2,
   },
-  headerIcon: {
-    alignItems: 'center',
-    backgroundColor: '#8C4BD6',
-    borderRadius: 19,
-    height: 38,
-    justifyContent: 'center',
-    width: 38,
-    ...shadow,
-  },
   searchBox: {
     alignItems: 'center',
     backgroundColor: '#FFFFFF',
@@ -374,7 +359,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     flexDirection: 'row',
     height: 48,
-    marginTop: 24,
+    marginTop: 28,
     paddingHorizontal: 14,
   },
   searchInput: {

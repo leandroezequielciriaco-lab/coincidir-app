@@ -2,7 +2,6 @@ import { useEffect, useMemo, useState } from 'react'
 import {
   ActivityIndicator,
   Image,
-  ImageSourcePropType,
   Platform,
   ScrollView,
   StyleSheet,
@@ -23,11 +22,9 @@ import {
 
 import { PressScale } from '../../components/home/PressScale'
 import { getFirebaseServices } from '../../firebaseConfig'
+import { getCategoryImage } from '../../utils/categoryImages'
 
 type GroupData = Record<string, unknown>
-
-const image = (uri: string): ImageSourcePropType => ({ uri })
-const groupImage = image('https://images.unsplash.com/photo-1529156069898-49953e39b3ac?auto=format&fit=crop&w=1100&q=80')
 
 function readString(value: unknown, fallback = '') {
   return typeof value === 'string' && value.trim() ? value.trim() : fallback
@@ -126,7 +123,7 @@ export default function GroupDetailScreen() {
           <View style={styles.iconButton} />
         </View>
 
-        <Image source={groupImage} style={styles.heroImage} />
+        <Image source={getCategoryImage({ category: 'Grupales', ...group })} style={styles.heroImage} />
 
         <View style={styles.content}>
           <View style={styles.titleRow}>

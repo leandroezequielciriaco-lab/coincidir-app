@@ -299,7 +299,7 @@ export default function ChatScreen() {
             {isSending ? (
               <ActivityIndicator color="#FFFFFF" size="small" />
             ) : (
-              <Send color="#FFFFFF" size={22} strokeWidth={2.8} />
+              <Send color={canSend ? '#FFFFFF' : '#6F8E7E'} size={22} strokeWidth={2.8} />
             )}
           </PressScale>
         </View>
@@ -496,18 +496,19 @@ const styles = StyleSheet.create({
   },
   sendButton: {
     alignItems: 'center',
-    backgroundColor: '#8C4BD6',
-    borderColor: '#8C4BD6',
+    backgroundColor: '#006A32',
+    borderColor: '#006A32',
     borderRadius: 999,
     borderWidth: 1,
     height: 46,
     justifyContent: 'center',
     marginBottom: 1,
     width: 46,
+    ...shadow,
   },
   sendButtonDisabled: {
-    backgroundColor: '#C9A9EF',
-    borderColor: '#C9A9EF',
+    backgroundColor: '#E8F3EA',
+    borderColor: '#CFE4D4',
   },
   centerState: {
     alignItems: 'center',

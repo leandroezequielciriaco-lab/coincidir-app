@@ -4,7 +4,6 @@ import type { Href } from 'expo-router'
 import {
   Alert,
   FlatList,
-  ImageSourcePropType,
   Modal,
   Platform,
   Pressable,
@@ -61,8 +60,7 @@ import type {
   ThemeTone,
 } from '../../components/home/types'
 import { getFirebaseServices } from '../../firebaseConfig'
-
-const image = (uri: string): ImageSourcePropType => ({ uri })
+import { getCategoryImage } from '../../utils/categoryImages'
 
 type CategoryId = 'outdoor' | 'sports' | 'wellness' | 'groups' | 'private'
 
@@ -90,15 +88,6 @@ type JoinableCollection = 'activities' | 'groups'
 type JoinState = {
   count: number
   joined: boolean
-}
-
-const defaultImagesByCategory: Record<CategoryId | 'default', ImageSourcePropType> = {
-  outdoor: image('https://images.unsplash.com/photo-1441974231531-c6227db76b6e?auto=format&fit=crop&w=900&q=80'),
-  sports: image('https://images.unsplash.com/photo-1579952363873-27f3bade9f55?auto=format&fit=crop&w=900&q=80'),
-  wellness: image('https://images.unsplash.com/photo-1506126613408-eca07ce68773?auto=format&fit=crop&w=900&q=80'),
-  groups: image('https://images.unsplash.com/photo-1529156069898-49953e39b3ac?auto=format&fit=crop&w=900&q=80'),
-  private: image('https://images.unsplash.com/photo-1522163182402-834f871fd851?auto=format&fit=crop&w=900&q=80'),
-  default: image('https://images.unsplash.com/photo-1492684223066-81342ee5ff30?auto=format&fit=crop&w=900&q=80'),
 }
 
 function readString(value: unknown, fallback = '') {
@@ -168,8 +157,24 @@ function formatDateBadge(date: string) {
 function formatSchedule(data: Record<string, unknown>) {
   const date = readString(data.date, 'Fecha a definir')
   const time = readString(data.time)
-  const location = readString(data.location, 'Ubicacion a definir')
-  return `${date}${time ? ` ${time}` : ''} - ${location}`
+  return `${date}${time ? ` ${time}` : ''}`
+}
+
+function getRecordLocation(data: Record<string, unknown>) {
+  return readString(data.location, readString(data.city, 'Ubicacion a definir'))
+}
+
+function getOrganizerName(data: Record<string, unknown>) {
+  return readString(
+    data.organizerName,
+    readString(
+      data.hostName,
+      readString(
+        data.createdByName,
+        readString(data.ownerName, 'Organizador de Coincidir'),
+      ),
+    ),
+  )
 }
 
 function getIcon(data: Record<string, unknown>): LucideIcon {
@@ -264,18 +269,20 @@ function getJoinCta(joined: boolean) {
 
 function mapActivityCard(record: CreatedRecord, joinState: JoinState): ActivityCardItem {
   const { data } = record
-  const categoryId = getCategoryId(data)
   const category = readString(data.category, 'Encuentro')
+  const maxParticipants = getMaxParticipants(data)
 
   return {
     id: record.id,
     recordId: record.id,
     title: readString(data.name, 'Encuentro sin titulo'),
-    image: defaultImagesByCategory[categoryId],
+    image: getCategoryImage(data),
     dateBadge: formatDateBadge(readString(data.date)),
-    people: String(joinState.count),
+    people: maxParticipants > 0 ? `${joinState.count}/${maxParticipants}` : String(joinState.count),
     category,
     dateTime: formatSchedule(data),
+    location: getRecordLocation(data),
+    organizer: getOrganizerName(data),
     iconLabel: category,
     cta: getJoinCta(joinState.joined),
     Icon: getIcon(data),
@@ -290,7 +297,7 @@ function mapPrivateCard(record: CreatedRecord, joinState: JoinState): PrivateCar
     id: record.id,
     recordId: record.id,
     title: readString(data.name, 'Actividad sin titulo'),
-    image: defaultImagesByCategory.private,
+    image: getCategoryImage(data),
     capacity: `${joinState.count}/${getMaxParticipants(data)}`,
     dateTime: `${readString(data.date, 'Fecha a definir')}${time ? ` ${time}` : ''}`,
     place: readString(data.location, 'Ubicacion a definir'),
@@ -324,11 +331,10 @@ function getRecordCity(data: Record<string, unknown>) {
 
 function matchesSelectedCity(record: CreatedRecord, selectedCity: string) {
   const recordCity = getRecordCity(record.data)
-  const location = readString(record.data.location)
   const normalizedCity = normalize(selectedCity)
 
   if (recordCity) return normalize(recordCity) === normalizedCity
-  return normalize(location).includes(normalizedCity)
+  return true
 }
 
 function getSearchableRecordText(record: CreatedRecord, source: 'activity' | 'group') {
@@ -745,12 +751,12 @@ export default function HomeScreen() {
         showsVerticalScrollIndicator={false}
       >
         <View style={styles.header}>
-          <CoincidirLogo markSize={58} textSize={20} cutoutColor="#FAFAF8" compact />
+          <CoincidirLogo markSize={50} textSize={17} cutoutColor="#FAFAF8" compact />
           <View style={styles.greetingBlock}>
             <Text numberOfLines={1} adjustsFontSizeToFit style={styles.greeting}>
               {greeting}
             </Text>
-            <Text style={styles.prompt}>¿Qué vamos a hacer hoy?</Text>
+            <Text numberOfLines={1} adjustsFontSizeToFit style={styles.prompt}>¿Qué vamos a hacer hoy?</Text>
           </View>
           <View style={styles.headerActions}>
             <View style={styles.betaBadge}>
@@ -763,7 +769,7 @@ export default function HomeScreen() {
               style={styles.iconButton}
               scaleTo={0.94}
             >
-              <Bell color="#05372D" size={30} strokeWidth={2.2} />
+              <Bell color="#05372D" size={27} strokeWidth={2.2} />
             </PressScale>
             <PressScale
               accessibilityLabel="Abrir ajustes"
@@ -772,7 +778,7 @@ export default function HomeScreen() {
               style={styles.iconButton}
               scaleTo={0.94}
             >
-              <Settings color="#05372D" size={31} strokeWidth={2.2} />
+              <Settings color="#05372D" size={28} strokeWidth={2.2} />
             </PressScale>
           </View>
         </View>
@@ -785,13 +791,13 @@ export default function HomeScreen() {
             style={styles.locationSelector}
             scaleTo={0.98}
           >
-            <MapPin color="#05372D" size={26} strokeWidth={2.1} />
+            <MapPin color="#05372D" size={23} strokeWidth={2.1} />
             <Text style={styles.locationText}>{selectedCity}</Text>
-            <ChevronDown color="#05372D" size={20} strokeWidth={2.4} />
+            <ChevronDown color="#05372D" size={18} strokeWidth={2.4} />
           </PressScale>
           <View style={styles.searchDivider} />
           <View style={styles.inputWrap}>
-            <Search color="#05372D" size={27} strokeWidth={2.1} />
+            <Search color="#05372D" size={24} strokeWidth={2.1} />
             <TextInput
               autoCapitalize="none"
               autoCorrect={false}
@@ -913,16 +919,17 @@ export default function HomeScreen() {
               renderItem={({ item }) => (
                 <ActivityCard
                   item={item}
-                  onImagePress={() => router.push({
+                  onPress={() => router.push({
                     pathname: '/activity/[activityId]',
                     params: { activityId: item.recordId },
                   })}
-                  onPress={() => {
+                  onCtaPress={() => {
                     const record = activityRecordsById.get(item.recordId)
                     if (record) toggleJoin(record, 'activities')
                   }}
                 />
               )}
+              subtitle={`En ${selectedCity} y actividades sin ciudad definida`}
               title="Encuentros cerca de vos"
               variant="vertical"
             />
@@ -1090,13 +1097,13 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   scrollContent: {
-    paddingBottom: 116,
-    paddingTop: 18,
+    paddingBottom: 138,
+    paddingTop: 14,
   },
   header: {
     alignItems: 'center',
     flexDirection: 'row',
-    gap: 15,
+    gap: 12,
   },
   greetingBlock: {
     flex: 1,
@@ -1104,31 +1111,31 @@ const styles = StyleSheet.create({
   },
   greeting: {
     color: '#00613A',
-    fontSize: 25,
+    fontSize: 21,
     fontWeight: '900',
     letterSpacing: 0,
-    lineHeight: 31,
+    lineHeight: 25,
   },
   prompt: {
     color: '#10231F',
-    fontSize: 18,
+    fontSize: 15,
     fontWeight: '800',
     letterSpacing: 0,
-    lineHeight: 24,
-    marginTop: 1,
+    lineHeight: 20,
+    marginTop: 3,
   },
   headerActions: {
     alignItems: 'center',
     flexDirection: 'row',
-    gap: 10,
+    gap: 6,
   },
   betaBadge: {
     alignItems: 'center',
     backgroundColor: '#18955D',
     borderRadius: 999,
     justifyContent: 'center',
-    paddingHorizontal: 9,
-    paddingVertical: 4,
+    minHeight: 28,
+    paddingHorizontal: 10,
   },
   betaBadgeText: {
     color: '#FFFFFF',
@@ -1139,52 +1146,52 @@ const styles = StyleSheet.create({
   },
   iconButton: {
     alignItems: 'center',
-    height: 42,
+    height: 38,
     justifyContent: 'center',
     position: 'relative',
-    width: 42,
+    width: 38,
   },
   searchCard: {
     alignItems: 'center',
     backgroundColor: '#FFFFFF',
     borderColor: '#E1E1DD',
-    borderRadius: 18,
+    borderRadius: 20,
     borderWidth: 1,
     flexDirection: 'row',
-    height: 78,
-    marginTop: 26,
-    paddingHorizontal: 19,
+    height: 66,
+    marginTop: 22,
+    paddingHorizontal: 16,
     ...softShadow,
   },
   locationSelector: {
     alignItems: 'center',
     flexDirection: 'row',
-    gap: 12,
-    minWidth: 150,
+    gap: 9,
+    minWidth: 122,
   },
   locationText: {
     color: '#10231F',
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: '800',
     letterSpacing: 0,
   },
   searchDivider: {
     backgroundColor: '#E5E5E0',
-    height: 40,
-    marginHorizontal: 19,
+    height: 34,
+    marginHorizontal: 14,
     width: 1,
   },
   inputWrap: {
     alignItems: 'center',
     flex: 1,
     flexDirection: 'row',
-    gap: 18,
+    gap: 12,
     minWidth: 0,
   },
   searchInput: {
     color: '#10231F',
     flex: 1,
-    fontSize: 17,
+    fontSize: 15,
     fontWeight: '500',
     letterSpacing: 0,
     minWidth: 0,
@@ -1320,28 +1327,28 @@ const styles = StyleSheet.create({
     letterSpacing: 0,
   },
   categoryList: {
-    gap: 16,
+    gap: 14,
     paddingBottom: 2,
-    paddingTop: 28,
+    paddingTop: 24,
   },
   section: {
-    marginTop: 24,
+    marginTop: 26,
   },
   sectionHeader: {
     alignItems: 'flex-start',
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginBottom: 15,
+    marginBottom: 13,
   },
   sectionTitleWrap: {
     flex: 1,
     paddingRight: 12,
   },
   sectionTitle: {
-    fontSize: 22,
+    fontSize: 21,
     fontWeight: '900',
     letterSpacing: 0,
-    lineHeight: 27,
+    lineHeight: 26,
   },
   sectionSubtitle: {
     color: '#10231F',
@@ -1395,7 +1402,7 @@ const styles = StyleSheet.create({
     paddingLeft: 8,
   },
   seeAllText: {
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '900',
     letterSpacing: 0,
   },

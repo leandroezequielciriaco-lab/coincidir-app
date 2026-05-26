@@ -3,6 +3,7 @@ import {
   ActivityIndicator,
   FlatList,
   Image,
+  ImageSourcePropType,
   Modal,
   Platform,
   Pressable,
@@ -37,6 +38,7 @@ import type { LucideIcon } from 'lucide-react-native'
 
 import { PressScale } from '../../components/home/PressScale'
 import { getFirebaseServices } from '../../firebaseConfig'
+import { getCategoryImage } from '../../utils/categoryImages'
 
 type RecordItem = {
   id: string
@@ -63,7 +65,7 @@ type ExploreCardItem = {
   location: string
   schedule: string
   cta: string
-  image: { uri: string }
+  image: ImageSourcePropType
   Icon: LucideIcon
 }
 
@@ -81,15 +83,6 @@ const initialAdvancedFilters: AdvancedFilters = {
   location: 'Todas',
   price: 'Todos',
   sort: 'recent',
-}
-
-const defaultImagesByCategory: Record<string, { uri: string }> = {
-  outdoor: { uri: 'https://images.unsplash.com/photo-1441974231531-c6227db76b6e?auto=format&fit=crop&w=900&q=80' },
-  sports: { uri: 'https://images.unsplash.com/photo-1579952363873-27f3bade9f55?auto=format&fit=crop&w=900&q=80' },
-  wellness: { uri: 'https://images.unsplash.com/photo-1506126613408-eca07ce68773?auto=format&fit=crop&w=900&q=80' },
-  groups: { uri: 'https://images.unsplash.com/photo-1529156069898-49953e39b3ac?auto=format&fit=crop&w=900&q=80' },
-  private: { uri: 'https://images.unsplash.com/photo-1522163182402-834f871fd851?auto=format&fit=crop&w=900&q=80' },
-  default: { uri: 'https://images.unsplash.com/photo-1492684223066-81342ee5ff30?auto=format&fit=crop&w=900&q=80' },
 }
 
 function readString(value: unknown, fallback = '') {
@@ -222,10 +215,7 @@ function getIcon(item: RecordItem): LucideIcon {
 }
 
 function getCardImage(item: RecordItem) {
-  const categoryId = readString(item.data.categoryId)
-  if (item.source === 'group') return defaultImagesByCategory.groups
-  if (categoryId && defaultImagesByCategory[categoryId]) return defaultImagesByCategory[categoryId]
-  return defaultImagesByCategory.default
+  return getCategoryImage(item.source === 'group' ? { category: 'Grupales', ...item.data } : item.data)
 }
 
 function getQuickIcon(label: string): LucideIcon {
@@ -471,7 +461,7 @@ function ExploreBanner({ onPress }: { onPress: () => void }) {
         <Text style={styles.bannerText}>Actividades al aire libre, gratuitas y para todos.</Text>
         <PressScale accessibilityLabel="Ver actividades" accessibilityRole="button" onPress={onPress} scaleTo={0.96} style={styles.bannerButton}>
           <Text style={styles.bannerButtonText}>Ver actividades</Text>
-          <ArrowRight color="#FFFFFF" size={18} strokeWidth={2.5} />
+          <ArrowRight color="#006A32" size={18} strokeWidth={2.5} />
         </PressScale>
       </View>
       <View style={styles.bannerArt}>
@@ -733,19 +723,24 @@ const styles = StyleSheet.create({
   bannerButton: {
     alignItems: 'center',
     alignSelf: 'flex-start',
-    backgroundColor: '#168A37',
-    borderRadius: 14,
+    backgroundColor: '#F8FFF6',
+    borderColor: '#BFE4C4',
+    borderWidth: 1.5,
+    borderRadius: 999,
     flexDirection: 'row',
     gap: 8,
     minHeight: 48,
     marginTop: 18,
+    opacity: 1,
     paddingHorizontal: 18,
+    zIndex: 3,
   },
   bannerButtonText: {
-    color: '#FFFFFF',
+    color: '#006A32',
     fontSize: 15,
     fontWeight: '900',
     letterSpacing: 0,
+    opacity: 1,
   },
   bannerArt: {
     alignItems: 'center',

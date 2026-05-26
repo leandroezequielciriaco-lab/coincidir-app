@@ -1,12 +1,12 @@
 import { Image, Platform, StyleSheet, Text, View } from 'react-native'
-import { CalendarDays, MapPin, UsersRound } from 'lucide-react-native'
+import { CalendarDays, MapPin, UserRound, UsersRound } from 'lucide-react-native'
 
 import { PressScale } from './PressScale'
 import type { ActivityCardItem, PrivateCardItem, SuggestionCardItem } from './types'
 
 type ActivityCardProps = {
   item: ActivityCardItem
-  onImagePress?: () => void
+  onCtaPress?: () => void
   onPress?: () => void
 }
 
@@ -20,25 +20,22 @@ type SuggestionCardProps = {
   onPress?: () => void
 }
 
-export function ActivityCard({ item, onImagePress, onPress }: ActivityCardProps) {
+export function ActivityCard({ item, onCtaPress, onPress }: ActivityCardProps) {
   return (
     <PressScale
-      accessibilityLabel={item.cta}
+      accessibilityLabel={`Ver detalle de ${item.title}`}
       accessibilityRole="button"
       onPress={onPress}
       style={styles.activityCard}
       pressedStyle={styles.pressed}
     >
-      <PressScale
-        accessibilityLabel={`Ver detalle de ${item.title}`}
-        accessibilityRole="button"
-        onPress={onImagePress}
-        pressedStyle={styles.pressed}
-        scaleTo={0.99}
-        style={styles.activityImageWrap}
-      >
+      <View style={styles.activityImageWrap}>
         <Image source={item.image} style={styles.activityImage} />
-      </PressScale>
+        <View style={styles.imageOverlay} />
+        <View style={styles.dateBadge}>
+          <Text style={styles.dateBadgeText}>{item.dateBadge}</Text>
+        </View>
+      </View>
       <View style={styles.activityBody}>
         <View style={styles.activityTopLine}>
           <View style={styles.categoryPill}>
@@ -57,11 +54,22 @@ export function ActivityCard({ item, onImagePress, onPress }: ActivityCardProps)
         </View>
         <View style={styles.activityMetaRow}>
           <MapPin color="#17803C" size={17} strokeWidth={2.2} />
-          <Text numberOfLines={1} style={styles.activityMeta}>{item.category}</Text>
+          <Text numberOfLines={1} style={styles.activityMeta}>{item.location}</Text>
         </View>
-        <View style={styles.activityFooter}>
+        <View style={styles.activityMetaRow}>
+          <UserRound color="#17803C" size={17} strokeWidth={2.2} />
+          <Text numberOfLines={1} style={styles.activityMeta}>{item.organizer}</Text>
+        </View>
+        <PressScale
+          accessibilityLabel={item.cta}
+          accessibilityRole="button"
+          onPress={onCtaPress}
+          scaleTo={0.97}
+          style={styles.activityFooter}
+          pressedStyle={styles.pressed}
+        >
           <Text style={styles.greenCtaText}>{item.cta}</Text>
-        </View>
+        </PressScale>
       </View>
     </PressScale>
   )
@@ -78,6 +86,7 @@ export function PrivateCard({ item, onPress }: PrivateCardProps) {
     >
       <View style={styles.privateImageWrap}>
         <Image source={item.image} style={styles.privateImage} />
+        <View style={styles.imageOverlay} />
         <View style={styles.capacityBadge}>
           <Text style={styles.capacityText}>{item.capacity}</Text>
         </View>
@@ -141,14 +150,14 @@ export function SuggestionCard({ item, onPress }: SuggestionCardProps) {
 
 const cardShadow = Platform.select({
   web: {
-    boxShadow: '0 18px 34px rgba(7, 57, 45, 0.10)',
+    boxShadow: '0 14px 28px rgba(7, 57, 45, 0.09)',
   },
   default: {
-    elevation: 3,
+    elevation: 2,
     shadowColor: '#07392D',
-    shadowOffset: { width: 0, height: 12 },
-    shadowOpacity: 0.08,
-    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.07,
+    shadowRadius: 16,
   },
 })
 
@@ -161,27 +170,54 @@ const styles = StyleSheet.create({
     borderColor: '#E7E7E1',
     borderRadius: 18,
     borderWidth: 1,
-    marginBottom: 18,
+    flexDirection: 'row',
+    marginBottom: 14,
+    minHeight: 176,
     overflow: 'hidden',
     width: '100%',
     ...cardShadow,
   },
   activityImageWrap: {
-    aspectRatio: 1.72,
     backgroundColor: '#EFF6E9',
+    minHeight: 176,
+    position: 'relative',
+    width: 128,
   },
   activityImage: {
     height: '100%',
     width: '100%',
   },
+  imageOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(7, 29, 25, 0.08)',
+  },
+  dateBadge: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 999,
+    left: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    position: 'absolute',
+    top: 10,
+  },
+  dateBadgeText: {
+    color: '#006A32',
+    fontSize: 11,
+    fontWeight: '900',
+    letterSpacing: 0,
+  },
   activityBody: {
-    padding: 17,
+    flex: 1,
+    minWidth: 0,
+    paddingHorizontal: 14,
+    paddingBottom: 14,
+    paddingTop: 13,
   },
   activityTopLine: {
     alignItems: 'center',
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginBottom: 12,
+    marginBottom: 8,
   },
   categoryPill: {
     alignItems: 'center',
@@ -190,12 +226,12 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: 7,
     maxWidth: '70%',
-    minHeight: 34,
-    paddingHorizontal: 12,
+    minHeight: 30,
+    paddingHorizontal: 10,
   },
   categoryPillText: {
     color: '#17803C',
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: '900',
     letterSpacing: 0,
   },
@@ -205,32 +241,32 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     flexDirection: 'row',
     gap: 5,
-    minHeight: 34,
-    paddingHorizontal: 11,
+    minHeight: 30,
+    paddingHorizontal: 10,
   },
   peopleText: {
     color: '#07392D',
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: '900',
   },
   activityTitle: {
     color: '#063C31',
-    fontSize: 21,
+    fontSize: 17,
     fontWeight: '900',
     letterSpacing: 0,
-    lineHeight: 26,
-    marginBottom: 12,
+    lineHeight: 21,
+    marginBottom: 7,
   },
   activityMetaRow: {
     alignItems: 'center',
     flexDirection: 'row',
     gap: 8,
-    marginTop: 7,
+    marginTop: 5,
   },
   activityMeta: {
     color: '#40534D',
     flex: 1,
-    fontSize: 14,
+    fontSize: 12,
     fontWeight: '700',
     letterSpacing: 0,
   },
@@ -238,9 +274,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     backgroundColor: '#F0F5E9',
     borderRadius: 999,
-    minHeight: 42,
+    minHeight: 36,
     justifyContent: 'center',
-    marginTop: 16,
+    marginTop: 11,
   },
   greenCtaText: {
     color: '#00552E',
@@ -250,7 +286,7 @@ const styles = StyleSheet.create({
   privateCard: {
     backgroundColor: '#FFFFFF',
     borderColor: '#E6E2ED',
-    borderRadius: 12,
+    borderRadius: 18,
     borderWidth: 1,
     marginRight: 16,
     overflow: 'hidden',
@@ -258,7 +294,7 @@ const styles = StyleSheet.create({
     ...cardShadow,
   },
   privateImageWrap: {
-    height: 118,
+    height: 112,
     position: 'relative',
   },
   privateImage: {
@@ -327,7 +363,7 @@ const styles = StyleSheet.create({
   suggestionCard: {
     backgroundColor: '#FFFFFF',
     borderColor: '#E6E6E0',
-    borderRadius: 12,
+    borderRadius: 18,
     borderWidth: 1,
     marginRight: 13,
     minHeight: 208,
