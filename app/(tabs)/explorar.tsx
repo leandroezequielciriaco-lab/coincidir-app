@@ -24,7 +24,6 @@ import {
   DollarSign,
   Dumbbell,
   Filter,
-  Heart,
   Leaf,
   MapPin,
   Mountain,
@@ -39,7 +38,7 @@ import type { LucideIcon } from 'lucide-react-native'
 
 import { PressScale } from '../../components/home/PressScale'
 import { getFirebaseServices } from '../../firebaseConfig'
-import { getCategoryImage } from '../../utils/categoryImages'
+import { defaultActivityImage, getCategoryImage } from '../../utils/categoryImages'
 
 type RecordItem = {
   id: string
@@ -494,19 +493,26 @@ function ExploreBanner({ onPress }: { onPress: () => void }) {
 }
 
 function ExploreCard({ cardWidth, item, onPress }: { cardWidth: number; item: ExploreCardItem; onPress: () => void }) {
+  const [imageSource, setImageSource] = useState(item.image || defaultActivityImage)
+
+  useEffect(() => {
+    setImageSource(item.image || defaultActivityImage)
+  }, [item.image])
+
   return (
     <Pressable accessibilityRole="button" onPress={onPress} style={({ pressed }) => [styles.exploreCard, { width: cardWidth }, pressed && styles.cardPressed]}>
       <View style={styles.cardImageWrap}>
-        <Image source={item.image} style={styles.cardImage} />
+        <Image
+          onError={() => setImageSource(defaultActivityImage)}
+          source={imageSource}
+          style={styles.cardImage}
+        />
         <View style={styles.cardIcon}>
           <item.Icon color="#17803C" size={31} strokeWidth={2.2} />
         </View>
       </View>
       <View style={styles.cardBody}>
-        <View style={styles.cardTitleRow}>
-          <Text numberOfLines={2} style={styles.cardTitle}>{item.title}</Text>
-          <Heart color="#063C31" size={24} strokeWidth={2.1} />
-        </View>
+        <Text numberOfLines={2} style={styles.cardTitle}>{item.title}</Text>
         <View style={styles.cardMetaRow}>
           <MapPin color="#0E5A44" size={16} strokeWidth={2.2} />
           <Text numberOfLines={2} style={styles.cardMeta}>{item.location}</Text>
@@ -863,14 +869,8 @@ const styles = StyleSheet.create({
     padding: 14,
     paddingTop: 18,
   },
-  cardTitleRow: {
-    alignItems: 'flex-start',
-    flexDirection: 'row',
-    gap: 8,
-  },
   cardTitle: {
     color: '#063C31',
-    flex: 1,
     fontSize: 17,
     fontWeight: '900',
     letterSpacing: 0,

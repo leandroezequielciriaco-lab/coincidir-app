@@ -16,16 +16,16 @@ export default function TabsLayout() {
     backgroundColor: '#FFFFFF',
     borderTopColor: '#EFE9DF',
     borderTopWidth: 1,
-    borderTopLeftRadius: 26,
-    borderTopRightRadius: 26,
-    height: 64 + bottomInset,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    height: 66 + bottomInset,
     paddingBottom: bottomInset,
-    paddingTop: 9,
+    paddingTop: 8,
     position: 'absolute' as const,
     shadowColor: '#07392D',
     shadowOffset: { width: 0, height: -8 },
-    shadowOpacity: 0.08,
-    shadowRadius: 18,
+    shadowOpacity: 0.1,
+    shadowRadius: 20,
     elevation: 12,
   }
 
@@ -34,11 +34,18 @@ export default function TabsLayout() {
       screenOptions={{
         headerShown: false,
         tabBarActiveTintColor: '#155C47',
-        tabBarInactiveTintColor: '#98A19C',
+        tabBarInactiveTintColor: '#7A817D',
+        tabBarIconStyle: {
+          marginTop: 1,
+        },
+        tabBarItemStyle: {
+          paddingTop: 2,
+        },
         tabBarLabelStyle: {
           fontSize: 11,
-          fontWeight: '800',
+          fontWeight: '900',
           letterSpacing: 0,
+          marginTop: 1,
         },
         tabBarStyle,
       }}
@@ -71,18 +78,18 @@ export default function TabsLayout() {
                 borderColor: '#FFFFFF',
                 borderRadius: 999,
                 borderWidth: 4,
-                height: 60,
+                height: 58,
                 justifyContent: 'center',
-                marginTop: -26,
-                width: 60,
+                marginTop: -24,
+                width: 58,
                 shadowColor: '#16823A',
-                shadowOffset: { width: 0, height: 10 },
+                shadowOffset: { width: 0, height: 8 },
                 shadowOpacity: focused ? 0.26 : 0.18,
-                shadowRadius: 16,
+                shadowRadius: 14,
                 elevation: 6,
               }}
             >
-              <Plus color="#FFFFFF" size={25} strokeWidth={3} />
+              <Plus color="#FFFFFF" size={24} strokeWidth={3} />
             </View>
           ),
           tabBarLabelStyle: {

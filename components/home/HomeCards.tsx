@@ -1,8 +1,10 @@
+import { useEffect, useState } from 'react'
 import { Image, Platform, Pressable, StyleSheet, Text, View } from 'react-native'
 import { CalendarDays, MapPin, UserRound, UsersRound } from 'lucide-react-native'
 
 import { PressScale } from './PressScale'
 import type { ActivityCardItem, PrivateCardItem, SuggestionCardItem } from './types'
+import { defaultActivityImage } from '../../utils/categoryImages'
 
 type ActivityCardProps = {
   item: ActivityCardItem
@@ -21,45 +23,61 @@ type SuggestionCardProps = {
 }
 
 export function ActivityCard({ item, onCtaPress, onPress }: ActivityCardProps) {
+  const [imageSource, setImageSource] = useState(item.image || defaultActivityImage)
+
+  useEffect(() => {
+    setImageSource(item.image || defaultActivityImage)
+  }, [item.image])
+
   return (
     <View style={styles.activityCard}>
       <Pressable
         accessibilityLabel={`Ver detalle de ${item.title}`}
         accessibilityRole="button"
         onPress={onPress}
-        style={({ pressed }) => [StyleSheet.absoluteFill, pressed && styles.pressed, styles.cardHitArea]}
-      />
-      <View style={styles.activityImageWrap}>
-        <Image source={item.image} style={styles.activityImage} />
+        style={({ pressed }) => [styles.activityImageWrap, pressed && styles.pressed]}
+      >
+        <Image
+          onError={() => setImageSource(defaultActivityImage)}
+          source={imageSource}
+          style={styles.activityImage}
+        />
         <View style={styles.imageOverlay} />
         <View style={styles.dateBadge}>
           <Text style={styles.dateBadgeText}>{item.dateBadge}</Text>
         </View>
-      </View>
+      </Pressable>
       <View style={styles.activityBody}>
-        <View style={styles.activityTopLine}>
-          <View style={styles.categoryPill}>
-            <item.Icon color="#17803C" size={16} strokeWidth={2.3} />
-            <Text numberOfLines={1} style={styles.categoryPillText}>{item.iconLabel}</Text>
+        <Pressable
+          accessibilityLabel={`Ver detalle de ${item.title}`}
+          accessibilityRole="button"
+          onPress={onPress}
+          style={({ pressed }) => [styles.activityContentPressArea, pressed && styles.pressed]}
+        >
+          <View style={styles.activityTopLine}>
+            <View style={styles.categoryPill}>
+              <item.Icon color="#17803C" size={16} strokeWidth={2.3} />
+              <Text numberOfLines={1} style={styles.categoryPillText}>{item.iconLabel}</Text>
+            </View>
+            <View style={styles.peopleInline}>
+              <UsersRound color="#07392D" size={15} strokeWidth={2.4} />
+              <Text style={styles.peopleText}>{item.people}</Text>
+            </View>
           </View>
-          <View style={styles.peopleInline}>
-            <UsersRound color="#07392D" size={15} strokeWidth={2.4} />
-            <Text style={styles.peopleText}>{item.people}</Text>
+          <Text numberOfLines={2} style={styles.activityTitle}>{item.title}</Text>
+          <View style={styles.activityMetaRow}>
+            <CalendarDays color="#17803C" size={17} strokeWidth={2.2} />
+            <Text numberOfLines={1} style={styles.activityMeta}>{item.dateTime}</Text>
           </View>
-        </View>
-        <Text numberOfLines={2} style={styles.activityTitle}>{item.title}</Text>
-        <View style={styles.activityMetaRow}>
-          <CalendarDays color="#17803C" size={17} strokeWidth={2.2} />
-          <Text numberOfLines={1} style={styles.activityMeta}>{item.dateTime}</Text>
-        </View>
-        <View style={styles.activityMetaRow}>
-          <MapPin color="#17803C" size={17} strokeWidth={2.2} />
-          <Text numberOfLines={1} style={styles.activityMeta}>{item.location}</Text>
-        </View>
-        <View style={styles.activityMetaRow}>
-          <UserRound color="#17803C" size={17} strokeWidth={2.2} />
-          <Text numberOfLines={1} style={styles.activityMeta}>{item.organizer}</Text>
-        </View>
+          <View style={styles.activityMetaRow}>
+            <MapPin color="#17803C" size={17} strokeWidth={2.2} />
+            <Text numberOfLines={1} style={styles.activityMeta}>{item.location}</Text>
+          </View>
+          <View style={styles.activityMetaRow}>
+            <UserRound color="#17803C" size={17} strokeWidth={2.2} />
+            <Text numberOfLines={1} style={styles.activityMeta}>{item.organizer}</Text>
+          </View>
+        </Pressable>
         <Pressable
           accessibilityLabel={item.cta}
           accessibilityRole="button"
@@ -74,6 +92,12 @@ export function ActivityCard({ item, onCtaPress, onPress }: ActivityCardProps) {
 }
 
 export function PrivateCard({ item, onPress }: PrivateCardProps) {
+  const [imageSource, setImageSource] = useState(item.image || defaultActivityImage)
+
+  useEffect(() => {
+    setImageSource(item.image || defaultActivityImage)
+  }, [item.image])
+
   return (
     <PressScale
       accessibilityLabel={item.cta}
@@ -83,7 +107,11 @@ export function PrivateCard({ item, onPress }: PrivateCardProps) {
       pressedStyle={styles.pressed}
     >
       <View style={styles.privateImageWrap}>
-        <Image source={item.image} style={styles.privateImage} />
+        <Image
+          onError={() => setImageSource(defaultActivityImage)}
+          source={imageSource}
+          style={styles.privateImage}
+        />
         <View style={styles.imageOverlay} />
         <View style={styles.capacityBadge}>
           <Text style={styles.capacityText}>{item.capacity}</Text>
@@ -176,9 +204,6 @@ const styles = StyleSheet.create({
     width: '100%',
     ...cardShadow,
   },
-  cardHitArea: {
-    zIndex: 1,
-  },
   activityImageWrap: {
     backgroundColor: '#EFF6E9',
     bottom: 0,
@@ -188,6 +213,9 @@ const styles = StyleSheet.create({
     top: 0,
     width: 136,
     zIndex: 2,
+  },
+  activityContentPressArea: {
+    flexShrink: 1,
   },
   activityImage: {
     height: '100%',

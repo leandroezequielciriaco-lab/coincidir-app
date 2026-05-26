@@ -63,6 +63,7 @@ import type { LucideIcon } from 'lucide-react-native'
 
 import { PressScale } from '../../components/home/PressScale'
 import { getFirebaseServices } from '../../firebaseConfig'
+import { defaultActivityImage, getCategoryImage } from '../../utils/categoryImages'
 
 type FirestoreRecord = {
   id: string
@@ -536,11 +537,29 @@ function ProfileRow({ item, onPress, variant }: { item: FirestoreRecord; onPress
   const date = readString(item.data.date, readString(item.data.schedule, variant === 'group' ? 'Próximo encuentro' : 'Fecha a definir'))
   const participants = getParticipantCount(item.data)
   const iconColor = variant === 'group' ? '#4B348A' : '#006A32'
+  const [imageSource, setImageSource] = useState(getCategoryImage(item.data))
+
+  useEffect(() => {
+    setImageSource(getCategoryImage(item.data))
+  }, [item.data])
 
   return (
     <PressScale onPress={onPress} scaleTo={0.98} style={styles.profileRow}>
       <View style={[styles.rowThumb, variant === 'group' && styles.rowThumbGroup]}>
-        {variant === 'group' ? <UsersRound color={iconColor} size={21} strokeWidth={2.2} /> : <CalendarDays color={iconColor} size={20} strokeWidth={2.2} />}
+        {variant === 'group' ? (
+          <UsersRound color={iconColor} size={21} strokeWidth={2.2} />
+        ) : (
+          <>
+            <Image
+              onError={() => setImageSource(defaultActivityImage)}
+              source={imageSource}
+              style={styles.rowThumbImage}
+            />
+            <View style={styles.rowThumbIcon}>
+              <CalendarDays color="#006A32" size={13} strokeWidth={2.4} />
+            </View>
+          </>
+        )}
       </View>
       <View style={styles.rowCopy}>
         <Text ellipsizeMode="tail" numberOfLines={1} style={styles.rowTitle}>{title}</Text>
@@ -1226,11 +1245,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     backgroundColor: '#FFFFFF',
     borderColor: '#E7E7E1',
-    borderRadius: 14,
+    borderRadius: 18,
     borderWidth: 1,
     flexDirection: 'row',
     gap: 12,
-    minHeight: 78,
+    minHeight: 98,
     paddingHorizontal: 12,
     paddingVertical: 11,
     ...cardShadow,
@@ -1238,13 +1257,34 @@ const styles = StyleSheet.create({
   rowThumb: {
     alignItems: 'center',
     backgroundColor: '#EFF6E9',
-    borderRadius: 999,
-    height: 46,
+    borderRadius: 16,
+    height: 76,
     justifyContent: 'center',
-    width: 46,
+    overflow: 'hidden',
+    position: 'relative',
+    width: 76,
   },
   rowThumbGroup: {
     backgroundColor: '#F4EEF9',
+    borderRadius: 16,
+  },
+  rowThumbImage: {
+    height: '100%',
+    resizeMode: 'cover',
+    width: '100%',
+  },
+  rowThumbIcon: {
+    alignItems: 'center',
+    backgroundColor: '#F7FAF5',
+    borderColor: '#FFFFFF',
+    borderRadius: 999,
+    borderWidth: 2,
+    bottom: 6,
+    height: 28,
+    justifyContent: 'center',
+    position: 'absolute',
+    right: 6,
+    width: 28,
   },
   rowCopy: {
     flex: 1,

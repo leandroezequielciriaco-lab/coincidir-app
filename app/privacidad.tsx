@@ -262,11 +262,13 @@ function LegalRow({
       onPress={onPress}
       style={({ pressed }) => [styles.legalRow, isLast && styles.legalRowLast, pressed && styles.rowPressed]}
     >
-      <View style={[styles.legalIcon, destructive && styles.rowIconDestructive]}>
-        <Icon color={color} size={21} strokeWidth={2.2} />
+      <View style={styles.legalRowContent}>
+        <View style={[styles.legalIcon, destructive && styles.rowIconDestructive]}>
+          <Icon color={color} size={20} strokeWidth={2.2} />
+        </View>
+        <Text numberOfLines={1} style={[styles.legalLabel, destructive && styles.destructiveText]}>{label}</Text>
+        <ChevronRight color={color} size={20} strokeWidth={2.2} />
       </View>
-      <Text numberOfLines={1} style={[styles.legalLabel, destructive && styles.destructiveText]}>{label}</Text>
-      <ChevronRight color={color} size={20} strokeWidth={2.2} style={styles.legalChevron} />
     </Pressable>
   )
 }
@@ -386,15 +388,19 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
   },
   legalRow: {
-    alignItems: 'center',
     alignSelf: 'stretch',
     borderBottomColor: '#EFEEE9',
     borderBottomWidth: 1,
+    minHeight: 58,
+    width: '100%',
+  },
+  legalRowContent: {
+    alignItems: 'center',
     flexDirection: 'row',
-    gap: 12,
-    minHeight: 68,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
+    gap: 11,
+    minHeight: 58,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
     width: '100%',
   },
   legalRowLast: {
@@ -417,11 +423,11 @@ const styles = StyleSheet.create({
   legalIcon: {
     alignItems: 'center',
     backgroundColor: '#EFF6E9',
-    borderRadius: 14,
+    borderRadius: 13,
     flexShrink: 0,
-    height: 42,
+    height: 38,
     justifyContent: 'center',
-    width: 42,
+    width: 38,
   },
   legalLabel: {
     color: '#071D19',
@@ -429,12 +435,8 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '900',
     letterSpacing: 0,
-    lineHeight: 20,
+    lineHeight: 19,
     minWidth: 0,
-  },
-  legalChevron: {
-    flexShrink: 0,
-    marginLeft: 'auto',
   },
   rowLabel: {
     color: '#071D19',
