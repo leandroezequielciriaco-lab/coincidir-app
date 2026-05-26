@@ -1,4 +1,4 @@
-import { Alert, Platform, ScrollView, StyleSheet, Text, View } from 'react-native'
+import { Alert, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
 import { useRouter } from 'expo-router'
 import type { Href } from 'expo-router'
 import { SafeAreaView } from 'react-native-safe-area-context'
@@ -20,12 +20,12 @@ import { getFirebaseServices } from '../firebaseConfig'
 
 const LOGIN_ROUTE = '/login' as Href
 
-const settingsItems: { label: string; Icon: LucideIcon; destructive?: boolean; route?: Href }[] = [
-  { label: 'Mi cuenta', Icon: UserRound, route: '/mi-cuenta' as Href },
-  { label: 'Notificaciones', Icon: Bell, route: '/notificaciones' as Href },
-  { label: 'Privacidad', Icon: LockKeyhole, route: '/privacidad' as Href },
-  { label: 'Ayuda', Icon: CircleHelp, route: '/ayuda' as Href },
-  { label: 'Cerrar sesión', Icon: LogOut, destructive: true },
+const settingsItems: { label: string; subtitle: string; Icon: LucideIcon; destructive?: boolean; route?: Href }[] = [
+  { label: 'Mi cuenta', subtitle: 'Editá tus datos personales', Icon: UserRound, route: '/mi-cuenta' as Href },
+  { label: 'Notificaciones', subtitle: 'Elegí qué avisos recibir', Icon: Bell, route: '/notificaciones' as Href },
+  { label: 'Privacidad', subtitle: 'Controlá tu seguridad y visibilidad', Icon: LockKeyhole, route: '/privacidad' as Href },
+  { label: 'Ayuda', subtitle: 'Preguntas frecuentes y soporte', Icon: CircleHelp, route: '/ayuda' as Href },
+  { label: 'Cerrar sesión', subtitle: 'Salir de tu cuenta', Icon: LogOut, destructive: true },
 ]
 
 export default function AjustesScreen() {
@@ -61,7 +61,10 @@ export default function AjustesScreen() {
           >
             <ChevronLeft color="#063C31" size={27} strokeWidth={2.5} />
           </PressScale>
-          <Text style={styles.title}>Ajustes</Text>
+          <View style={styles.titleBlock}>
+            <Text style={styles.title}>Ajustes</Text>
+            <Text style={styles.versionText}>COINCIDIR Beta v0.1</Text>
+          </View>
           <View style={styles.headerSpacer} />
         </View>
 
@@ -76,16 +79,19 @@ export default function AjustesScreen() {
         </View>
 
         <View style={styles.list}>
-          {settingsItems.map((item) => (
+          {settingsItems.map((item, index) => (
             <SettingsRow
               Icon={item.Icon}
               destructive={item.destructive}
+              isLast={index === settingsItems.length - 1}
               key={item.label}
               label={item.label}
               onPress={() => handlePress(item)}
+              subtitle={item.subtitle}
             />
           ))}
         </View>
+        <Text style={styles.betaText}>COINCIDIR Beta</Text>
       </ScrollView>
     </SafeAreaView>
   )
@@ -94,26 +100,41 @@ export default function AjustesScreen() {
 function SettingsRow({
   destructive,
   Icon,
+  isLast,
   label,
   onPress,
+  subtitle,
 }: {
   destructive?: boolean
   Icon: LucideIcon
+  isLast: boolean
   label: string
   onPress: () => void
+  subtitle: string
 }) {
   const color = destructive ? '#B42318' : '#063C31'
 
   return (
-    <View style={styles.rowWrap}>
-      <PressScale accessibilityRole="button" onPress={onPress} scaleTo={0.98} style={styles.row}>
-        <View style={[styles.rowIcon, destructive && styles.rowIconDestructive]}>
-          <Icon color={color} size={22} strokeWidth={2.2} />
-        </View>
-        <Text style={[styles.rowLabel, destructive && styles.rowLabelDestructive]}>{label}</Text>
-        <ChevronRight color={destructive ? '#B42318' : '#40534D'} size={20} strokeWidth={2.2} />
-      </PressScale>
-    </View>
+    <Pressable
+      accessibilityRole="button"
+      onPress={onPress}
+      style={({ pressed }) => [
+        styles.row,
+        isLast && styles.rowLast,
+        pressed && styles.rowPressed,
+      ]}
+    >
+      <View style={[styles.rowIcon, destructive && styles.rowIconDestructive]}>
+        <Icon color={color} size={20} strokeWidth={2.2} />
+      </View>
+      <View style={styles.rowCopy}>
+        <Text numberOfLines={1} style={[styles.rowLabel, destructive && styles.rowLabelDestructive]}>{label}</Text>
+        <Text numberOfLines={1} style={[styles.rowSubtitle, destructive && styles.rowSubtitleDestructive]}>{subtitle}</Text>
+      </View>
+      <View style={styles.rowChevron}>
+        <ChevronRight color={destructive ? '#B42318' : '#8A9691'} size={19} strokeWidth={2.2} />
+      </View>
+    </Pressable>
   )
 }
 
@@ -162,6 +183,20 @@ const styles = StyleSheet.create({
     fontSize: 24,
     fontWeight: '900',
     letterSpacing: 0,
+  },
+  titleBlock: {
+    alignItems: 'center',
+    flex: 1,
+  },
+  versionText: {
+    color: '#66736E',
+    fontSize: 11,
+    fontWeight: '800',
+    letterSpacing: 0,
+    lineHeight: 14,
+    marginTop: 2,
+    opacity: 0.58,
+    textAlign: 'center',
   },
   headerSpacer: {
     width: 44,
@@ -214,11 +249,8 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     borderWidth: 1,
     overflow: 'hidden',
+    paddingVertical: 4,
     ...shadow,
-  },
-  rowWrap: {
-    alignSelf: 'stretch',
-    width: '100%',
   },
   row: {
     alignItems: 'center',
@@ -226,30 +258,68 @@ const styles = StyleSheet.create({
     borderBottomColor: '#EFEEE9',
     borderBottomWidth: 1,
     flexDirection: 'row',
-    gap: 12,
-    minHeight: 68,
+    minHeight: 66,
     paddingHorizontal: 14,
+    paddingVertical: 10,
     width: '100%',
+  },
+  rowCopy: {
+    flex: 1,
+    justifyContent: 'center',
+    marginLeft: 12,
+    minWidth: 0,
+  },
+  rowLast: {
+    borderBottomWidth: 0,
+  },
+  rowPressed: {
+    backgroundColor: '#F8FAF6',
   },
   rowIcon: {
     alignItems: 'center',
     backgroundColor: '#EFF6E9',
-    borderRadius: 14,
-    height: 42,
+    borderRadius: 12,
+    height: 36,
     justifyContent: 'center',
-    width: 42,
+    width: 36,
   },
   rowIconDestructive: {
     backgroundColor: '#FFF2F0',
   },
+  rowChevron: {
+    alignItems: 'center',
+    height: 36,
+    justifyContent: 'center',
+    marginLeft: 10,
+    width: 22,
+  },
   rowLabel: {
     color: '#071D19',
-    flex: 1,
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '900',
     letterSpacing: 0,
+    lineHeight: 19,
   },
   rowLabelDestructive: {
     color: '#B42318',
+  },
+  rowSubtitle: {
+    color: '#66736E',
+    fontSize: 12,
+    fontWeight: '700',
+    letterSpacing: 0,
+    lineHeight: 16,
+    marginTop: 2,
+  },
+  rowSubtitleDestructive: {
+    color: '#A64B43',
+  },
+  betaText: {
+    color: '#8A9691',
+    fontSize: 12,
+    fontWeight: '800',
+    letterSpacing: 0,
+    marginTop: 18,
+    textAlign: 'center',
   },
 })

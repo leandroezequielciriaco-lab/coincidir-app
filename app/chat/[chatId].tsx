@@ -75,6 +75,7 @@ export default function ChatScreen() {
   const [text, setText] = useState('')
   const [isLoading, setIsLoading] = useState(true)
   const [isSending, setIsSending] = useState(false)
+  const canSend = text.trim().length > 0 && !isSending
 
   useEffect(() => {
     try {
@@ -293,12 +294,16 @@ export default function ChatScreen() {
           <PressScale
             accessibilityLabel="Enviar mensaje"
             accessibilityRole="button"
-            disabled={!text.trim() || isSending}
+            disabled={!canSend}
             onPress={sendMessage}
             scaleTo={0.94}
-            style={[styles.sendButton, (!text.trim() || isSending) && styles.sendButtonDisabled]}
+            style={[styles.sendButton, !canSend && styles.sendButtonDisabled]}
           >
-            {isSending ? <ActivityIndicator color="#FFFFFF" size="small" /> : <Send color="#FFFFFF" size={22} strokeWidth={2.4} />}
+            {isSending ? (
+              <ActivityIndicator color="#8C4BD6" size="small" />
+            ) : (
+              <Send color={canSend ? '#8C4BD6' : '#CFC7D8'} size={24} strokeWidth={2.6} />
+            )}
           </PressScale>
         </View>
       </KeyboardAvoidingView>
@@ -471,9 +476,10 @@ const styles = StyleSheet.create({
     borderTopColor: '#EFE9DF',
     borderTopWidth: 1,
     flexDirection: 'row',
-    gap: 10,
+    gap: 12,
     paddingBottom: Platform.OS === 'ios' ? 16 : 12,
-    paddingHorizontal: 14,
+    paddingLeft: 14,
+    paddingRight: 18,
     paddingTop: 10,
   },
   input: {
@@ -493,14 +499,18 @@ const styles = StyleSheet.create({
   },
   sendButton: {
     alignItems: 'center',
-    backgroundColor: '#8C4BD6',
-    borderRadius: 24,
-    height: 48,
+    backgroundColor: '#F0E3FF',
+    borderColor: '#DEC8FA',
+    borderRadius: 999,
+    borderWidth: 1,
+    height: 46,
     justifyContent: 'center',
-    width: 48,
+    marginBottom: 1,
+    width: 46,
   },
   sendButtonDisabled: {
-    opacity: 0.45,
+    backgroundColor: '#F3F1F4',
+    borderColor: '#EEEAEF',
   },
   centerState: {
     alignItems: 'center',

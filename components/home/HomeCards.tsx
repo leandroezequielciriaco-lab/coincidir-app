@@ -1,5 +1,5 @@
 import { Image, Platform, StyleSheet, Text, View } from 'react-native'
-import { UsersRound } from 'lucide-react-native'
+import { CalendarDays, MapPin, UsersRound } from 'lucide-react-native'
 
 import { PressScale } from './PressScale'
 import type { ActivityCardItem, PrivateCardItem, SuggestionCardItem } from './types'
@@ -30,28 +30,28 @@ export function ActivityCard({ item, onPress }: ActivityCardProps) {
     >
       <View style={styles.activityImageWrap}>
         <Image source={item.image} style={styles.activityImage} />
-        <View style={styles.topBadges}>
-          <View style={styles.dateBadge}>
-            <Text style={styles.dateText}>{item.dateBadge}</Text>
+      </View>
+      <View style={styles.activityBody}>
+        <View style={styles.activityTopLine}>
+          <View style={styles.categoryPill}>
+            <item.Icon color="#17803C" size={16} strokeWidth={2.3} />
+            <Text numberOfLines={1} style={styles.categoryPillText}>{item.iconLabel}</Text>
           </View>
-          <View style={styles.peopleBadge}>
-            <UsersRound color="#07392D" size={14} strokeWidth={3} />
+          <View style={styles.peopleInline}>
+            <UsersRound color="#07392D" size={15} strokeWidth={2.4} />
             <Text style={styles.peopleText}>{item.people}</Text>
           </View>
         </View>
-      </View>
-      <View style={styles.activityIcon}>
-        <item.Icon color="#17803C" size={30} strokeWidth={2.2} />
-      </View>
-      <View style={styles.activityBody}>
-        <Text style={styles.cardCategory}>{item.iconLabel}</Text>
-        <Text numberOfLines={2} style={styles.activityTitle}>
-          {item.title}
-        </Text>
-        <Text numberOfLines={1} style={styles.activityMeta}>
-          {item.dateTime}
-        </Text>
-        <View style={styles.greenCta}>
+        <Text numberOfLines={2} style={styles.activityTitle}>{item.title}</Text>
+        <View style={styles.activityMetaRow}>
+          <CalendarDays color="#17803C" size={17} strokeWidth={2.2} />
+          <Text numberOfLines={1} style={styles.activityMeta}>{item.dateTime}</Text>
+        </View>
+        <View style={styles.activityMetaRow}>
+          <MapPin color="#17803C" size={17} strokeWidth={2.2} />
+          <Text numberOfLines={1} style={styles.activityMeta}>{item.category}</Text>
+        </View>
+        <View style={styles.activityFooter}>
           <Text style={styles.greenCtaText}>{item.cta}</Text>
         </View>
       </View>
@@ -151,104 +151,88 @@ const styles = StyleSheet.create({
   activityCard: {
     backgroundColor: '#FFFFFF',
     borderColor: '#E7E7E1',
-    borderRadius: 13,
+    borderRadius: 18,
     borderWidth: 1,
-    marginRight: 16,
+    marginBottom: 18,
     overflow: 'hidden',
-    width: 248,
+    width: '100%',
     ...cardShadow,
   },
   activityImageWrap: {
-    height: 160,
-    position: 'relative',
+    aspectRatio: 1.72,
+    backgroundColor: '#EFF6E9',
   },
   activityImage: {
     height: '100%',
     width: '100%',
   },
-  topBadges: {
+  activityBody: {
+    padding: 17,
+  },
+  activityTopLine: {
+    alignItems: 'center',
     flexDirection: 'row',
     justifyContent: 'space-between',
-    left: 11,
-    position: 'absolute',
-    right: 11,
-    top: 11,
+    marginBottom: 12,
   },
-  dateBadge: {
-    backgroundColor: '#F7FAF5',
+  categoryPill: {
+    alignItems: 'center',
+    backgroundColor: '#F0F5E9',
     borderRadius: 999,
-    paddingHorizontal: 13,
-    paddingVertical: 8,
+    flexDirection: 'row',
+    gap: 7,
+    maxWidth: '70%',
+    minHeight: 34,
+    paddingHorizontal: 12,
   },
-  dateText: {
-    color: '#006A32',
+  categoryPillText: {
+    color: '#17803C',
     fontSize: 13,
     fontWeight: '900',
     letterSpacing: 0,
   },
-  peopleBadge: {
+  peopleInline: {
     alignItems: 'center',
     backgroundColor: '#F7FAF5',
     borderRadius: 999,
     flexDirection: 'row',
-    gap: 4,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
+    gap: 5,
+    minHeight: 34,
+    paddingHorizontal: 11,
   },
   peopleText: {
     color: '#07392D',
     fontSize: 13,
     fontWeight: '900',
   },
-  activityIcon: {
-    alignItems: 'center',
-    backgroundColor: '#F1F7EB',
-    borderColor: '#FFFFFF',
-    borderRadius: 999,
-    borderWidth: 3,
-    height: 60,
-    justifyContent: 'center',
-    left: 22,
-    position: 'absolute',
-    top: 128,
-    width: 60,
-  },
-  activityBody: {
-    paddingBottom: 16,
-    paddingHorizontal: 16,
-    paddingTop: 18,
-  },
-  cardCategory: {
-    alignSelf: 'flex-end',
-    color: '#17803C',
-    fontSize: 13,
-    fontWeight: '800',
-    letterSpacing: 0,
-    marginBottom: 16,
-  },
   activityTitle: {
     color: '#063C31',
-    fontSize: 18,
+    fontSize: 21,
     fontWeight: '900',
     letterSpacing: 0,
-    lineHeight: 23,
-    marginBottom: 11,
+    lineHeight: 26,
+    marginBottom: 12,
+  },
+  activityMetaRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 8,
+    marginTop: 7,
   },
   activityMeta: {
-    color: '#193F37',
+    color: '#40534D',
+    flex: 1,
     fontSize: 14,
-    fontWeight: '500',
+    fontWeight: '700',
     letterSpacing: 0,
-    marginBottom: 16,
   },
-  greenCta: {
+  activityFooter: {
     alignItems: 'center',
-    alignSelf: 'center',
     backgroundColor: '#F0F5E9',
     borderRadius: 999,
-    minHeight: 36,
+    minHeight: 42,
     justifyContent: 'center',
-    width: 154,
+    marginTop: 16,
   },
   greenCtaText: {
     color: '#00552E',

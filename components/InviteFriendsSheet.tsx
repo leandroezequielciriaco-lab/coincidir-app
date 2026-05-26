@@ -219,7 +219,7 @@ type InviteOptionProps = {
   onPress: () => void
 }
 
-function InviteOption({ Icon, color, description, label, onPress }: InviteOptionProps) {
+function InviteOption({ Icon, color, label, onPress }: InviteOptionProps) {
   return (
     <Pressable
       accessibilityRole="button"
@@ -229,10 +229,7 @@ function InviteOption({ Icon, color, description, label, onPress }: InviteOption
       <View style={[styles.optionIcon, { backgroundColor: `${color}18` }]}>
         <Icon color={color} size={23} strokeWidth={2.3} />
       </View>
-      <View style={styles.optionCopy}>
-        <Text numberOfLines={1} style={styles.optionTitle}>{label}</Text>
-        <Text numberOfLines={1} style={styles.optionDescription}>{description}</Text>
-      </View>
+      <Text numberOfLines={1} style={styles.optionTitle}>{label}</Text>
       <View style={styles.optionArrow}>
         <ChevronRight color="#10231F" size={20} strokeWidth={2.3} />
       </View>
@@ -326,6 +323,7 @@ const styles = StyleSheet.create({
     minHeight: 72,
     paddingHorizontal: 12,
     paddingVertical: 10,
+    position: 'relative',
     width: '100%',
   },
   optionPressed: {
@@ -339,37 +337,28 @@ const styles = StyleSheet.create({
     marginRight: 12,
     width: 42,
   },
-  optionCopy: {
-    flex: 1,
-    flexGrow: 1,
-    flexShrink: 1,
-    minWidth: 0,
-    paddingRight: 10,
-  },
   optionTitle: {
     color: '#073B35',
     fontSize: 17,
-    fontWeight: '700',
+    fontWeight: '900',
+    left: 66,
     letterSpacing: 0,
     lineHeight: 22,
+    position: 'absolute',
+    right: 44,
     textAlign: 'left',
-  },
-  optionDescription: {
-    color: '#586A64',
-    flexShrink: 1,
-    fontSize: 12,
-    fontWeight: '600',
-    letterSpacing: 0,
-    lineHeight: 17,
-    marginTop: 2,
-    textAlign: 'left',
+    textAlignVertical: 'center',
+    top: 24,
+    zIndex: 2,
   },
   optionArrow: {
     alignItems: 'center',
     flexShrink: 0,
     height: 32,
     justifyContent: 'center',
+    marginLeft: 'auto',
     width: 24,
+    zIndex: 3,
   },
   feedback: {
     color: '#17803C',

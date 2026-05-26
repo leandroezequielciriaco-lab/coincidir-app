@@ -207,7 +207,7 @@ export default function PrivacidadScreen() {
         <View style={styles.legalCard}>
           <LegalRow Icon={LockKeyhole} label="Política de privacidad" onPress={showComingSoon} />
           <LegalRow Icon={ShieldCheck} label="Términos y condiciones" onPress={showComingSoon} />
-          <LegalRow destructive Icon={Trash2} label="Eliminar mi cuenta" onPress={confirmDeleteAccount} />
+          <LegalRow destructive Icon={Trash2} isLast label="Eliminar mi cuenta" onPress={confirmDeleteAccount} />
         </View>
       </ScrollView>
     </SafeAreaView>
@@ -244,11 +244,13 @@ function PrivacyRow({
 function LegalRow({
   destructive,
   Icon,
+  isLast,
   label,
   onPress,
 }: {
   destructive?: boolean
   Icon: LucideIcon
+  isLast?: boolean
   label: string
   onPress: () => void
 }) {
@@ -258,13 +260,13 @@ function LegalRow({
     <Pressable
       accessibilityRole="button"
       onPress={onPress}
-      style={({ pressed }) => [styles.legalRow, pressed && styles.rowPressed]}
+      style={({ pressed }) => [styles.legalRow, isLast && styles.legalRowLast, pressed && styles.rowPressed]}
     >
-      <View style={[styles.rowIcon, destructive && styles.rowIconDestructive]}>
+      <View style={[styles.legalIcon, destructive && styles.rowIconDestructive]}>
         <Icon color={color} size={21} strokeWidth={2.2} />
       </View>
-      <Text numberOfLines={1} style={[styles.rowLabel, destructive && styles.destructiveText]}>{label}</Text>
-      <ChevronRight color={color} size={20} strokeWidth={2.2} />
+      <Text numberOfLines={1} style={[styles.legalLabel, destructive && styles.destructiveText]}>{label}</Text>
+      <ChevronRight color={color} size={20} strokeWidth={2.2} style={styles.legalChevron} />
     </Pressable>
   )
 }
@@ -364,6 +366,7 @@ const styles = StyleSheet.create({
     ...shadow,
   },
   legalCard: {
+    alignSelf: 'stretch',
     backgroundColor: '#FFFFFF',
     borderColor: '#E7E7E1',
     borderRadius: 20,
@@ -384,12 +387,18 @@ const styles = StyleSheet.create({
   },
   legalRow: {
     alignItems: 'center',
+    alignSelf: 'stretch',
     borderBottomColor: '#EFEEE9',
     borderBottomWidth: 1,
     flexDirection: 'row',
     gap: 12,
-    minHeight: 66,
-    paddingHorizontal: 14,
+    minHeight: 68,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    width: '100%',
+  },
+  legalRowLast: {
+    borderBottomWidth: 0,
   },
   rowPressed: {
     opacity: 0.82,
@@ -404,6 +413,28 @@ const styles = StyleSheet.create({
   },
   rowIconDestructive: {
     backgroundColor: '#FFF2F0',
+  },
+  legalIcon: {
+    alignItems: 'center',
+    backgroundColor: '#EFF6E9',
+    borderRadius: 14,
+    flexShrink: 0,
+    height: 42,
+    justifyContent: 'center',
+    width: 42,
+  },
+  legalLabel: {
+    color: '#071D19',
+    flex: 1,
+    fontSize: 15,
+    fontWeight: '900',
+    letterSpacing: 0,
+    lineHeight: 20,
+    minWidth: 0,
+  },
+  legalChevron: {
+    flexShrink: 0,
+    marginLeft: 'auto',
   },
   rowLabel: {
     color: '#071D19',

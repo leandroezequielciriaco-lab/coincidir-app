@@ -194,6 +194,20 @@ function getRecordTime(record: CreatedRecord) {
     : 0
 }
 
+function getActivityTime(record: CreatedRecord) {
+  const isoDate = readString(record.data.activityDateISO)
+  const parsedIsoDate = isoDate ? Date.parse(isoDate) : Number.NaN
+
+  if (Number.isFinite(parsedIsoDate)) return parsedIsoDate
+
+  const activityDate = record.data.activityDate
+  if (typeof activityDate === 'object' && activityDate && 'toMillis' in activityDate && typeof activityDate.toMillis === 'function') {
+    return activityDate.toMillis()
+  }
+
+  return getRecordTime(record)
+}
+
 function getJoinKey(collectionName: JoinableCollection, id: string) {
   return `${collectionName}:${id}`
 }
@@ -686,6 +700,7 @@ export default function HomeScreen() {
     () =>
       filteredActivities
         .filter((item) => getCategoryId(item.data) !== 'private')
+        .sort((left, right) => getActivityTime(left) - getActivityTime(right))
         .map((item) => mapActivityCard(item, getJoinState(item, 'activities', currentUserId, optimisticJoins))),
     [currentUserId, filteredActivities, optimisticJoins],
   )
@@ -738,6 +753,9 @@ export default function HomeScreen() {
             <Text style={styles.prompt}>¿Qué vamos a hacer hoy?</Text>
           </View>
           <View style={styles.headerActions}>
+            <View style={styles.betaBadge}>
+              <Text style={styles.betaBadgeText}>BETA</Text>
+            </View>
             <PressScale
               accessibilityLabel="Abrir notificaciones"
               accessibilityRole="button"
@@ -902,6 +920,7 @@ export default function HomeScreen() {
                 />
               )}
               title="Encuentros cerca de vos"
+              variant="vertical"
             />
 
             <Section
@@ -976,6 +995,7 @@ type SectionProps<T> = {
   emptySubtitle?: string
   emptyTitle?: string
   renderItem: ({ item }: { item: T }) => ReactElement
+  variant?: 'horizontal' | 'vertical'
 }
 
 function Section<T extends { id: string }>({
@@ -986,6 +1006,7 @@ function Section<T extends { id: string }>({
   emptySubtitle,
   emptyTitle,
   renderItem,
+  variant = 'horizontal',
 }: SectionProps<T>) {
   const color = accent === 'violet' ? '#39206C' : '#006A32'
 
@@ -1005,6 +1026,14 @@ function Section<T extends { id: string }>({
       </View>
       {data.length === 0 ? (
         <EmptyState subtitle={emptySubtitle} title={emptyTitle ?? ''} />
+      ) : variant === 'vertical' ? (
+        <View style={styles.verticalFeed}>
+          {data.map((item) => (
+            <View key={item.id}>
+              {renderItem({ item })}
+            </View>
+          ))}
+        </View>
       ) : (
         <FlatList
           data={data}
@@ -1087,7 +1116,22 @@ const styles = StyleSheet.create({
   headerActions: {
     alignItems: 'center',
     flexDirection: 'row',
-    gap: 13,
+    gap: 10,
+  },
+  betaBadge: {
+    alignItems: 'center',
+    backgroundColor: '#18955D',
+    borderRadius: 999,
+    justifyContent: 'center',
+    paddingHorizontal: 9,
+    paddingVertical: 4,
+  },
+  betaBadgeText: {
+    color: '#FFFFFF',
+    fontSize: 10,
+    fontWeight: '900',
+    letterSpacing: 0,
+    lineHeight: 12,
   },
   iconButton: {
     alignItems: 'center',
@@ -1301,6 +1345,9 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     letterSpacing: 0,
     lineHeight: 20,
+  },
+  verticalFeed: {
+    width: '100%',
   },
   emptySearchState: {
     alignItems: 'center',

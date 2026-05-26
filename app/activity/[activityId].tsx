@@ -31,8 +31,6 @@ import {
   MapPin,
   Mountain,
   Spade,
-  Star,
-  UserRound,
   UsersRound,
   Waves,
 } from 'lucide-react-native'
@@ -44,6 +42,11 @@ import { getFirebaseServices } from '../../firebaseConfig'
 
 type ActivityData = Record<string, unknown>
 type CategoryId = 'outdoor' | 'sports' | 'wellness' | 'groups' | 'private'
+type OrganizerProfile = {
+  name: string
+  photoURL: string
+  subtitle: string
+}
 
 const image = (uri: string): ImageSourcePropType => ({ uri })
 
@@ -163,7 +166,39 @@ function getOrganizerName(data: ActivityData) {
     || readString(data.createdByName)
     || readString(data.hostName)
     || readString(data.ownerName)
-    || 'Organizador de Coincidir'
+    || 'Miembro de Coincidir'
+}
+
+function getCreatorId(data: ActivityData) {
+  return readString(data.createdBy)
+    || readString(data.creatorId)
+    || readString(data.ownerId)
+    || readString(data.userId)
+}
+
+function getOrganizerProfile(data: ActivityData | null, profile: ActivityData | null): OrganizerProfile {
+  return {
+    name: readString(
+      profile?.fullName,
+      readString(profile?.displayName, readString(profile?.name, data ? getOrganizerName(data) : 'Miembro de Coincidir')),
+    ),
+    photoURL: readString(profile?.photoURL, readString(profile?.avatarURL, readString(profile?.avatar))),
+    subtitle: readString(profile?.organizerSubtitle, 'Organiza actividades en Coincidir'),
+  }
+}
+
+function getInitials(name: string) {
+  const words = name
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean)
+
+  if (words.length === 0) return 'C'
+
+  return words
+    .slice(0, 2)
+    .map((word) => word[0]?.toUpperCase())
+    .join('')
 }
 
 export default function ActivityDetailScreen() {
@@ -175,6 +210,7 @@ export default function ActivityDetailScreen() {
   const [isJoining, setIsJoining] = useState(false)
   const [isInviteVisible, setIsInviteVisible] = useState(false)
   const [optimisticJoined, setOptimisticJoined] = useState<boolean | null>(null)
+  const [organizerProfile, setOrganizerProfile] = useState<ActivityData | null>(null)
 
   useEffect(() => {
     try {
@@ -213,6 +249,27 @@ export default function ActivityDetailScreen() {
     }
   }, [activityId])
 
+  const creatorId = activity ? getCreatorId(activity) : ''
+
+  useEffect(() => {
+    if (!creatorId) {
+      setOrganizerProfile(null)
+      return undefined
+    }
+
+    try {
+      const { db } = getFirebaseServices()
+      return onSnapshot(
+        doc(db, 'users', creatorId),
+        (snapshot) => setOrganizerProfile(snapshot.exists() ? snapshot.data() as ActivityData : null),
+        () => setOrganizerProfile(null),
+      )
+    } catch {
+      setOrganizerProfile(null)
+      return undefined
+    }
+  }, [creatorId])
+
   const detail = useMemo(() => {
     const data = activity ?? {}
     const participantCount = getParticipantCount(data)
@@ -234,14 +291,14 @@ export default function ActivityDetailScreen() {
       joined,
       location: readString(data.location, 'Ubicación a definir'),
       maxParticipants,
-      organizerName: getOrganizerName(data),
+      organizer: getOrganizerProfile(activity, organizerProfile),
       participantCount: safeCount,
       price: getPriceLabel(data),
       subcategory: readString(data.subcategory),
       time: readString(data.time, 'Horario a definir'),
       title: readString(data.name, 'Actividad sin título'),
     }
-  }, [activity, currentUserId, optimisticJoined])
+  }, [activity, currentUserId, optimisticJoined, organizerProfile])
 
   const toggleJoin = async () => {
     if (!activityId || !activity || !currentUserId || detail.isFull || isJoining) return
@@ -374,14 +431,15 @@ export default function ActivityDetailScreen() {
             <Text style={styles.organizerEyebrow}>Organizado por</Text>
             <View style={styles.organizerRow}>
               <View style={styles.avatar}>
-                <UserRound color="#4B348A" size={24} strokeWidth={2.2} />
+                {detail.organizer.photoURL ? (
+                  <Image source={{ uri: detail.organizer.photoURL }} style={styles.avatarImage} />
+                ) : (
+                  <Text style={styles.avatarInitials}>{getInitials(detail.organizer.name)}</Text>
+                )}
               </View>
               <View style={styles.organizerCopy}>
-                <Text style={styles.organizerName}>{detail.organizerName}</Text>
-                <View style={styles.ratingRow}>
-                  <Star color="#F2A900" fill="#F2A900" size={14} strokeWidth={2} />
-                  <Text style={styles.ratingText}>4.8</Text>
-                </View>
+                <Text numberOfLines={1} style={styles.organizerName}>{detail.organizer.name}</Text>
+                <Text numberOfLines={1} style={styles.organizerSubtitle}>{detail.organizer.subtitle}</Text>
               </View>
             </View>
           </View>
@@ -585,52 +643,66 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   organizerCard: {
-    backgroundColor: '#FAFAF8',
-    borderColor: '#E6E2ED',
-    borderRadius: 16,
+    backgroundColor: '#FFFFFF',
+    borderColor: '#E7E7E1',
+    borderRadius: 18,
     borderWidth: 1,
     marginTop: 20,
-    padding: 15,
+    padding: 16,
+    ...shadow,
   },
   organizerEyebrow: {
     color: '#39206C',
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: '900',
     letterSpacing: 0,
-    marginBottom: 12,
+    marginBottom: 13,
+    textTransform: 'uppercase',
   },
   organizerRow: {
     alignItems: 'center',
     flexDirection: 'row',
-    gap: 12,
+    gap: 14,
   },
   avatar: {
     alignItems: 'center',
-    backgroundColor: '#F4EEF9',
+    backgroundColor: '#EFF6E9',
+    borderColor: '#D7E8CC',
     borderRadius: 999,
-    height: 48,
+    borderWidth: 1,
+    height: 58,
     justifyContent: 'center',
-    width: 48,
+    overflow: 'hidden',
+    width: 58,
   },
-  organizerCopy: {
-    flex: 1,
+  avatarImage: {
+    height: '100%',
+    width: '100%',
   },
-  organizerName: {
-    color: '#071D19',
-    fontSize: 16,
+  avatarInitials: {
+    color: '#17803C',
+    fontSize: 18,
     fontWeight: '900',
     letterSpacing: 0,
   },
-  ratingRow: {
-    alignItems: 'center',
-    flexDirection: 'row',
-    gap: 5,
-    marginTop: 3,
+  organizerCopy: {
+    flex: 1,
+    minWidth: 0,
   },
-  ratingText: {
-    color: '#6E6259',
+  organizerName: {
+    color: '#071D19',
+    fontSize: 17,
+    fontWeight: '900',
+    letterSpacing: 0,
+    lineHeight: 22,
+  },
+  organizerSubtitle: {
+    color: '#596A65',
     fontSize: 13,
     fontWeight: '800',
+    letterSpacing: 0,
+    lineHeight: 18,
+    marginTop: 4,
   },
   primaryButton: {
     alignItems: 'center',

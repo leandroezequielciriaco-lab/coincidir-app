@@ -697,7 +697,7 @@ export default function CrearScreen() {
 
                       return <CategoryIcon color={category.color} size={17} strokeWidth={2.3} />
                     })()}
-                    <Text style={[styles.selectedText, { color: category.color }]}>{category.label}</Text>
+                    <Text numberOfLines={1} style={[styles.selectedText, { color: category.color }]}>{category.label}</Text>
                   </View>
                 ) : (
                   <Text style={styles.createPlaceholder}>Elegir</Text>
@@ -1432,16 +1432,17 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   createSelectField: {
-    minHeight: 54,
+    alignItems: 'center',
+    backgroundColor: '#FCFAF8',
+    borderColor: '#E2E6E3',
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: '#E2E6E3',
-    backgroundColor: '#FCFAF8',
     flexDirection: 'row',
-    alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 14,
     marginBottom: 14,
+    minHeight: 54,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
   },
   createSelectText: {
     flex: 1,
@@ -2048,15 +2049,17 @@ const styles = StyleSheet.create({
   quickFour: { left: '72.4%', top: '86.9%', width: '22%', height: '5.4%' },
   additionalContinueHitArea: { position: 'absolute', left: '4%', right: '4%', top: '96%', height: '4.8%' },
   selectedPill: {
-    alignSelf: 'flex-start',
+    alignItems: 'center',
+    alignSelf: 'center',
     borderRadius: 999,
     flexDirection: 'row',
-    alignItems: 'center',
+    flexShrink: 1,
     gap: 6,
+    minHeight: 34,
     paddingHorizontal: 10,
-    paddingVertical: 5,
+    paddingVertical: 6,
   },
-  selectedText: { fontSize: 14, lineHeight: 18, fontWeight: '900' },
+  selectedText: { flexShrink: 1, fontSize: 14, lineHeight: 18, fontWeight: '900' },
   selectedFieldText: { color: '#0E5A44', fontSize: 15, lineHeight: 19, fontWeight: '900' },
   locationText: { color: '#0E5A44', fontSize: 18, lineHeight: 22, fontWeight: '900', backgroundColor: 'rgba(255,255,255,0.75)', borderRadius: 999, paddingHorizontal: 16, paddingVertical: 7 },
   modalBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.25)', justifyContent: 'flex-end' },

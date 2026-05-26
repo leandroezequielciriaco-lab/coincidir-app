@@ -11,6 +11,7 @@ import {
   TextInput,
   View,
 } from 'react-native'
+import AsyncStorage from '@react-native-async-storage/async-storage'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import * as ImagePicker from 'expo-image-picker'
 import { useRouter } from 'expo-router'
@@ -57,16 +58,23 @@ type UserProfile = {
 
 const DEFAULT_BIO = 'Siempre listo para nuevos planes.'
 const DEFAULT_LOCATION = 'Tandil'
+const PROFILE_INTERESTS_STORAGE_KEY = 'profile:selectedInterests'
 const editableInterests = [
+  'Deportes',
   'Yoga',
   'Running',
-  'Paddle / Tenis',
   'Caminatas',
-  'Aire libre',
-  'Mateadas',
-  'Fútbol 5',
-  'Escalada',
-  'Natación',
+  'Música',
+  'Cine',
+  'Café',
+  'Mate',
+  'Naturaleza',
+  'Viajes',
+  'Lectura',
+  'Juegos',
+  'Mascotas',
+  'Tecnología',
+  'Arte',
 ]
 
 function getInterestIcon(label: string): LucideIcon {
@@ -78,7 +86,7 @@ function getInterestIcon(label: string): LucideIcon {
   if (value.includes('caminata')) return Mountain
   if (value.includes('aire')) return Trees
   if (value.includes('mate')) return Coffee
-  if (value.includes('fútbol') || value.includes('fÃºtbol')) return Circle
+  if (value.includes('fÃºtbol') || value.includes('fÃƒÂºtbol')) return Circle
   if (value.includes('escalada')) return Mountain
   if (value.includes('nataci')) return Waves
 
@@ -142,6 +150,9 @@ export default function PerfilScreen() {
   const [groups, setGroups] = useState<FirestoreRecord[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [isEditing, setIsEditing] = useState(false)
+  const [isInterestsVisible, setIsInterestsVisible] = useState(false)
+  const [localInterests, setLocalInterests] = useState<string[]>([])
+  const [draftInterests, setDraftInterests] = useState<string[]>([])
 
   useEffect(() => {
     try {
@@ -175,6 +186,27 @@ export default function PerfilScreen() {
       return undefined
     }
   }, [authName, userId])
+
+  useEffect(() => {
+    const storageKey = `${PROFILE_INTERESTS_STORAGE_KEY}:${userId ?? 'guest'}`
+    let mounted = true
+
+    setLocalInterests([])
+    AsyncStorage.getItem(storageKey)
+      .then((value) => {
+        if (!mounted || !value) return
+
+        const parsed = JSON.parse(value)
+        if (Array.isArray(parsed)) {
+          setLocalInterests(parsed.filter((item): item is string => typeof item === 'string'))
+        }
+      })
+      .catch(() => undefined)
+
+    return () => {
+      mounted = false
+    }
+  }, [userId])
 
   useEffect(() => {
     try {
@@ -216,6 +248,19 @@ export default function PerfilScreen() {
     { label: 'Grupos', value: String(myGroups.length), Icon: UsersRound, color: '#17803C' },
     { label: 'Coincidencias', value: String(createdActivities.length + joinedActivities.length + myGroups.length), Icon: Star, color: '#F2A900' },
   ], [createdActivities.length, joinedActivities.length, myGroups.length])
+  const visibleInterests = localInterests.length > 0 ? localInterests : profile.interests
+
+  const openInterests = () => {
+    setDraftInterests(visibleInterests)
+    setIsInterestsVisible(true)
+  }
+
+  const saveInterests = async () => {
+    const storageKey = `${PROFILE_INTERESTS_STORAGE_KEY}:${userId ?? 'guest'}`
+    await AsyncStorage.setItem(storageKey, JSON.stringify(draftInterests))
+    setLocalInterests(draftInterests)
+    setIsInterestsVisible(false)
+  }
 
   if (isLoading) {
     return (
@@ -269,31 +314,42 @@ export default function PerfilScreen() {
         </View>
 
         <ProfileSection title="Mis intereses">
-          {profile.interests.length > 0 ? (
-            <View style={styles.chipWrap}>
-              {profile.interests.map((interest) => <InterestChip key={interest} label={interest} />)}
-            </View>
-          ) : (
-            <EmptyBlock text="Agregá tus gustos para mejorar tus coincidencias." />
-          )}
+          <PressScale
+            accessibilityLabel="Editar mis intereses"
+            accessibilityRole="button"
+            onPress={openInterests}
+            scaleTo={0.98}
+            style={styles.interestsCard}
+          >
+            {visibleInterests.length > 0 ? (
+              <View style={styles.chipWrap}>
+                {visibleInterests.map((interest) => <InterestChip key={interest} label={interest} />)}
+              </View>
+            ) : (
+              <View style={styles.interestsEmptyContent}>
+                <Heart color="#B7C8BF" size={25} strokeWidth={2.1} />
+                <Text style={styles.emptyText}>Agregá tus gustos para mejorar tus coincidencias.</Text>
+              </View>
+            )}
+          </PressScale>
         </ProfileSection>
 
         <ProfileListSection
-          emptyText="Cuando crees actividades, van a aparecer acá."
+          emptyText="Cuando crees actividades, van a aparecer acÃ¡."
           items={createdActivities}
           onPress={(item) => router.push({ pathname: '/activity/[activityId]', params: { activityId: item.id } })}
           title="Actividades creadas"
         />
 
         <ProfileListSection
-          emptyText="Cuando te sumes a una actividad, la vas a ver acá."
+          emptyText="Cuando te sumes a una actividad, la vas a ver acÃ¡."
           items={joinedActivities}
           onPress={(item) => router.push({ pathname: '/activity/[activityId]', params: { activityId: item.id } })}
-          title="Me sumé a"
+          title="Me sumÃ© a"
         />
 
         <ProfileListSection
-          emptyText="Tus grupos creados o donde participes van a aparecer acá."
+          emptyText="Tus grupos creados o donde participes van a aparecer acÃ¡."
           items={myGroups}
           onPress={(item) => router.push({ pathname: '/group/[groupId]', params: { groupId: item.id } })}
           title="Mis grupos"
@@ -306,6 +362,13 @@ export default function PerfilScreen() {
         profile={profile}
         userId={userId}
         visible={isEditing}
+      />
+      <InterestsModal
+        interests={draftInterests}
+        onChange={setDraftInterests}
+        onClose={() => setIsInterestsVisible(false)}
+        onSave={saveInterests}
+        visible={isInterestsVisible}
       />
     </SafeAreaView>
   )
@@ -370,8 +433,8 @@ function ProfileListSection({ emptyText, items, onPress, title, variant = 'activ
 }
 
 function ProfileRow({ item, onPress, variant }: { item: FirestoreRecord; onPress: () => void; variant: 'activity' | 'group' }) {
-  const title = readString(item.data.name, readString(item.data.title, variant === 'group' ? 'Grupo sin título' : 'Actividad sin título'))
-  const location = readString(item.data.location, variant === 'group' ? 'Grupo de amigos' : 'Ubicación a definir')
+  const title = readString(item.data.name, readString(item.data.title, variant === 'group' ? 'Grupo sin tÃ­tulo' : 'Actividad sin tÃ­tulo'))
+  const location = readString(item.data.location, variant === 'group' ? 'Grupo de amigos' : 'UbicaciÃ³n a definir')
   const date = readString(item.data.date, readString(item.data.schedule))
   const participants = getParticipantCount(item.data)
 
@@ -384,11 +447,70 @@ function ProfileRow({ item, onPress, variant }: { item: FirestoreRecord; onPress
         <Text numberOfLines={1} style={styles.rowTitle}>{title}</Text>
         <Text numberOfLines={1} style={styles.rowMeta}>{location}</Text>
         <Text numberOfLines={1} style={styles.rowHint}>
-          {variant === 'group' ? `${participants} miembros` : `${date}${participants ? ` · ${participants} participantes` : ''}`}
+          {variant === 'group' ? `${participants} miembros` : `${date}${participants ? ` Â· ${participants} participantes` : ''}`}
         </Text>
       </View>
       <ChevronRight color="#40534D" size={20} strokeWidth={2.2} />
     </PressScale>
+  )
+}
+
+type InterestsModalProps = {
+  interests: string[]
+  onChange: (interests: string[]) => void
+  onClose: () => void
+  onSave: () => void
+  visible: boolean
+}
+
+function InterestsModal({ interests, onChange, onClose, onSave, visible }: InterestsModalProps) {
+  const toggleInterest = (interest: string) => {
+    onChange(
+      interests.includes(interest)
+        ? interests.filter((item) => item !== interest)
+        : [...interests, interest],
+    )
+  }
+
+  return (
+    <Modal animationType="slide" onRequestClose={onClose} visible={visible}>
+      <SafeAreaView edges={['top']} style={styles.safeArea}>
+        <ScrollView contentContainerStyle={styles.editContent} showsVerticalScrollIndicator={false}>
+          <View style={styles.editHeader}>
+            <PressScale onPress={onClose} scaleTo={0.94} style={styles.editHeaderButton}>
+              <Text style={styles.cancelEditText}>Cancelar</Text>
+            </PressScale>
+            <Text style={styles.editTitle}>Mis intereses</Text>
+            <View style={styles.editHeaderButton} />
+          </View>
+
+          <View style={styles.interestsModalCard}>
+            <View style={styles.interestsIcon}>
+              <Heart color="#17803C" size={30} strokeWidth={2.1} />
+            </View>
+            <Text style={styles.interestsModalTitle}>Elegí tus gustos</Text>
+            <Text style={styles.interestsModalText}>
+              Seleccioná lo que te interesa para mejorar tus coincidencias dentro de COINCIDIR.
+            </Text>
+
+            <View style={styles.chipWrap}>
+              {editableInterests.map((interest) => (
+                <InterestChip
+                  key={interest}
+                  label={interest}
+                  onPress={() => toggleInterest(interest)}
+                  selected={interests.includes(interest)}
+                />
+              ))}
+            </View>
+
+            <PressScale onPress={onSave} scaleTo={0.97} style={styles.saveInterestsButton}>
+              <Text style={styles.saveInterestsText}>Guardar intereses</Text>
+            </PressScale>
+          </View>
+        </ScrollView>
+      </SafeAreaView>
+    </Modal>
   )
 }
 
@@ -442,7 +564,7 @@ function EditProfileModal({ onClose, profile, userId, visible }: EditProfileModa
         updatedAt: serverTimestamp(),
       }, { merge: true })
     } catch {
-      Alert.alert('No pudimos actualizar la foto', 'Probá de nuevo en unos segundos.')
+      Alert.alert('No pudimos actualizar la foto', 'ProbÃ¡ de nuevo en unos segundos.')
       setDraft((current) => ({ ...current, photoURL: profile.photoURL }))
     } finally {
       setIsUploadingPhoto(false)
@@ -473,7 +595,7 @@ function EditProfileModal({ onClose, profile, userId, visible }: EditProfileModa
     const permission = await ImagePicker.requestCameraPermissionsAsync()
 
     if (!permission.granted) {
-      Alert.alert('Permiso necesario', 'Necesitamos acceso a la cámara para tomar tu foto de perfil.')
+      Alert.alert('Permiso necesario', 'Necesitamos acceso a la cÃ¡mara para tomar tu foto de perfil.')
       return
     }
 
@@ -490,9 +612,9 @@ function EditProfileModal({ onClose, profile, userId, visible }: EditProfileModa
   }
 
   const openPhotoOptions = () => {
-    Alert.alert('Foto de perfil', 'Elegí cómo querés actualizar tu foto.', [
-      { text: 'Tomar foto con cámara', onPress: takeProfilePhoto },
-      { text: 'Elegir foto desde galería', onPress: choosePhotoFromLibrary },
+    Alert.alert('Foto de perfil', 'ElegÃ­ cÃ³mo querÃ©s actualizar tu foto.', [
+      { text: 'Tomar foto con cÃ¡mara', onPress: takeProfilePhoto },
+      { text: 'Elegir foto desde galerÃ­a', onPress: choosePhotoFromLibrary },
       { text: 'Cancelar', style: 'cancel' },
     ])
   }
@@ -549,7 +671,7 @@ function EditProfileModal({ onClose, profile, userId, visible }: EditProfileModa
 
           <Field label="Foto" value={draft.photoURL} onChangeText={(photoURL) => setDraft((current) => ({ ...current, photoURL }))} placeholder="URL de foto (opcional)" />
           <Field label="Nombre" value={draft.fullName} onChangeText={(fullName) => setDraft((current) => ({ ...current, fullName }))} />
-          <Field label="Ubicación" value={draft.location} onChangeText={(location) => setDraft((current) => ({ ...current, location }))} />
+          <Field label="UbicaciÃ³n" value={draft.location} onChangeText={(location) => setDraft((current) => ({ ...current, location }))} />
           <Field label="Bio" multiline value={draft.bio} onChangeText={(bio) => setDraft((current) => ({ ...current, bio }))} />
 
           <Text style={styles.editSectionTitle}>Intereses</Text>
@@ -762,6 +884,21 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     gap: 9,
   },
+  interestsCard: {
+    alignSelf: 'stretch',
+    backgroundColor: '#FFFFFF',
+    borderColor: '#E7E7E1',
+    borderRadius: 16,
+    borderWidth: 1,
+    minHeight: 92,
+    padding: 16,
+  },
+  interestsEmptyContent: {
+    alignItems: 'center',
+    gap: 8,
+    justifyContent: 'center',
+    minHeight: 60,
+  },
   chip: {
     alignItems: 'center',
     backgroundColor: '#FFFFFF',
@@ -803,6 +940,59 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     lineHeight: 20,
     textAlign: 'center',
+  },
+  interestsModalCard: {
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    borderColor: '#E7E7E1',
+    borderRadius: 20,
+    borderWidth: 1,
+    padding: 20,
+    ...shadow,
+  },
+  interestsIcon: {
+    alignItems: 'center',
+    backgroundColor: '#EFF6E9',
+    borderColor: '#D7E8CC',
+    borderRadius: 999,
+    borderWidth: 1,
+    height: 72,
+    justifyContent: 'center',
+    marginBottom: 14,
+    width: 72,
+  },
+  interestsModalTitle: {
+    color: '#063C31',
+    fontSize: 22,
+    fontWeight: '900',
+    letterSpacing: 0,
+    lineHeight: 27,
+    textAlign: 'center',
+  },
+  interestsModalText: {
+    color: '#596A65',
+    fontSize: 14,
+    fontWeight: '700',
+    letterSpacing: 0,
+    lineHeight: 20,
+    marginBottom: 18,
+    marginTop: 8,
+    textAlign: 'center',
+  },
+  saveInterestsButton: {
+    alignItems: 'center',
+    alignSelf: 'stretch',
+    backgroundColor: '#006A32',
+    borderRadius: 999,
+    height: 50,
+    justifyContent: 'center',
+    marginTop: 20,
+  },
+  saveInterestsText: {
+    color: '#FFFFFF',
+    fontSize: 15,
+    fontWeight: '900',
+    letterSpacing: 0,
   },
   list: {
     backgroundColor: '#FFFFFF',
@@ -954,3 +1144,4 @@ const styles = StyleSheet.create({
     marginTop: 6,
   },
 })
+

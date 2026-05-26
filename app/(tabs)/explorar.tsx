@@ -2,9 +2,11 @@ import { useEffect, useMemo, useState } from 'react'
 import {
   ActivityIndicator,
   FlatList,
+  Image,
   Modal,
   Platform,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -14,21 +16,26 @@ import { SafeAreaView } from 'react-native-safe-area-context'
 import { useRouter } from 'expo-router'
 import { collection, onSnapshot } from 'firebase/firestore'
 import {
+  ArrowRight,
+  CalendarCheck,
+  CalendarDays,
+  DollarSign,
   Dumbbell,
   Filter,
+  Heart,
   Leaf,
+  MapPin,
   Mountain,
   Search,
   SlidersHorizontal,
+  Star,
   Sprout,
   UsersRound,
   Waves,
 } from 'lucide-react-native'
 import type { LucideIcon } from 'lucide-react-native'
 
-import { SuggestionCard } from '../../components/home/HomeCards'
 import { PressScale } from '../../components/home/PressScale'
-import type { SuggestionCardItem, ThemeTone } from '../../components/home/types'
 import { getFirebaseServices } from '../../firebaseConfig'
 
 type RecordItem = {
@@ -47,6 +54,19 @@ type AdvancedFilters = {
   sort: SortMode
 }
 
+type ExploreCardItem = {
+  id: string
+  recordId: string
+  source: 'activity' | 'group'
+  title: string
+  capacity: string
+  location: string
+  schedule: string
+  cta: string
+  image: { uri: string }
+  Icon: LucideIcon
+}
+
 const quickFilters = ['Todas', 'Hoy', 'Esta semana', 'Gratis', 'Aire libre', 'Yoga', 'Running', 'Sociales']
 const categoryFilters = ['Todas', 'Aire libre', 'Deportes', 'Bienestar', 'Sociales', 'Espacios privados']
 const dateFilters = ['Todas', 'Hoy', 'Esta semana']
@@ -61,6 +81,15 @@ const initialAdvancedFilters: AdvancedFilters = {
   location: 'Todas',
   price: 'Todos',
   sort: 'recent',
+}
+
+const defaultImagesByCategory: Record<string, { uri: string }> = {
+  outdoor: { uri: 'https://images.unsplash.com/photo-1441974231531-c6227db76b6e?auto=format&fit=crop&w=900&q=80' },
+  sports: { uri: 'https://images.unsplash.com/photo-1579952363873-27f3bade9f55?auto=format&fit=crop&w=900&q=80' },
+  wellness: { uri: 'https://images.unsplash.com/photo-1506126613408-eca07ce68773?auto=format&fit=crop&w=900&q=80' },
+  groups: { uri: 'https://images.unsplash.com/photo-1529156069898-49953e39b3ac?auto=format&fit=crop&w=900&q=80' },
+  private: { uri: 'https://images.unsplash.com/photo-1522163182402-834f871fd851?auto=format&fit=crop&w=900&q=80' },
+  default: { uri: 'https://images.unsplash.com/photo-1492684223066-81342ee5ff30?auto=format&fit=crop&w=900&q=80' },
 }
 
 function readString(value: unknown, fallback = '') {
@@ -192,13 +221,29 @@ function getIcon(item: RecordItem): LucideIcon {
   return Sprout
 }
 
-function mapExploreCard(item: RecordItem): SuggestionCardItem {
+function getCardImage(item: RecordItem) {
+  const categoryId = readString(item.data.categoryId)
+  if (item.source === 'group') return defaultImagesByCategory.groups
+  if (categoryId && defaultImagesByCategory[categoryId]) return defaultImagesByCategory[categoryId]
+  return defaultImagesByCategory.default
+}
+
+function getQuickIcon(label: string): LucideIcon {
+  if (label === 'Hoy') return CalendarDays
+  if (label === 'Esta semana') return Star
+  if (label === 'Gratis') return DollarSign
+  if (label === 'Aire libre') return Leaf
+  if (label === 'Yoga') return Sprout
+  if (label === 'Running') return Dumbbell
+  if (label === 'Sociales') return UsersRound
+  return Leaf
+}
+
+function mapExploreCard(item: RecordItem): ExploreCardItem {
   const data = item.data
   const count = getParticipantCount(data)
   const max = getMaxParticipants(data)
   const isGroup = item.source === 'group'
-  const isPrivate = readString(data.categoryId) === 'private'
-  const tone: ThemeTone = isGroup || isPrivate ? 'violet' : 'green'
 
   return {
     id: `${item.source}-${item.id}`,
@@ -211,7 +256,7 @@ function mapExploreCard(item: RecordItem): SuggestionCardItem {
       ? readString(data.schedule, 'Próximo encuentro a definir')
       : `${readString(data.date, 'Fecha a definir')}${readString(data.time) ? ` ${readString(data.time)}` : ''}`,
     cta: isGroup ? 'Ver grupo' : 'Ver encuentro',
-    tone,
+    image: getCardImage(item),
     Icon: getIcon(item),
   }
 }
@@ -295,9 +340,12 @@ export default function ExplorarScreen() {
 
   return (
     <SafeAreaView edges={['top']} style={styles.safeArea}>
-      <View style={styles.content}>
+      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
         <View style={styles.headerRow}>
-          <Text style={styles.title}>Explorar</Text>
+          <View style={styles.headerCopy}>
+            <Text style={styles.title}>Explorar</Text>
+            <Text style={styles.subtitle}>Descubrí actividades, grupos y lugares 🌿</Text>
+          </View>
           <PressScale accessibilityLabel="Abrir filtros" accessibilityRole="button" onPress={openFilters} style={styles.filterButton} scaleTo={0.94}>
             <SlidersHorizontal color="#063C31" size={24} strokeWidth={2.2} />
           </PressScale>
@@ -324,11 +372,27 @@ export default function ExplorarScreen() {
           keyExtractor={(item) => item}
           renderItem={({ item }) => (
             <PressScale onPress={() => setQuickFilter(item)} scaleTo={0.96} style={[styles.quickChip, quickFilter === item && styles.quickChipActive]}>
+              {(() => {
+                const QuickIcon = getQuickIcon(item)
+                return <QuickIcon color={quickFilter === item ? '#006A32' : '#063C31'} size={20} strokeWidth={2.3} />
+              })()}
               <Text style={[styles.quickChipText, quickFilter === item && styles.quickChipTextActive]}>{item}</Text>
             </PressScale>
           )}
           showsHorizontalScrollIndicator={false}
         />
+
+        <ExploreBanner />
+
+        <View style={styles.sectionHeader}>
+          <View style={styles.sectionTitleRow}>
+            <Sprout color="#006A32" size={24} strokeWidth={2.4} />
+            <Text style={styles.sectionTitle}>Destacados para vos</Text>
+          </View>
+          <Pressable accessibilityRole="button" onPress={resetFilters} style={styles.seeAllButton}>
+            <Text style={styles.seeAllText}>Ver todo</Text>
+          </Pressable>
+        </View>
 
         {isLoading ? (
           <View style={styles.centerState}>
@@ -338,13 +402,12 @@ export default function ExplorarScreen() {
           <EmptyResults onReset={resetFilters} />
         ) : (
           <FlatList
-            columnWrapperStyle={styles.cardRow}
             contentContainerStyle={styles.resultsList}
             data={cards}
+            horizontal
             keyExtractor={(item) => item.id}
-            numColumns={2}
             renderItem={({ item }) => (
-              <SuggestionCard
+              <ExploreCard
                 item={item}
                 onPress={() => router.push(
                   item.source === 'activity'
@@ -353,10 +416,10 @@ export default function ExplorarScreen() {
                 )}
               />
             )}
-            showsVerticalScrollIndicator={false}
+            showsHorizontalScrollIndicator={false}
           />
         )}
-      </View>
+      </ScrollView>
 
       <FilterSheet
         draft={draftFilters}
@@ -383,6 +446,62 @@ function EmptyResults({ onReset }: { onReset: () => void }) {
         <Text style={styles.resetButtonText}>Limpiar filtros</Text>
       </PressScale>
     </View>
+  )
+}
+
+function ExploreBanner() {
+  return (
+    <View style={styles.banner}>
+      <View style={styles.bannerCopy}>
+        <Text style={styles.bannerTitle}>Conectá con lo que te hace bien</Text>
+        <Text style={styles.bannerText}>Actividades al aire libre, gratuitas y para todos.</Text>
+        <View style={styles.bannerButton}>
+          <Text style={styles.bannerButtonText}>Explorar ahora</Text>
+          <ArrowRight color="#FFFFFF" size={18} strokeWidth={2.5} />
+        </View>
+      </View>
+      <View style={styles.bannerArt}>
+        <View style={styles.sun} />
+        <Leaf color="#73A86E" size={54} strokeWidth={1.7} />
+        <Sprout color="#17803C" size={66} strokeWidth={1.8} />
+      </View>
+    </View>
+  )
+}
+
+function ExploreCard({ item, onPress }: { item: ExploreCardItem; onPress: () => void }) {
+  return (
+    <Pressable accessibilityRole="button" onPress={onPress} style={({ pressed }) => [styles.exploreCard, pressed && styles.cardPressed]}>
+      <View style={styles.cardImageWrap}>
+        <Image source={item.image} style={styles.cardImage} />
+        <View style={styles.cardIcon}>
+          <item.Icon color="#17803C" size={31} strokeWidth={2.2} />
+        </View>
+      </View>
+      <View style={styles.cardBody}>
+        <View style={styles.cardTitleRow}>
+          <Text numberOfLines={2} style={styles.cardTitle}>{item.title}</Text>
+          <Heart color="#063C31" size={24} strokeWidth={2.1} />
+        </View>
+        <View style={styles.cardMetaRow}>
+          <MapPin color="#0E5A44" size={16} strokeWidth={2.2} />
+          <Text numberOfLines={2} style={styles.cardMeta}>{item.location}</Text>
+        </View>
+        <View style={styles.cardMetaRow}>
+          <CalendarCheck color="#0E5A44" size={16} strokeWidth={2.2} />
+          <Text numberOfLines={1} style={styles.cardMeta}>{item.schedule}</Text>
+        </View>
+        <View style={styles.cardFooter}>
+          <View style={styles.capacityBadge}>
+            <UsersRound color="#006A32" size={16} strokeWidth={2.3} />
+            <Text style={styles.capacityText}>{item.capacity}</Text>
+          </View>
+          <View style={styles.cardCta}>
+            <Text style={styles.cardCtaText}>{item.cta}</Text>
+          </View>
+        </View>
+      </View>
+    </Pressable>
   )
 }
 
@@ -478,20 +597,32 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   content: {
-    flex: 1,
+    paddingBottom: 128,
     paddingHorizontal: 20,
-    paddingTop: 16,
+    paddingTop: 14,
   },
   headerRow: {
     alignItems: 'center',
     flexDirection: 'row',
     justifyContent: 'space-between',
   },
+  headerCopy: {
+    flex: 1,
+    paddingRight: 16,
+  },
   title: {
     color: '#071D19',
-    fontSize: 28,
+    fontSize: 36,
     fontWeight: '900',
     letterSpacing: 0,
+  },
+  subtitle: {
+    color: '#40534D',
+    fontSize: 16,
+    fontWeight: '700',
+    letterSpacing: 0,
+    lineHeight: 22,
+    marginTop: 3,
   },
   filterButton: {
     alignItems: 'center',
@@ -508,13 +639,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     backgroundColor: '#FFFFFF',
     borderColor: '#E1E1DD',
-    borderRadius: 18,
+    borderRadius: 24,
     borderWidth: 1,
     flexDirection: 'row',
-    gap: 12,
-    height: 54,
-    marginTop: 18,
-    paddingHorizontal: 16,
+    gap: 14,
+    minHeight: 60,
+    marginTop: 20,
+    paddingHorizontal: 20,
     ...shadow,
   },
   searchInput: {
@@ -526,7 +657,7 @@ const styles = StyleSheet.create({
     padding: 0,
   },
   quickList: {
-    gap: 9,
+    gap: 10,
     paddingBottom: 6,
     paddingTop: 18,
   },
@@ -534,41 +665,237 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     backgroundColor: '#FFFFFF',
     borderColor: '#E1E1DD',
-    borderRadius: 999,
+    borderRadius: 18,
     borderWidth: 1,
-    height: 38,
+    gap: 6,
+    minHeight: 62,
     justifyContent: 'center',
     paddingHorizontal: 14,
+    minWidth: 78,
+    ...shadow,
   },
   quickChipActive: {
-    backgroundColor: '#006A32',
-    borderColor: '#006A32',
+    backgroundColor: '#DFF2DD',
+    borderColor: '#DFF2DD',
   },
   quickChipText: {
     color: '#10231F',
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: '900',
     letterSpacing: 0,
   },
   quickChipTextActive: {
+    color: '#006A32',
+  },
+  banner: {
+    backgroundColor: '#EFF8EC',
+    borderRadius: 24,
+    flexDirection: 'row',
+    marginTop: 14,
+    minHeight: 168,
+    overflow: 'hidden',
+    padding: 22,
+  },
+  bannerCopy: {
+    flex: 1.1,
+    justifyContent: 'center',
+    zIndex: 2,
+  },
+  bannerTitle: {
+    color: '#063C31',
+    fontSize: 24,
+    fontWeight: '900',
+    letterSpacing: 0,
+    lineHeight: 30,
+  },
+  bannerText: {
+    color: '#193F37',
+    fontSize: 16,
+    fontWeight: '600',
+    letterSpacing: 0,
+    lineHeight: 23,
+    marginTop: 12,
+  },
+  bannerButton: {
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    backgroundColor: '#168A37',
+    borderRadius: 14,
+    flexDirection: 'row',
+    gap: 8,
+    minHeight: 48,
+    marginTop: 18,
+    paddingHorizontal: 18,
+  },
+  bannerButtonText: {
     color: '#FFFFFF',
+    fontSize: 15,
+    fontWeight: '900',
+    letterSpacing: 0,
+  },
+  bannerArt: {
+    alignItems: 'center',
+    bottom: -12,
+    flex: 0.9,
+    justifyContent: 'flex-end',
+    position: 'relative',
+  },
+  sun: {
+    backgroundColor: '#F6DD82',
+    borderRadius: 999,
+    height: 58,
+    opacity: 0.7,
+    position: 'absolute',
+    right: 16,
+    top: 22,
+    width: 58,
+  },
+  sectionHeader: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: 22,
+  },
+  sectionTitleRow: {
+    alignItems: 'center',
+    flex: 1,
+    flexDirection: 'row',
+    gap: 8,
+  },
+  sectionTitle: {
+    color: '#063C31',
+    fontSize: 20,
+    fontWeight: '900',
+    letterSpacing: 0,
+  },
+  seeAllButton: {
+    backgroundColor: '#F0F5E9',
+    borderRadius: 999,
+    paddingHorizontal: 16,
+    paddingVertical: 9,
+  },
+  seeAllText: {
+    color: '#006A32',
+    fontSize: 13,
+    fontWeight: '900',
   },
   resultsList: {
-    paddingBottom: 120,
-    paddingTop: 10,
+    gap: 14,
+    paddingBottom: 8,
+    paddingRight: 4,
+    paddingTop: 14,
   },
-  cardRow: {
-    gap: 13,
-    marginBottom: 14,
+  exploreCard: {
+    backgroundColor: '#FFFFFF',
+    borderColor: '#E7E7E1',
+    borderRadius: 20,
+    borderWidth: 1,
+    marginBottom: 2,
+    minHeight: 292,
+    overflow: 'hidden',
+    width: 238,
+    ...shadow,
+  },
+  cardPressed: {
+    opacity: 0.92,
+  },
+  cardImageWrap: {
+    backgroundColor: '#EFF6E9',
+    height: 128,
+    position: 'relative',
+    width: '100%',
+  },
+  cardImage: {
+    height: '100%',
+    width: '100%',
+  },
+  cardIcon: {
+    alignItems: 'center',
+    backgroundColor: '#F7FAF5',
+    borderColor: '#FFFFFF',
+    borderRadius: 999,
+    borderWidth: 2,
+    height: 58,
+    justifyContent: 'center',
+    left: 14,
+    position: 'absolute',
+    top: 84,
+    width: 58,
+  },
+  cardBody: {
+    flex: 1,
+    padding: 14,
+    paddingTop: 18,
+  },
+  cardTitleRow: {
+    alignItems: 'flex-start',
+    flexDirection: 'row',
+    gap: 8,
+  },
+  cardTitle: {
+    color: '#063C31',
+    flex: 1,
+    fontSize: 17,
+    fontWeight: '900',
+    letterSpacing: 0,
+    lineHeight: 22,
+  },
+  cardMetaRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 8,
+    marginTop: 8,
+  },
+  cardMeta: {
+    color: '#596A65',
+    flex: 1,
+    fontSize: 12,
+    fontWeight: '700',
+    letterSpacing: 0,
+    lineHeight: 18,
+  },
+  cardFooter: {
+    alignItems: 'center',
+    gap: 10,
+    marginTop: 12,
+  },
+  capacityBadge: {
+    alignItems: 'center',
+    backgroundColor: '#F0F5E9',
+    borderRadius: 999,
+    flexDirection: 'row',
+    gap: 6,
+    alignSelf: 'flex-start',
+    minHeight: 32,
+    paddingHorizontal: 12,
+  },
+  capacityText: {
+    color: '#006A32',
+    fontSize: 13,
+    fontWeight: '900',
+  },
+  cardCta: {
+    alignItems: 'center',
+    backgroundColor: '#F0F5E9',
+    borderRadius: 999,
+    alignSelf: 'stretch',
+    minHeight: 38,
+    justifyContent: 'center',
+    paddingHorizontal: 12,
+  },
+  cardCtaText: {
+    color: '#006A32',
+    fontSize: 13,
+    fontWeight: '900',
   },
   centerState: {
     alignItems: 'center',
-    flex: 1,
+    minHeight: 180,
     justifyContent: 'center',
   },
   emptyState: {
     alignItems: 'center',
-    flex: 1,
+    minHeight: 240,
     justifyContent: 'center',
     paddingHorizontal: 24,
   },
