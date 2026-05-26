@@ -341,6 +341,8 @@ const styles = StyleSheet.create({
   },
   optionCopy: {
     flex: 1,
+    flexGrow: 1,
+    flexShrink: 1,
     minWidth: 0,
     paddingRight: 10,
   },
@@ -367,7 +369,6 @@ const styles = StyleSheet.create({
     flexShrink: 0,
     height: 32,
     justifyContent: 'center',
-    marginLeft: 'auto',
     width: 24,
   },
   feedback: {
