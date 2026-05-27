@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Image, Platform, Pressable, StyleSheet, Text, View } from 'react-native'
-import { CalendarDays, MapPin, UserRound, UsersRound } from 'lucide-react-native'
+import { CalendarDays, MapPin, Share2, UserRound, UsersRound } from 'lucide-react-native'
 
 import { PressScale } from './PressScale'
 import type { ActivityCardItem, PrivateCardItem, SuggestionCardItem } from './types'
@@ -10,6 +10,7 @@ type ActivityCardProps = {
   item: ActivityCardItem
   onCtaPress?: () => void
   onPress?: () => void
+  onSharePress?: () => void
 }
 
 type PrivateCardProps = {
@@ -22,7 +23,7 @@ type SuggestionCardProps = {
   onPress?: () => void
 }
 
-export function ActivityCard({ item, onCtaPress, onPress }: ActivityCardProps) {
+export function ActivityCard({ item, onCtaPress, onPress, onSharePress }: ActivityCardProps) {
   const [imageSource, setImageSource] = useState(item.image || defaultActivityImage)
 
   useEffect(() => {
@@ -31,39 +32,45 @@ export function ActivityCard({ item, onCtaPress, onPress }: ActivityCardProps) {
 
   return (
     <View style={styles.activityCard}>
-      <Pressable
-        accessibilityLabel={`Ver detalle de ${item.title}`}
-        accessibilityRole="button"
-        onPress={onPress}
-        style={({ pressed }) => [styles.activityImageWrap, pressed && styles.pressed]}
-      >
+      <View style={styles.activityImageWrap}>
         <Image
           onError={() => setImageSource(defaultActivityImage)}
           source={imageSource}
           style={styles.activityImage}
         />
         <View style={styles.imageOverlay} />
+        <Pressable
+          accessibilityLabel={`Ver detalle de ${item.title}`}
+          accessibilityRole="button"
+          onPress={onPress}
+          style={({ pressed }) => [StyleSheet.absoluteFill, pressed && styles.pressed]}
+        />
         <View style={styles.dateBadge}>
           <Text style={styles.dateBadgeText}>{item.dateBadge}</Text>
         </View>
-      </Pressable>
+      </View>
       <View style={styles.activityBody}>
+        <View style={styles.activityTopLine}>
+          <View style={styles.categoryPill}>
+            <item.Icon color="#17803C" size={16} strokeWidth={2.3} />
+            <Text numberOfLines={1} style={styles.categoryPillText}>{item.iconLabel}</Text>
+          </View>
+          <Pressable
+            accessibilityLabel={`Compartir ${item.title}`}
+            accessibilityRole="button"
+            onPress={onSharePress}
+            style={({ pressed }) => [styles.shareButton, pressed && styles.pressed]}
+          >
+            <Share2 color="#006A32" size={15} strokeWidth={2.5} />
+            <Text style={styles.shareButtonText}>Compartir</Text>
+          </Pressable>
+        </View>
         <Pressable
           accessibilityLabel={`Ver detalle de ${item.title}`}
           accessibilityRole="button"
           onPress={onPress}
           style={({ pressed }) => [styles.activityContentPressArea, pressed && styles.pressed]}
         >
-          <View style={styles.activityTopLine}>
-            <View style={styles.categoryPill}>
-              <item.Icon color="#17803C" size={16} strokeWidth={2.3} />
-              <Text numberOfLines={1} style={styles.categoryPillText}>{item.iconLabel}</Text>
-            </View>
-            <View style={styles.peopleInline}>
-              <UsersRound color="#07392D" size={15} strokeWidth={2.4} />
-              <Text style={styles.peopleText}>{item.people}</Text>
-            </View>
-          </View>
           <Text numberOfLines={2} style={styles.activityTitle}>{item.title}</Text>
           <View style={styles.activityMetaRow}>
             <CalendarDays color="#17803C" size={17} strokeWidth={2.2} />
@@ -76,6 +83,10 @@ export function ActivityCard({ item, onCtaPress, onPress }: ActivityCardProps) {
           <View style={styles.activityMetaRow}>
             <UserRound color="#17803C" size={17} strokeWidth={2.2} />
             <Text numberOfLines={1} style={styles.activityMeta}>{item.organizer}</Text>
+          </View>
+          <View style={styles.peopleInline}>
+            <UsersRound color="#07392D" size={15} strokeWidth={2.4} />
+            <Text style={styles.peopleText}>{item.people}</Text>
           </View>
         </Pressable>
         <Pressable
@@ -206,13 +217,9 @@ const styles = StyleSheet.create({
   },
   activityImageWrap: {
     backgroundColor: '#EFF6E9',
-    bottom: 0,
     height: '100%',
-    left: 0,
     position: 'relative',
-    top: 0,
     width: 136,
-    zIndex: 2,
   },
   activityContentPressArea: {
     flexShrink: 1,
@@ -247,13 +254,13 @@ const styles = StyleSheet.create({
     minWidth: 0,
     paddingHorizontal: 14,
     paddingVertical: 12,
-    zIndex: 2,
   },
   activityTopLine: {
     alignItems: 'center',
     flexDirection: 'row',
     justifyContent: 'space-between',
     marginBottom: 6,
+    gap: 8,
   },
   categoryPill: {
     alignItems: 'center',
@@ -261,7 +268,8 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     flexDirection: 'row',
     gap: 7,
-    maxWidth: '70%',
+    flexShrink: 1,
+    maxWidth: '58%',
     minHeight: 28,
     paddingHorizontal: 10,
   },
@@ -273,10 +281,12 @@ const styles = StyleSheet.create({
   },
   peopleInline: {
     alignItems: 'center',
+    alignSelf: 'flex-start',
     backgroundColor: '#F7FAF5',
     borderRadius: 999,
     flexDirection: 'row',
     gap: 5,
+    marginTop: 7,
     minHeight: 28,
     paddingHorizontal: 10,
   },
@@ -314,6 +324,28 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginTop: 9,
     zIndex: 3,
+  },
+  shareButton: {
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    borderColor: '#DCE8E1',
+    borderRadius: 999,
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: 5,
+    minHeight: 30,
+    paddingHorizontal: 10,
+    shadowColor: '#07392D',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    elevation: 1,
+  },
+  shareButtonText: {
+    color: '#006A32',
+    fontSize: 12,
+    fontWeight: '900',
+    letterSpacing: 0,
   },
   greenCtaText: {
     color: '#00552E',

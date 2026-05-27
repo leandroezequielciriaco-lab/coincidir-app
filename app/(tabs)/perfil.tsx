@@ -38,6 +38,7 @@ import {
   HandHeart,
   Heart,
   Laptop,
+  LockKeyhole,
   Mic,
   Music,
   MapPin,
@@ -663,9 +664,13 @@ function EditProfileModal({ onClose, profile, userId, visible }: EditProfileModa
   const [draft, setDraft] = useState(profile)
   const [isSaving, setIsSaving] = useState(false)
   const [isUploadingPhoto, setIsUploadingPhoto] = useState(false)
+  const [showAllInterests, setShowAllInterests] = useState(false)
 
   useEffect(() => {
-    if (visible) setDraft(profile)
+    if (visible) {
+      setDraft(profile)
+      setShowAllInterests(false)
+    }
   }, [profile, visible])
 
   const toggleInterest = (interest: string) => {
@@ -777,6 +782,8 @@ function EditProfileModal({ onClose, profile, userId, visible }: EditProfileModa
     }
   }
 
+  const visibleEditableInterests = showAllInterests ? editableInterests : editableInterests.slice(0, 12)
+
   return (
     <Modal animationType="slide" onRequestClose={onClose} visible={visible}>
       <SafeAreaView edges={['top']} style={styles.safeArea}>
@@ -791,11 +798,12 @@ function EditProfileModal({ onClose, profile, userId, visible }: EditProfileModa
             </PressScale>
           </View>
 
+          <View style={styles.editHero}>
           <PressScale onPress={openPhotoOptions} scaleTo={0.96} style={styles.editAvatar}>
             {draft.photoURL ? (
               <Image source={{ uri: draft.photoURL }} style={styles.editAvatarImage} />
             ) : (
-              <UserRound color="#4B348A" size={48} strokeWidth={2.1} />
+              <UserRound color="#4B348A" size={58} strokeWidth={2.1} />
             )}
             {isUploadingPhoto ? (
               <View style={styles.photoUploadingOverlay}>
@@ -803,25 +811,41 @@ function EditProfileModal({ onClose, profile, userId, visible }: EditProfileModa
               </View>
             ) : null}
             <View style={styles.cameraBadge}>
-              <Camera color="#FFFFFF" size={17} strokeWidth={2.4} />
+              <Camera color="#FFFFFF" size={20} strokeWidth={2.5} />
             </View>
           </PressScale>
+            <Text numberOfLines={1} style={styles.editHeroName}>{draft.fullName}</Text>
+            <View style={styles.editHeroLocation}>
+              <MapPin color="#4B348A" size={17} strokeWidth={2.4} />
+              <Text numberOfLines={1} style={styles.editHeroLocationText}>{draft.location}</Text>
+            </View>
+          </View>
 
-          <Field label="Foto" value={draft.photoURL} onChangeText={(photoURL) => setDraft((current) => ({ ...current, photoURL }))} placeholder="URL de foto (opcional)" />
-          <Field label="Nombre" value={draft.fullName} onChangeText={(fullName) => setDraft((current) => ({ ...current, fullName }))} />
-          <Field label="Ubicación" value={draft.location} onChangeText={(location) => setDraft((current) => ({ ...current, location }))} />
-          <Field label="Bio" multiline value={draft.bio} onChangeText={(bio) => setDraft((current) => ({ ...current, bio }))} />
+          <EditProfileField Icon={UserRound} label="Nombre" value={draft.fullName} onChangeText={(fullName) => setDraft((current) => ({ ...current, fullName }))} />
+          <EditProfileField Icon={MapPin} label="Ubicación" value={draft.location} onChangeText={(location) => setDraft((current) => ({ ...current, location }))} />
+          <EditProfileField Icon={Pencil} label="Bio" multiline maxLength={150} showCount value={draft.bio} onChangeText={(bio) => setDraft((current) => ({ ...current, bio }))} />
 
           <Text style={styles.editSectionTitle}>Intereses</Text>
-          <View style={styles.chipWrap}>
-            {editableInterests.map((interest) => (
-              <InterestChip
-                key={interest}
-                label={interest}
-                onPress={() => toggleInterest(interest)}
-                selected={draft.interests.includes(interest)}
-              />
+          <View style={styles.editInterestGrid}>
+            {visibleEditableInterests.map((interest) => (
+              <EditInterestPill key={interest} label={interest} onPress={() => toggleInterest(interest)} selected={draft.interests.includes(interest)} />
             ))}
+          </View>
+          {editableInterests.length > 12 ? (
+            <PressScale accessibilityRole="button" onPress={() => setShowAllInterests((current) => !current)} scaleTo={0.96} style={styles.showAllInterestsButton}>
+              <Text style={styles.showAllInterestsText}>{showAllInterests ? 'Ver menos' : 'Ver todos'}</Text>
+              <ChevronRight color="#4B348A" size={18} strokeWidth={2.6} style={showAllInterests ? styles.showLessIcon : styles.showAllIcon} />
+            </PressScale>
+          ) : null}
+
+          <View style={styles.privacyCard}>
+            <View style={styles.privacyIcon}>
+              <LockKeyhole color="#4B348A" size={23} strokeWidth={2.2} />
+            </View>
+            <View style={styles.privacyCopy}>
+              <Text style={styles.privacyTitle}>Tu información es privada</Text>
+              <Text style={styles.privacyText}>Solo las personas con las que hacés match pueden verla.</Text>
+            </View>
           </View>
         </ScrollView>
       </SafeAreaView>
@@ -829,32 +853,64 @@ function EditProfileModal({ onClose, profile, userId, visible }: EditProfileModa
   )
 }
 
-function Field({
+function EditProfileField({
+  Icon,
   label,
+  maxLength,
   multiline,
   onChangeText,
-  placeholder,
+  showCount,
   value,
 }: {
+  Icon: LucideIcon
   label: string
+  maxLength?: number
   multiline?: boolean
   onChangeText: (value: string) => void
-  placeholder?: string
+  showCount?: boolean
   value: string
 }) {
   return (
-    <View style={styles.field}>
-      <Text style={styles.fieldLabel}>{label}</Text>
+    <View style={[styles.editFieldCard, multiline && styles.editBioCard]}>
+      <View style={styles.editFieldIcon}>
+        <Icon color="#4B348A" size={25} strokeWidth={2.2} />
+      </View>
+      <View style={styles.editFieldCopy}>
+        <Text style={styles.editFieldLabel}>{label}</Text>
       <TextInput
+          maxLength={maxLength}
         multiline={multiline}
         onChangeText={onChangeText}
-        placeholder={placeholder}
         placeholderTextColor="#8B9692"
-        style={[styles.input, multiline && styles.multilineInput]}
+          style={[styles.editFieldInput, multiline && styles.editBioInput]}
         textAlignVertical={multiline ? 'top' : 'center'}
         value={value}
       />
+        {showCount ? <Text style={styles.editFieldCount}>{value.length}/{maxLength ?? 150}</Text> : null}
+      </View>
     </View>
+  )
+}
+
+function EditInterestPill({ label, selected, onPress }: { label: string; selected: boolean; onPress: () => void }) {
+  const Icon = getInterestIcon(label)
+
+  return (
+    <PressScale
+      accessibilityRole="button"
+      accessibilityState={{ selected }}
+      onPress={onPress}
+      scaleTo={0.96}
+      style={[styles.editInterestPill, selected && styles.editInterestPillSelected]}
+    >
+      <Icon color="#17803C" size={22} strokeWidth={2.2} />
+      <Text numberOfLines={1} style={styles.editInterestPillText}>{label}</Text>
+      {selected ? (
+        <View style={styles.editInterestCheck}>
+          <Check color="#FFFFFF" size={13} strokeWidth={3} />
+        </View>
+      ) : null}
+    </PressScale>
   )
 }
 
@@ -1331,7 +1387,7 @@ const styles = StyleSheet.create({
     fontWeight: '800',
   },
   editContent: {
-    paddingBottom: 36,
+    paddingBottom: 42,
     paddingHorizontal: 20,
     paddingTop: 12,
   },
@@ -1345,7 +1401,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginBottom: 18,
+    marginBottom: 20,
   },
   editHeaderButton: {
     minWidth: 76,
@@ -1365,24 +1421,50 @@ const styles = StyleSheet.create({
   },
   editTitle: {
     color: '#071D19',
-    fontSize: 18,
+    fontSize: 22,
     fontWeight: '900',
+  },
+  editHero: {
+    alignItems: 'center',
+    marginBottom: 22,
   },
   editAvatar: {
     alignItems: 'center',
     alignSelf: 'center',
     backgroundColor: '#F4EEF9',
     borderRadius: 999,
-    height: 108,
+    height: 132,
     justifyContent: 'center',
-    marginBottom: 22,
+    marginBottom: 16,
     position: 'relative',
-    width: 108,
-    overflow: 'hidden',
+    width: 132,
   },
   editAvatarImage: {
+    borderRadius: 999,
     height: '100%',
     width: '100%',
+  },
+  editHeroName: {
+    color: '#071D19',
+    fontSize: 25,
+    fontWeight: '900',
+    letterSpacing: 0,
+    lineHeight: 31,
+    maxWidth: '100%',
+    textAlign: 'center',
+  },
+  editHeroLocation: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 6,
+    justifyContent: 'center',
+    marginTop: 5,
+  },
+  editHeroLocationText: {
+    color: '#596A65',
+    fontSize: 15,
+    fontWeight: '800',
+    letterSpacing: 0,
   },
   photoUploadingOverlay: {
     ...StyleSheet.absoluteFillObject,
@@ -1395,13 +1477,70 @@ const styles = StyleSheet.create({
     backgroundColor: '#6C3DE5',
     borderColor: '#FFFFFF',
     borderRadius: 999,
-    borderWidth: 3,
-    bottom: 3,
-    height: 36,
+    borderWidth: 4,
+    bottom: 6,
+    height: 50,
     justifyContent: 'center',
     position: 'absolute',
-    right: 3,
-    width: 36,
+    right: -4,
+    width: 50,
+    ...cardShadow,
+  },
+  editFieldCard: {
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    borderColor: '#E7E7E1',
+    borderRadius: 18,
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: 14,
+    minHeight: 76,
+    marginBottom: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    ...cardShadow,
+  },
+  editBioCard: {
+    alignItems: 'flex-start',
+    minHeight: 128,
+    paddingVertical: 16,
+  },
+  editFieldIcon: {
+    alignItems: 'center',
+    height: 42,
+    justifyContent: 'center',
+    width: 42,
+  },
+  editFieldCopy: {
+    flex: 1,
+    minWidth: 0,
+  },
+  editFieldLabel: {
+    color: '#6A746F',
+    fontSize: 13,
+    fontWeight: '800',
+    letterSpacing: 0,
+    marginBottom: 3,
+  },
+  editFieldInput: {
+    color: '#071D19',
+    fontSize: 17,
+    fontWeight: '600',
+    letterSpacing: 0,
+    minHeight: 30,
+    padding: 0,
+  },
+  editBioInput: {
+    lineHeight: 22,
+    minHeight: 68,
+    paddingTop: 2,
+  },
+  editFieldCount: {
+    alignSelf: 'flex-end',
+    color: '#6A746F',
+    fontSize: 12,
+    fontWeight: '700',
+    marginTop: 5,
   },
   field: {
     marginBottom: 15,
@@ -1430,11 +1569,108 @@ const styles = StyleSheet.create({
   },
   editSectionTitle: {
     color: '#39206C',
-    fontSize: 17,
+    fontSize: 19,
     fontWeight: '900',
     letterSpacing: 0,
-    marginBottom: 12,
-    marginTop: 6,
+    marginBottom: 14,
+    marginTop: 12,
+  },
+  editInterestGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 10,
+  },
+  editInterestPill: {
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    borderColor: '#E7E7E1',
+    borderRadius: 24,
+    borderWidth: 1,
+    flexBasis: '47%',
+    flexDirection: 'row',
+    flexGrow: 1,
+    gap: 9,
+    minHeight: 54,
+    paddingLeft: 14,
+    paddingRight: 12,
+    ...cardShadow,
+  },
+  editInterestPillSelected: {
+    backgroundColor: '#EAF7E7',
+    borderColor: '#D1EBD1',
+  },
+  editInterestPillText: {
+    color: '#071D19',
+    flex: 1,
+    fontSize: 14,
+    fontWeight: '800',
+    letterSpacing: 0,
+  },
+  editInterestCheck: {
+    alignItems: 'center',
+    backgroundColor: '#17803C',
+    borderRadius: 999,
+    height: 24,
+    justifyContent: 'center',
+    width: 24,
+  },
+  showAllInterestsButton: {
+    alignItems: 'center',
+    alignSelf: 'center',
+    flexDirection: 'row',
+    gap: 6,
+    justifyContent: 'center',
+    marginTop: 18,
+    minHeight: 40,
+    paddingHorizontal: 18,
+  },
+  showAllInterestsText: {
+    color: '#4B348A',
+    fontSize: 15,
+    fontWeight: '900',
+    letterSpacing: 0,
+  },
+  showAllIcon: {
+    transform: [{ rotate: '90deg' }],
+  },
+  showLessIcon: {
+    transform: [{ rotate: '-90deg' }],
+  },
+  privacyCard: {
+    alignItems: 'center',
+    backgroundColor: '#F4EEF9',
+    borderColor: '#E6DDF7',
+    borderRadius: 18,
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: 14,
+    marginTop: 16,
+    paddingHorizontal: 16,
+    paddingVertical: 16,
+  },
+  privacyIcon: {
+    alignItems: 'center',
+    height: 42,
+    justifyContent: 'center',
+    width: 42,
+  },
+  privacyCopy: {
+    flex: 1,
+    minWidth: 0,
+  },
+  privacyTitle: {
+    color: '#4B348A',
+    fontSize: 15,
+    fontWeight: '900',
+    letterSpacing: 0,
+  },
+  privacyText: {
+    color: '#596A65',
+    fontSize: 13,
+    fontWeight: '700',
+    letterSpacing: 0,
+    lineHeight: 18,
+    marginTop: 3,
   },
 })
 

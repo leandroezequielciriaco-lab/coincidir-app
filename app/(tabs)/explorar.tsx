@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import {
   ActivityIndicator,
   FlatList,
@@ -18,7 +18,6 @@ import { SafeAreaView } from 'react-native-safe-area-context'
 import { useRouter } from 'expo-router'
 import { collection, onSnapshot } from 'firebase/firestore'
 import {
-  ArrowRight,
   CalendarCheck,
   CalendarDays,
   DollarSign,
@@ -254,8 +253,6 @@ function mapExploreCard(item: RecordItem): ExploreCardItem {
 export default function ExplorarScreen() {
   const router = useRouter()
   const { width } = useWindowDimensions()
-  const scrollRef = useRef<ScrollView>(null)
-  const featuredSectionY = useRef(0)
   const [records, setRecords] = useState<RecordItem[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [query, setQuery] = useState('')
@@ -334,16 +331,9 @@ export default function ExplorarScreen() {
     setQuery('')
   }
 
-  const scrollToFeatured = () => {
-    scrollRef.current?.scrollTo({
-      animated: true,
-      y: Math.max(featuredSectionY.current - 12, 0),
-    })
-  }
-
   return (
     <SafeAreaView edges={['top']} style={styles.safeArea}>
-      <ScrollView ref={scrollRef} contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
         <View style={styles.headerRow}>
           <View style={styles.headerCopy}>
             <Text style={styles.title}>Explorar</Text>
@@ -385,14 +375,9 @@ export default function ExplorarScreen() {
           showsHorizontalScrollIndicator={false}
         />
 
-        <ExploreBanner onPress={scrollToFeatured} />
+        <ExploreBanner />
 
-        <View
-          onLayout={(event) => {
-            featuredSectionY.current = event.nativeEvent.layout.y
-          }}
-          style={styles.sectionHeader}
-        >
+        <View style={styles.sectionHeader}>
           <View style={styles.sectionTitleRow}>
             <Sprout color="#006A32" size={24} strokeWidth={2.4} />
             <Text style={styles.sectionTitle}>Destacados para vos</Text>
@@ -472,16 +457,12 @@ function EmptyResults({ onReset }: { onReset: () => void }) {
   )
 }
 
-function ExploreBanner({ onPress }: { onPress: () => void }) {
+function ExploreBanner() {
   return (
     <View style={styles.banner}>
       <View style={styles.bannerCopy}>
         <Text style={styles.bannerTitle}>Conectá con lo que te hace bien</Text>
-        <Text style={styles.bannerText}>Actividades al aire libre, gratuitas y para todos.</Text>
-        <PressScale accessibilityLabel="Ver actividades" accessibilityRole="button" onPress={onPress} scaleTo={0.96} style={styles.bannerButton}>
-          <Text style={styles.bannerButtonText}>Ver actividades</Text>
-          <ArrowRight color="#006A32" size={18} strokeWidth={2.5} />
-        </PressScale>
+        <Text style={styles.bannerText}>Actividades, grupos y experiencias para todos los estilos.</Text>
       </View>
       <View style={styles.bannerArt}>
         <View style={styles.sun} />
@@ -722,9 +703,10 @@ const styles = StyleSheet.create({
     borderRadius: 24,
     flexDirection: 'row',
     marginTop: 14,
-    minHeight: 168,
+    minHeight: 154,
     overflow: 'hidden',
-    padding: 22,
+    paddingHorizontal: 22,
+    paddingVertical: 24,
   },
   bannerCopy: {
     flex: 1.1,
@@ -746,31 +728,9 @@ const styles = StyleSheet.create({
     lineHeight: 23,
     marginTop: 12,
   },
-  bannerButton: {
-    alignItems: 'center',
-    alignSelf: 'flex-start',
-    backgroundColor: '#F8FFF6',
-    borderColor: '#BFE4C4',
-    borderWidth: 1.5,
-    borderRadius: 999,
-    flexDirection: 'row',
-    gap: 8,
-    minHeight: 48,
-    marginTop: 18,
-    opacity: 1,
-    paddingHorizontal: 18,
-    zIndex: 3,
-  },
-  bannerButtonText: {
-    color: '#006A32',
-    fontSize: 15,
-    fontWeight: '900',
-    letterSpacing: 0,
-    opacity: 1,
-  },
   bannerArt: {
     alignItems: 'center',
-    bottom: -12,
+    bottom: -8,
     flex: 0.9,
     justifyContent: 'flex-end',
     position: 'relative',

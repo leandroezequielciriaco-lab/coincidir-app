@@ -66,8 +66,10 @@ function getShareMessage(target?: InviteShareTarget | null) {
   if (target?.type === 'activity' && title) {
     return [
       `¡Me sumé a ${title} en COINCIDIR!`,
+      '',
       dateTime ? `📅 ${dateTime}` : '',
       location ? `📍 ${location}` : '',
+      '',
       '¿Te venís conmigo?',
       '',
       `Te dejo el link para que veas la actividad: ${link}`,
@@ -85,8 +87,9 @@ function getShareMessage(target?: InviteShareTarget | null) {
   }
 
   return [
-    'Estoy usando COINCIDIR para encontrar actividades y gente con planes afines.',
-    'Sumate y descubramos algo para hacer juntos.',
+    'Estoy usando COINCIDIR para encontrar actividades, encuentros y planes cerca mío 🙌',
+    '',
+    'Sumate y descubrí actividades para compartir con otras personas.',
     '',
     APP_LINK,
   ].join('\n')
@@ -161,7 +164,7 @@ export function InviteFriendsSheet({ onClose, target, visible }: InviteFriendsSh
           </View>
           <Text style={styles.title}>¿Con quién querés coincidir?</Text>
           <Text style={styles.subtitle}>
-            Invitá a tus amigos a {hasActivityTarget ? 'esta actividad' : 'usar COINCIDIR'}.
+            {hasActivityTarget ? 'Compartí esta actividad específica con tus amigos.' : 'Invitá amigos a usar COINCIDIR.'}
           </Text>
 
           <InviteOption
@@ -197,7 +200,7 @@ export function InviteFriendsSheet({ onClose, target, visible }: InviteFriendsSh
             color="#F2A900"
             description="Invitá a tus amigos a descubrir COINCIDIR."
             label="Más opciones"
-            onPress={() => Share.share({ message: getShareMessage({ type: 'app' }) })}
+            onPress={() => Share.share({ message: shareMessage })}
           />
 
           {feedback ? <Text style={styles.feedback}>{feedback}</Text> : null}

@@ -90,6 +90,8 @@ type JoinState = {
   joined: boolean
 }
 
+type UserNamesById = Record<string, string>
+
 function readString(value: unknown, fallback = '') {
   return typeof value === 'string' && value.trim() ? value.trim() : fallback
 }
@@ -164,14 +166,32 @@ function getRecordLocation(data: Record<string, unknown>) {
   return readString(data.location, readString(data.city, 'Ubicacion a definir'))
 }
 
-function getOrganizerName(data: Record<string, unknown>) {
+function getUserDisplayName(data: Record<string, unknown>) {
+  return readString(
+    data.fullName,
+    readString(
+      data.displayName,
+      readString(
+        data.name,
+        readString(data.nombre),
+      ),
+    ),
+  )
+}
+
+function getOrganizerName(data: Record<string, unknown>, userNamesById: UserNamesById = {}) {
+  const creatorId = readString(data.createdBy) || readString(data.createdById) || readString(data.ownerId) || readString(data.userId)
+
   return readString(
     data.organizerName,
     readString(
       data.hostName,
       readString(
         data.createdByName,
-        readString(data.ownerName, 'Organizador de Coincidir'),
+        readString(
+          data.ownerName,
+          creatorId && userNamesById[creatorId] ? userNamesById[creatorId] : 'Organizador de Coincidir',
+        ),
       ),
     ),
   )
@@ -267,7 +287,7 @@ function getJoinCta(joined: boolean) {
   return joined ? '✓ Te sumaste' : 'Me sumo'
 }
 
-function mapActivityCard(record: CreatedRecord, joinState: JoinState): ActivityCardItem {
+function mapActivityCard(record: CreatedRecord, joinState: JoinState, userNamesById: UserNamesById): ActivityCardItem {
   const { data } = record
   const category = readString(data.category, 'Encuentro')
   const maxParticipants = getMaxParticipants(data)
@@ -282,7 +302,7 @@ function mapActivityCard(record: CreatedRecord, joinState: JoinState): ActivityC
     category,
     dateTime: formatSchedule(data),
     location: getRecordLocation(data),
-    organizer: getOrganizerName(data),
+    organizer: getOrganizerName(data, userNamesById),
     iconLabel: category,
     cta: getJoinCta(joinState.joined),
     Icon: getIcon(data),
@@ -458,6 +478,7 @@ export default function HomeScreen() {
   const [currentUserId, setCurrentUserId] = useState<string | null>(null)
   const [userInterests, setUserInterests] = useState<string[]>([])
   const [userName, setUserName] = useState<string | null>(null)
+  const [userNamesById, setUserNamesById] = useState<UserNamesById>({})
   const [createdActivities, setCreatedActivities] = useState<CreatedRecord[]>([])
   const [createdGroups, setCreatedGroups] = useState<CreatedRecord[]>([])
   const [optimisticJoins, setOptimisticJoins] = useState<Record<string, boolean>>({})
@@ -467,6 +488,7 @@ export default function HomeScreen() {
   const [isCitySearchVisible, setIsCitySearchVisible] = useState(false)
   const [citySearchQuery, setCitySearchQuery] = useState('')
   const [isInviteVisible, setIsInviteVisible] = useState(false)
+  const [shareTarget, setShareTarget] = useState<InviteShareTarget>({ type: 'app' })
   const [searchQuery, setSearchQuery] = useState('')
   const [debouncedSearchQuery, setDebouncedSearchQuery] = useState('')
   const { width } = useWindowDimensions()
@@ -550,6 +572,7 @@ export default function HomeScreen() {
   useEffect(() => {
     let unsubscribeActivities = () => {}
     let unsubscribeGroups = () => {}
+    let unsubscribeUsers = () => {}
 
     try {
       const { db } = getFirebaseServices()
@@ -577,14 +600,31 @@ export default function HomeScreen() {
         },
         () => setCreatedGroups([]),
       )
+
+      unsubscribeUsers = onSnapshot(
+        collection(db, 'users'),
+        (snapshot) => {
+          const nextNames: UserNamesById = {}
+
+          snapshot.docs.forEach((item) => {
+            const name = getUserDisplayName(item.data() as Record<string, unknown>)
+            if (name) nextNames[item.id] = name
+          })
+
+          setUserNamesById(nextNames)
+        },
+        () => setUserNamesById({}),
+      )
     } catch {
       setCreatedActivities([])
       setCreatedGroups([])
+      setUserNamesById({})
     }
 
     return () => {
       unsubscribeActivities()
       unsubscribeGroups()
+      unsubscribeUsers()
     }
   }, [])
 
@@ -707,8 +747,8 @@ export default function HomeScreen() {
       filteredActivities
         .filter((item) => getCategoryId(item.data) !== 'private')
         .sort((left, right) => getActivityTime(left) - getActivityTime(right))
-        .map((item) => mapActivityCard(item, getJoinState(item, 'activities', currentUserId, optimisticJoins))),
-    [currentUserId, filteredActivities, optimisticJoins],
+        .map((item) => mapActivityCard(item, getJoinState(item, 'activities', currentUserId, optimisticJoins), userNamesById)),
+    [currentUserId, filteredActivities, optimisticJoins, userNamesById],
   )
   const privateSpaces = useMemo(
     () =>
@@ -731,19 +771,21 @@ export default function HomeScreen() {
     () => new Map(filteredActivities.map((item) => [item.id, item])),
     [filteredActivities],
   )
-  const inviteTarget = useMemo<InviteShareTarget>(() => {
-    const record = recommendedActivities[0] ?? filteredActivities[0]
+  const openAppInvite = () => {
+    setShareTarget({ type: 'app' })
+    setIsInviteVisible(true)
+  }
 
-    if (!record) return { type: 'app' }
-
-    return {
-      dateTime: formatSchedule(record.data),
-      id: record.id,
-      location: readString(record.data.location),
-      title: readString(record.data.name, 'Actividad de COINCIDIR'),
+  const openActivityShare = (item: ActivityCardItem) => {
+    setShareTarget({
+      dateTime: item.dateTime,
+      id: item.recordId,
+      location: item.location,
+      title: item.title,
       type: 'activity',
-    }
-  }, [filteredActivities, recommendedActivities])
+    })
+    setIsInviteVisible(true)
+  }
   return (
     <SafeAreaView edges={['top']} style={styles.safeArea}>
       <ScrollView
@@ -919,6 +961,7 @@ export default function HomeScreen() {
               renderItem={({ item }) => (
                 <ActivityCard
                   item={item}
+                  onSharePress={() => openActivityShare(item)}
                   onPress={() => router.push({
                     pathname: '/activity/[activityId]',
                     params: { activityId: item.recordId },
@@ -977,20 +1020,22 @@ export default function HomeScreen() {
         )}
 
         <View style={styles.inviteBand}>
-          <View style={styles.heartCircle}>
-            <Heart color="#17803C" size={31} strokeWidth={2} />
+          <View style={styles.inviteContentRow}>
+            <View style={styles.heartCircle}>
+              <Heart color="#17803C" size={31} strokeWidth={2} />
+            </View>
+            <Text style={styles.inviteText}>
+              Comparte la app con tus amigos para que se sumen a COINCIDIR y descubran actividades y grupos.
+            </Text>
           </View>
-          <Text style={styles.inviteText}>
-            Cuanto más uses Coincidir,{'\n'}mejores coincidencias vas a encontrar.
-          </Text>
-          <PressScale onPress={() => setIsInviteVisible(true)} style={styles.inviteButton} scaleTo={0.96}>
+          <PressScale onPress={openAppInvite} style={styles.inviteButton} scaleTo={0.96}>
             <UsersRound color="#00613F" size={20} strokeWidth={2.4} />
-            <Text style={styles.inviteButtonText}>Invitar amigos</Text>
+            <Text style={styles.inviteButtonText}>Invitar amigos a COINCIDIR</Text>
           </PressScale>
         </View>
         <InviteFriendsSheet
           onClose={() => setIsInviteVisible(false)}
-          target={inviteTarget}
+          target={shareTarget}
           visible={isInviteVisible}
         />
       </ScrollView>
@@ -1411,15 +1456,20 @@ const styles = StyleSheet.create({
     letterSpacing: 0,
   },
   inviteBand: {
-    alignItems: 'center',
+    alignItems: 'stretch',
     backgroundColor: '#F2F5ED',
     borderRadius: 20,
-    flexDirection: 'row',
-    gap: 18,
+    gap: 14,
     marginTop: 22,
-    minHeight: 88,
+    minHeight: 132,
     paddingHorizontal: 20,
+    paddingVertical: 18,
     ...softShadow,
+  },
+  inviteContentRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 14,
   },
   heartCircle: {
     alignItems: 'center',
@@ -1449,7 +1499,10 @@ const styles = StyleSheet.create({
     gap: 10,
     height: 50,
     justifyContent: 'center',
+    maxWidth: 320,
     paddingHorizontal: 20,
+    alignSelf: 'center',
+    width: '100%',
     shadowColor: '#0E5A44',
     shadowOffset: { width: 0, height: 10 },
     shadowOpacity: 0.08,
