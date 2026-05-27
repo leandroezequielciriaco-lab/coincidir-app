@@ -59,6 +59,7 @@ import type {
   ThemeTone,
 } from '../../components/home/types'
 import { getFirebaseServices } from '../../firebaseConfig'
+import { notifyActivityInterest, useUnreadNotificationsCount } from '../../lib/notifications'
 import { getCategoryImage } from '../../utils/categoryImages'
 
 type CategoryId = 'outdoor' | 'sports' | 'wellness' | 'groups' | 'private'
@@ -210,6 +211,14 @@ function getOrganizerName(data: Record<string, unknown>, userNamesById: UserName
       ),
     ),
   )
+}
+
+function getCreatorId(data: Record<string, unknown>) {
+  return readString(data.createdBy)
+    || readString(data.createdById)
+    || readString(data.creatorId)
+    || readString(data.ownerId)
+    || readString(data.userId)
 }
 
 function getIcon(data: Record<string, unknown>): LucideIcon {
@@ -593,6 +602,7 @@ export default function HomeScreen() {
   const [shareTarget, setShareTarget] = useState<InviteShareTarget>({ type: 'app' })
   const [searchQuery, setSearchQuery] = useState('')
   const [debouncedSearchQuery, setDebouncedSearchQuery] = useState('')
+  const { unreadCount } = useUnreadNotificationsCount(currentUserId)
   const { width } = useWindowDimensions()
   const horizontalInset = width >= 430 ? 28 : 20
 
@@ -888,6 +898,17 @@ export default function HomeScreen() {
 
       if (nextInterested) {
         Alert.alert('Te interesa', 'Le avisamos al organizador para que pueda contactarte.')
+
+        const creatorId = getCreatorId(record.data)
+        notifyActivityInterest({
+          activityId: record.id,
+          activityTitle: readString(record.data.name, 'tu actividad'),
+          interestedUserId: currentUserId,
+          interestedUserName: userName || 'Alguien',
+          organizerId: creatorId,
+        }).catch((error) => {
+          if (__DEV__) console.warn('home-interest-notification-create-error', error)
+        })
       }
     } catch {
       setOptimisticInterests((current) => {
@@ -980,6 +1001,11 @@ export default function HomeScreen() {
               scaleTo={0.94}
             >
               <Bell color="#05372D" size={27} strokeWidth={2.2} />
+              {unreadCount > 0 ? (
+                <View style={styles.notificationBadge}>
+                  <Text style={styles.notificationBadgeText}>{unreadCount > 9 ? '9+' : unreadCount}</Text>
+                </View>
+              ) : null}
             </PressScale>
             <PressScale
               accessibilityLabel="Abrir ajustes"
@@ -1379,6 +1405,27 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     position: 'relative',
     width: 38,
+  },
+  notificationBadge: {
+    alignItems: 'center',
+    backgroundColor: '#E84C3D',
+    borderColor: '#FAFAF8',
+    borderRadius: 999,
+    borderWidth: 2,
+    height: 19,
+    justifyContent: 'center',
+    minWidth: 19,
+    paddingHorizontal: 4,
+    position: 'absolute',
+    right: 1,
+    top: 1,
+  },
+  notificationBadgeText: {
+    color: '#FFFFFF',
+    fontSize: 9,
+    fontWeight: '900',
+    letterSpacing: 0,
+    lineHeight: 11,
   },
   searchCard: {
     alignItems: 'center',

@@ -42,6 +42,7 @@ import type { LucideIcon } from 'lucide-react-native'
 import { PressScale } from '../../components/home/PressScale'
 import { InviteFriendsSheet, type InviteShareTarget } from '../../components/InviteFriendsSheet'
 import { getFirebaseServices } from '../../firebaseConfig'
+import { notifyActivityConfirmed, notifyActivityInterest } from '../../lib/notifications'
 import { getCategoryImage } from '../../utils/categoryImages'
 
 type ActivityData = Record<string, unknown>
@@ -516,6 +517,18 @@ export default function ActivityDetailScreen() {
             updatedAt: serverTimestamp(),
           })
       })
+
+      if (nextInterested) {
+        notifyActivityInterest({
+          activityId,
+          activityTitle: detail.title,
+          interestedUserId: currentUserId,
+          interestedUserName: currentUserName || 'Alguien',
+          organizerId: creatorId,
+        }).catch((error) => {
+          if (__DEV__) console.warn('interest-notification-create-error', error)
+        })
+      }
     } catch {
       setOptimisticInterested(null)
     } finally {
@@ -676,6 +689,15 @@ export default function ActivityDetailScreen() {
       }
 
       Alert.alert('Participante confirmado', `${user.name} fue agregado a la actividad.`)
+
+      notifyActivityConfirmed({
+        activityId,
+        activityTitle: detail.title,
+        confirmedUserId: user.uid,
+        organizerId: currentUserId ?? undefined,
+      }).catch((error) => {
+        if (__DEV__) console.warn('confirmation-notification-create-error', error)
+      })
     } catch {
       Alert.alert('No pudimos confirmar', 'Intentá nuevamente en unos segundos.')
     } finally {

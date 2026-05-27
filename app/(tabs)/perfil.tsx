@@ -81,6 +81,15 @@ type UserProfile = {
   photoURL: string
 }
 
+type FirebaseStorageLikeError = {
+  code?: string
+  customData?: {
+    serverResponse?: string
+  }
+  message?: string
+  serverResponse?: string
+}
+
 const DEFAULT_BIO = 'Siempre listo para nuevos planes.'
 const DEFAULT_LOCATION = 'Tandil'
 const PROFILE_INTERESTS_STORAGE_KEY = 'profile:selectedInterests'
@@ -183,6 +192,37 @@ function readString(value: unknown, fallback = '') {
 
 function readList(value: unknown) {
   return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : []
+}
+
+function logAvatarUploadError(error: unknown) {
+  const firebaseError = error as FirebaseStorageLikeError
+
+  console.error('Avatar upload error', error)
+  console.error('Avatar upload error code', firebaseError?.code)
+  console.error('Avatar upload error message', firebaseError?.message)
+  console.error('Avatar upload error serverResponse', firebaseError?.serverResponse ?? firebaseError?.customData?.serverResponse)
+
+  try {
+    console.error('Avatar upload error JSON', JSON.stringify(error, null, 2))
+  } catch (jsonError) {
+    console.error('Avatar upload error JSON stringify failed', jsonError)
+  }
+}
+
+function getAvatarUploadErrorMessage(error: unknown) {
+  const firebaseError = error as FirebaseStorageLikeError
+
+  if (firebaseError?.code === 'storage/unauthorized') {
+    return 'No tenés permisos para subir la foto. Revisá que estés logueado y que las reglas de Firebase Storage permitan escribir avatares.'
+  }
+
+  if (firebaseError?.code === 'storage/bucket-not-found' || firebaseError?.code === 'storage/unknown') {
+    return 'No pudimos subir la foto a Firebase Storage. Revisá que Storage esté habilitado, que el bucket sea correcto y que las reglas permitan escritura autenticada.'
+  }
+
+  if (firebaseError?.message) return firebaseError.message
+
+  return 'La foto quedó en vista previa. Podés volver a tocar Guardar para reintentar.'
 }
 
 function getParticipantCount(data: Record<string, unknown>) {
@@ -774,30 +814,54 @@ function EditProfileModal({ onClose, profile, userId, visible }: EditProfileModa
     setDraft((current) => ({ ...current, photoURL: asset.uri }))
   }
 
-  const getBlobFromUri = (uri: string) => new Promise<Blob>((resolve, reject) => {
-    const request = new XMLHttpRequest()
-    request.onload = () => resolve(request.response as Blob)
-    request.onerror = () => reject(new Error('profile-photo-read-failed'))
-    request.responseType = 'blob'
-    request.open('GET', uri, true)
-    request.send()
-  })
+  const getBlobFromUri = async (uri: string, timeoutMs = 20000) => {
+    const controller = new AbortController()
+    const timeoutId = setTimeout(() => controller.abort(), timeoutMs)
+
+    try {
+      const response = await fetch(uri, { signal: controller.signal })
+      if (!response.ok) throw new Error(`profile-photo-fetch-failed:${response.status}`)
+
+      const blob = await response.blob()
+      if (blob.size <= 0) throw new Error('profile-photo-empty-blob')
+
+      return blob
+    } finally {
+      clearTimeout(timeoutId)
+    }
+  }
 
   const uploadProfilePhoto = async (asset: ImagePicker.ImagePickerAsset) => {
-    if (!userId) return asset.uri
     if (!asset.uri) throw new Error('profile-photo-missing-uri')
 
-    const { storage } = getFirebaseServices()
-    const blob = await getBlobFromUri(asset.uri)
-    const extension = asset.fileName?.split('.').pop() || asset.mimeType?.split('/').pop() || 'jpg'
-    const cleanExtension = extension.replace(/[^a-zA-Z0-9]/g, '') || 'jpg'
-    const storageRef = ref(storage, `users/${userId}/profile-photo-${Date.now()}.${cleanExtension}`)
+    const { auth, storage } = getFirebaseServices()
+    const currentUser = auth.currentUser
 
-    await uploadBytes(storageRef, blob, {
-      contentType: asset.mimeType || 'image/jpeg',
-    })
+    if (!currentUser?.uid) throw new Error('profile-photo-auth-required')
+    if (userId && currentUser.uid !== userId) throw new Error('profile-photo-auth-user-mismatch')
 
-    return getDownloadURL(storageRef)
+    const contentType = asset.mimeType?.startsWith('image/') ? asset.mimeType : 'image/jpeg'
+    let blob: Blob | null = null
+
+    try {
+      blob = await getBlobFromUri(asset.uri)
+
+      if (blob.size <= 0) throw new Error('profile-photo-empty-blob')
+
+      const uploadBlob = blob.type?.startsWith('image/')
+        ? blob
+        : new Blob([blob], { type: contentType })
+      const storageRef = ref(storage, `avatars/${currentUser.uid}/profile.jpg`)
+
+      await uploadBytes(storageRef, uploadBlob, {
+        contentType: uploadBlob.type || contentType,
+      })
+
+      return getDownloadURL(storageRef)
+    } finally {
+      const close = (blob as Blob & { close?: () => void } | null)?.close
+      if (typeof close === 'function') close.call(blob)
+    }
   }
 
   const choosePhotoFromLibrary = async () => {
@@ -847,10 +911,16 @@ function EditProfileModal({ onClose, profile, userId, visible }: EditProfileModa
 
     setIsSaving(true)
     try {
-      const { db } = getFirebaseServices()
+      const { auth, db } = getFirebaseServices()
+      if (!auth.currentUser?.uid) {
+        Alert.alert('Sesión requerida', 'Iniciá sesión nuevamente para guardar tu foto de perfil.')
+        return
+      }
+
       const savedPhotoURL = selectedPhotoAsset ? await uploadProfilePhoto(selectedPhotoAsset) : draft.photoURL.trim()
 
       await setDoc(doc(db, 'users', userId), {
+        avatarUrl: savedPhotoURL,
         bio: draft.bio.trim(),
         fullName: draft.fullName.trim(),
         interests: draft.interests,
@@ -862,8 +932,9 @@ function EditProfileModal({ onClose, profile, userId, visible }: EditProfileModa
       setSelectedPhotoAsset(null)
       onClose()
     } catch (error) {
+      logAvatarUploadError(error)
       if (__DEV__) console.warn('profile-save-error', error)
-      Alert.alert('No pudimos guardar', 'La foto quedó en vista previa, pero no pudimos subir los cambios. Revisá la conexión e intentá nuevamente.')
+      Alert.alert('No pudimos guardar', getAvatarUploadErrorMessage(error))
     } finally {
       setIsSaving(false)
     }
@@ -880,7 +951,7 @@ function EditProfileModal({ onClose, profile, userId, visible }: EditProfileModa
               <Text style={styles.cancelEditText}>Cancelar</Text>
             </PressScale>
             <Text style={styles.editTitle}>Editar perfil</Text>
-            <PressScale onPress={save} style={styles.editHeaderButton} scaleTo={0.94}>
+            <PressScale disabled={isSaving} onPress={save} style={[styles.editHeaderButton, isSaving && styles.editHeaderButtonDisabled]} scaleTo={0.94}>
               <Text style={styles.saveEditText}>{isSaving ? 'Guardando' : 'Guardar'}</Text>
             </PressScale>
           </View>
@@ -1526,6 +1597,9 @@ const styles = StyleSheet.create({
     minWidth: 76,
     minHeight: 38,
     justifyContent: 'center',
+  },
+  editHeaderButtonDisabled: {
+    opacity: 0.55,
   },
   cancelEditText: {
     color: '#596A65',

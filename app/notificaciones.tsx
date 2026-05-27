@@ -1,12 +1,90 @@
-import { Platform, ScrollView, StyleSheet, Text, View } from 'react-native'
+import { useEffect, useState } from 'react'
+import { ActivityIndicator, Platform, ScrollView, StyleSheet, Text, View } from 'react-native'
+import type { Href } from 'expo-router'
 import { useRouter } from 'expo-router'
 import { SafeAreaView } from 'react-native-safe-area-context'
-import { Bell, ChevronLeft } from 'lucide-react-native'
+import { onAuthStateChanged } from 'firebase/auth'
+import {
+  Bell,
+  CalendarClock,
+  CheckCircle2,
+  ChevronLeft,
+  Compass,
+  Heart,
+  Mail,
+  MessageCircle,
+} from 'lucide-react-native'
+import type { LucideIcon } from 'lucide-react-native'
 
 import { PressScale } from '../components/home/PressScale'
+import { getFirebaseServices } from '../firebaseConfig'
+import {
+  markNotificationAsRead,
+  useNotifications,
+  type AppNotification,
+  type NotificationType,
+} from '../lib/notifications'
+
+const EXPLORE_ROUTE = '/explorar' as Href
+
+function getNotificationIcon(type: NotificationType): LucideIcon {
+  if (type === 'invite') return Mail
+  if (type === 'interest') return Heart
+  if (type === 'message') return MessageCircle
+  if (type === 'confirmed') return CheckCircle2
+  return CalendarClock
+}
+
+function getRelativeTime(date: Date | null) {
+  if (!date) return 'Recién'
+
+  const diffMs = Math.max(0, Date.now() - date.getTime())
+  const minutes = Math.floor(diffMs / 60000)
+  if (minutes < 1) return 'Recién'
+  if (minutes < 60) return `Hace ${minutes} min`
+
+  const hours = Math.floor(minutes / 60)
+  if (hours < 24) return `Hace ${hours} h`
+
+  const days = Math.floor(hours / 24)
+  if (days < 7) return `Hace ${days} d`
+
+  const weeks = Math.floor(days / 7)
+  if (weeks < 5) return `Hace ${weeks} sem`
+
+  const months = Math.floor(days / 30)
+  return `Hace ${months} mes${months === 1 ? '' : 'es'}`
+}
 
 export default function NotificacionesScreen() {
   const router = useRouter()
+  const [userId, setUserId] = useState<string | null>(null)
+  const { error, isLoading, notifications } = useNotifications(userId)
+
+  useEffect(() => {
+    try {
+      const { auth } = getFirebaseServices()
+      return onAuthStateChanged(auth, (user) => setUserId(user?.uid ?? null))
+    } catch {
+      setUserId(null)
+      return undefined
+    }
+  }, [])
+
+  const openNotification = async (notification: AppNotification) => {
+    try {
+      if (!notification.read) await markNotificationAsRead(notification.id)
+    } catch (error) {
+      if (__DEV__) console.warn('notification-mark-read-error', error)
+    }
+
+    if (notification.activityId) {
+      router.push({
+        pathname: '/activity/[activityId]',
+        params: { activityId: notification.activityId },
+      })
+    }
+  }
 
   return (
     <SafeAreaView edges={['top']} style={styles.safeArea}>
@@ -25,17 +103,84 @@ export default function NotificacionesScreen() {
           <View style={styles.headerSpacer} />
         </View>
 
-        <View style={styles.emptyCard}>
-          <View style={styles.iconCircle}>
-            <Bell color="#17803C" size={36} strokeWidth={2.1} />
+        {isLoading ? (
+          <View style={styles.centerCard}>
+            <ActivityIndicator color="#4B348A" />
+            <Text style={styles.centerText}>Cargando notificaciones...</Text>
           </View>
-          <Text style={styles.emptyTitle}>No tenés notificaciones todavía</Text>
-          <Text style={styles.emptySubtitle}>
-            Acá vas a ver invitaciones, cambios en actividades y novedades cerca tuyo.
-          </Text>
-        </View>
+        ) : error ? (
+          <View style={styles.centerCard}>
+            <View style={styles.iconCircleSmall}>
+              <Bell color="#17803C" size={26} strokeWidth={2.1} />
+            </View>
+            <Text style={styles.emptyTitle}>No pudimos cargar tus notificaciones</Text>
+            <Text style={styles.emptySubtitle}>{error}</Text>
+          </View>
+        ) : notifications.length > 0 ? (
+          <View style={styles.notificationList}>
+            {notifications.map((notification) => (
+              <NotificationCard
+                key={notification.id}
+                notification={notification}
+                onPress={() => void openNotification(notification)}
+              />
+            ))}
+          </View>
+        ) : (
+          <View style={styles.emptyCard}>
+            <View style={styles.iconCircle}>
+              <Bell color="#17803C" size={36} strokeWidth={2.1} />
+            </View>
+            <Text style={styles.emptyTitle}>No tenés notificaciones todavía</Text>
+            <Text style={styles.emptySubtitle}>
+              Acá vas a ver invitaciones, cambios en actividades y novedades cerca tuyo.
+            </Text>
+            <PressScale
+              accessibilityLabel="Explorar actividades"
+              accessibilityRole="button"
+              onPress={() => router.push(EXPLORE_ROUTE)}
+              scaleTo={0.97}
+              style={styles.exploreButton}
+            >
+              <Compass color="#FFFFFF" size={19} strokeWidth={2.4} />
+              <Text style={styles.exploreButtonText}>Explorar actividades</Text>
+            </PressScale>
+          </View>
+        )}
       </ScrollView>
     </SafeAreaView>
+  )
+}
+
+function NotificationCard({
+  notification,
+  onPress,
+}: {
+  notification: AppNotification
+  onPress: () => void
+}) {
+  const Icon = getNotificationIcon(notification.type)
+
+  return (
+    <PressScale
+      accessibilityLabel={notification.title}
+      accessibilityRole="button"
+      onPress={onPress}
+      scaleTo={0.98}
+      style={[styles.notificationCard, !notification.read && styles.notificationCardUnread]}
+    >
+      <View style={[styles.notificationIcon, !notification.read && styles.notificationIconUnread]}>
+        <Icon color={notification.read ? '#4B348A' : '#17803C'} size={23} strokeWidth={2.2} />
+      </View>
+      <View style={styles.notificationCopy}>
+        <View style={styles.notificationTitleRow}>
+          <Text numberOfLines={1} style={styles.notificationTitle}>{notification.title}</Text>
+          {!notification.read ? <View style={styles.unreadDot} /> : null}
+        </View>
+        <Text numberOfLines={2} style={styles.notificationBody}>{notification.body}</Text>
+        <Text style={styles.notificationTime}>{getRelativeTime(notification.createdAt)}</Text>
+      </View>
+    </PressScale>
   )
 }
 
@@ -88,6 +233,23 @@ const styles = StyleSheet.create({
   headerSpacer: {
     width: 44,
   },
+  centerCard: {
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    borderColor: '#E7E7E1',
+    borderRadius: 20,
+    borderWidth: 1,
+    gap: 10,
+    paddingHorizontal: 24,
+    paddingVertical: 30,
+    ...shadow,
+  },
+  centerText: {
+    color: '#56645F',
+    fontSize: 14,
+    fontWeight: '800',
+    letterSpacing: 0,
+  },
   emptyCard: {
     alignItems: 'center',
     backgroundColor: '#FFFFFF',
@@ -109,6 +271,16 @@ const styles = StyleSheet.create({
     marginBottom: 18,
     width: 82,
   },
+  iconCircleSmall: {
+    alignItems: 'center',
+    backgroundColor: '#F0F8EC',
+    borderColor: '#B7DC9D',
+    borderRadius: 999,
+    borderWidth: 1,
+    height: 58,
+    justifyContent: 'center',
+    width: 58,
+  },
   emptyTitle: {
     color: '#063C31',
     fontSize: 20,
@@ -125,5 +297,91 @@ const styles = StyleSheet.create({
     lineHeight: 22,
     marginTop: 8,
     textAlign: 'center',
+  },
+  exploreButton: {
+    alignItems: 'center',
+    backgroundColor: '#006A32',
+    borderRadius: 14,
+    flexDirection: 'row',
+    gap: 8,
+    justifyContent: 'center',
+    marginTop: 22,
+    minHeight: 48,
+    paddingHorizontal: 18,
+  },
+  exploreButtonText: {
+    color: '#FFFFFF',
+    fontSize: 15,
+    fontWeight: '900',
+    letterSpacing: 0,
+  },
+  notificationList: {
+    gap: 12,
+  },
+  notificationCard: {
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    borderColor: '#E7E7E1',
+    borderRadius: 18,
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: 13,
+    minHeight: 94,
+    paddingHorizontal: 14,
+    paddingVertical: 13,
+    ...shadow,
+  },
+  notificationCardUnread: {
+    backgroundColor: '#F7FAF5',
+    borderColor: '#CFE6C9',
+  },
+  notificationIcon: {
+    alignItems: 'center',
+    backgroundColor: '#F4EEF9',
+    borderRadius: 999,
+    height: 48,
+    justifyContent: 'center',
+    width: 48,
+  },
+  notificationIconUnread: {
+    backgroundColor: '#EAF7E7',
+  },
+  notificationCopy: {
+    flex: 1,
+    minWidth: 0,
+  },
+  notificationTitleRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 8,
+  },
+  notificationTitle: {
+    color: '#071D19',
+    flex: 1,
+    fontSize: 15,
+    fontWeight: '900',
+    letterSpacing: 0,
+    lineHeight: 20,
+  },
+  unreadDot: {
+    backgroundColor: '#17803C',
+    borderRadius: 999,
+    height: 9,
+    width: 9,
+  },
+  notificationBody: {
+    color: '#56645F',
+    fontSize: 13,
+    fontWeight: '700',
+    letterSpacing: 0,
+    lineHeight: 18,
+    marginTop: 4,
+  },
+  notificationTime: {
+    color: '#4B348A',
+    fontSize: 12,
+    fontWeight: '900',
+    letterSpacing: 0,
+    marginTop: 7,
   },
 })
