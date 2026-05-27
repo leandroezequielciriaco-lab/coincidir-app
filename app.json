@@ -16,6 +16,11 @@
         "foregroundImage": "./assets/images/coincidir-logo-official.png",
         "monochromeImage": "./assets/images/coincidir-logo-official.png"
       },
+      "permissions": [
+        "CAMERA",
+        "READ_MEDIA_IMAGES",
+        "READ_EXTERNAL_STORAGE"
+      ],
       "predictiveBackGestureEnabled": false
     },
     "web": {

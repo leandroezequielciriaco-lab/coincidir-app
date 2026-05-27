@@ -92,6 +92,16 @@ function getParticipantCount(data: ActivityData) {
   return Array.isArray(participants) ? participants.length : 0
 }
 
+function getInterestedCount(data: ActivityData) {
+  const interestedCount = readNumber(data.interestedCount, -1)
+  if (interestedCount >= 0) return interestedCount
+
+  const interestedUsers = data.interestedUsers
+  if (typeof interestedUsers === 'object' && interestedUsers) return Object.keys(interestedUsers).length
+
+  return 0
+}
+
 function getMaxParticipants(data: ActivityData) {
   const additionalSettings = getAdditionalSettings(data)
   return Math.max(1, readNumber(additionalSettings.maxParticipants, 10))
@@ -125,6 +135,45 @@ function isUserJoined(data: ActivityData, userId: string | null) {
     || hasUserInList(data.participants, userId)
     || hasUserInList(data.attendees, userId)
     || hasUserInList(data.members, userId)
+}
+
+function isUserInterested(data: ActivityData, userId: string | null) {
+  if (!userId) return false
+
+  return hasUserInMap(data.interestedUsers, userId)
+}
+
+function getInterestedUserLabels(data: ActivityData) {
+  const interestedUsers = data.interestedUsers
+  if (typeof interestedUsers !== 'object' || !interestedUsers || Array.isArray(interestedUsers)) return []
+
+  return Object.entries(interestedUsers as Record<string, unknown>)
+    .map(([uid, value]) => {
+      if (typeof value === 'object' && value) {
+        const record = value as ActivityData
+        return readString(record.name, readString(record.displayName, readString(record.fullName, `Usuario ${uid.slice(0, 6)}`)))
+      }
+
+      return `Usuario ${uid.slice(0, 6)}`
+    })
+}
+
+function requiresInterestAction(data: ActivityData) {
+  const categoryId = getCategoryId(data)
+  const additionalSettings = getAdditionalSettings(data)
+  const privacy = normalize(additionalSettings.privacy)
+  const cost = normalize(additionalSettings.cost)
+  const detail = `${normalize(data.category)} ${normalize(data.subcategory)} ${normalize(data.type)} ${normalize(data.description)}`
+
+  return categoryId === 'private'
+    || privacy.includes('privada')
+    || privacy.includes('aprobacion')
+    || cost === 'pago'
+    || cost === 'a la gorra'
+    || detail.includes('aprobacion')
+    || detail.includes('coordinar')
+    || detail.includes('coordinacion')
+    || detail.includes('cerrad')
 }
 
 function getIcon(data: ActivityData): LucideIcon {
@@ -197,16 +246,23 @@ export default function ActivityDetailScreen() {
   const [currentUserId, setCurrentUserId] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [isJoining, setIsJoining] = useState(false)
+  const [isMarkingInterest, setIsMarkingInterest] = useState(false)
   const [isInviteVisible, setIsInviteVisible] = useState(false)
   const [optimisticJoined, setOptimisticJoined] = useState<boolean | null>(null)
+  const [optimisticInterested, setOptimisticInterested] = useState<boolean | null>(null)
   const [organizerProfile, setOrganizerProfile] = useState<ActivityData | null>(null)
+  const [currentUserName, setCurrentUserName] = useState('')
 
   useEffect(() => {
     try {
       const { auth } = getFirebaseServices()
-      return onAuthStateChanged(auth, (user) => setCurrentUserId(user?.uid ?? null))
+      return onAuthStateChanged(auth, (user) => {
+        setCurrentUserId(user?.uid ?? null)
+        setCurrentUserName(user?.displayName?.trim() ?? '')
+      })
     } catch {
       setCurrentUserId(null)
+      setCurrentUserName('')
       return undefined
     }
   }, [])
@@ -225,6 +281,7 @@ export default function ActivityDetailScreen() {
           setActivity(snapshot.exists() ? snapshot.data() as ActivityData : null)
           setIsLoading(false)
           setOptimisticJoined(null)
+          setOptimisticInterested(null)
         },
         () => {
           setActivity(null)
@@ -262,18 +319,28 @@ export default function ActivityDetailScreen() {
   const detail = useMemo(() => {
     const data = activity ?? {}
     const participantCount = getParticipantCount(data)
+    const interestedCount = getInterestedCount(data)
     const maxParticipants = getMaxParticipants(data)
     const persistedJoined = isUserJoined(data, currentUserId)
+    const persistedInterested = isUserInterested(data, currentUserId)
     const joined = optimisticJoined ?? persistedJoined
+    const interested = optimisticInterested ?? persistedInterested
     const optimisticCount = participantCount + (optimisticJoined === null || optimisticJoined === persistedJoined ? 0 : optimisticJoined ? 1 : -1)
     const safeCount = Math.max(0, optimisticCount)
+    const optimisticInterestCount = interestedCount + (optimisticInterested === null || optimisticInterested === persistedInterested ? 0 : optimisticInterested ? 1 : -1)
+    const safeInterestedCount = Math.max(0, optimisticInterestCount)
+    const action = requiresInterestAction(data) ? 'interest' : 'join'
     const isFull = safeCount >= maxParticipants && !joined
     return {
+      action,
       category: readString(data.category, 'Espacio privado'),
       date: readString(data.date, 'Fecha a definir'),
       description: readString(data.description, 'Sin descripción por ahora.'),
       Icon: getIcon(data),
       image: getCategoryImage(data),
+      interested,
+      interestedCount: safeInterestedCount,
+      interestedUsers: getInterestedUserLabels(data),
       isFull,
       joined,
       location: readString(data.location, 'Ubicación a definir'),
@@ -285,7 +352,7 @@ export default function ActivityDetailScreen() {
       time: readString(data.time, 'Horario a definir'),
       title: readString(data.name, 'Actividad sin título'),
     }
-  }, [activity, currentUserId, optimisticJoined, organizerProfile])
+  }, [activity, currentUserId, optimisticInterested, optimisticJoined, organizerProfile])
 
   const toggleJoin = async () => {
     if (!activityId || !activity || !currentUserId || detail.isFull || isJoining) return
@@ -336,6 +403,50 @@ export default function ActivityDetailScreen() {
     }
   }
 
+  const toggleInterest = async () => {
+    if (!activityId || !activity || !currentUserId || isMarkingInterest) return
+
+    const nextInterested = !detail.interested
+    setOptimisticInterested(nextInterested)
+    setIsMarkingInterest(true)
+
+    try {
+      const { db } = getFirebaseServices()
+      const targetRef = doc(db, 'activities', activityId)
+
+      await runTransaction(db, async (transaction) => {
+        const snapshot = await transaction.get(targetRef)
+        if (!snapshot.exists()) return
+
+        const data = snapshot.data() as ActivityData
+        const wasInterested = isUserInterested(data, currentUserId)
+        const currentCount = getInterestedCount(data)
+        const nextCount = Math.max(0, currentCount + (wasInterested ? -1 : 1))
+
+        transaction.update(targetRef, wasInterested
+          ? {
+            [`interestedUsers.${currentUserId}`]: deleteField(),
+            interestedCount: nextCount,
+            updatedAt: serverTimestamp(),
+          }
+          : {
+            [`interestedUsers.${currentUserId}`]: {
+              interestedAt: serverTimestamp(),
+              name: currentUserName,
+              status: 'interested',
+              uid: currentUserId,
+            },
+            interestedCount: nextCount,
+            updatedAt: serverTimestamp(),
+          })
+      })
+    } catch {
+      setOptimisticInterested(null)
+    } finally {
+      setIsMarkingInterest(false)
+    }
+  }
+
   if (isLoading) {
     return (
       <SafeAreaView style={styles.safeArea}>
@@ -359,6 +470,7 @@ export default function ActivityDetailScreen() {
     )
   }
 
+  const isOrganizer = Boolean(currentUserId && creatorId === currentUserId)
   const availablePlaces = Math.max(0, detail.maxParticipants - detail.participantCount)
   const inviteTarget: InviteShareTarget = {
     dateTime: `${detail.date} ${detail.time}`,
@@ -431,25 +543,56 @@ export default function ActivityDetailScreen() {
             </View>
           </View>
 
+          {isOrganizer && detail.action === 'interest' ? (
+            <View style={styles.interestedCard}>
+              <Text style={styles.organizerEyebrow}>Personas interesadas</Text>
+              <Text style={styles.interestedCount}>{detail.interestedCount} interesados</Text>
+              <View style={styles.interestedList}>
+                {detail.interestedUsers.length > 0 ? detail.interestedUsers.slice(0, 5).map((name) => (
+                  <Text key={name} numberOfLines={1} style={styles.interestedName}>{name}</Text>
+                )) : (
+                  <Text style={styles.interestedEmpty}>Todavía no hay interesados.</Text>
+                )}
+              </View>
+              <View style={styles.interestedActions}>
+                <View style={styles.futureAction}>
+                  <Text style={styles.futureActionText}>Escribir</Text>
+                </View>
+                <View style={styles.futureAction}>
+                  <Text style={styles.futureActionText}>Invitar</Text>
+                </View>
+                <View style={styles.futureAction}>
+                  <Text style={styles.futureActionText}>Confirmar</Text>
+                </View>
+              </View>
+            </View>
+          ) : null}
+
           <PressScale
-            accessibilityLabel={detail.joined ? 'Te sumaste' : detail.isFull ? 'Actividad completa' : 'Me sumo'}
+            accessibilityLabel={
+              detail.action === 'interest'
+                ? detail.interested ? 'Te interesa' : 'Me interesa'
+                : detail.joined ? 'Te sumaste' : detail.isFull ? 'Actividad completa' : 'Me sumo'
+            }
             accessibilityRole="button"
-            disabled={detail.isFull || isJoining}
-            onPress={toggleJoin}
+            disabled={detail.action === 'join' ? detail.isFull || isJoining : isMarkingInterest}
+            onPress={detail.action === 'interest' ? toggleInterest : toggleJoin}
             scaleTo={0.97}
             style={[
               styles.primaryButton,
-              detail.joined && styles.joinedButton,
-              detail.isFull && styles.disabledButton,
+              (detail.joined || detail.interested) && styles.joinedButton,
+              detail.action === 'join' && detail.isFull && styles.disabledButton,
             ]}
           >
-            {detail.joined ? <Check color="#17803C" size={20} strokeWidth={2.5} /> : null}
+            {detail.joined || detail.interested ? <Check color="#17803C" size={20} strokeWidth={2.5} /> : null}
             <Text style={[
               styles.primaryButtonText,
-              detail.joined && styles.joinedButtonText,
-              detail.isFull && styles.disabledButtonText,
+              (detail.joined || detail.interested) && styles.joinedButtonText,
+              detail.action === 'join' && detail.isFull && styles.disabledButtonText,
             ]}>
-              {detail.isFull ? 'Actividad completa' : detail.joined ? 'Te sumaste' : 'Me sumo'}
+              {detail.action === 'interest'
+                ? detail.interested ? 'Te interesa' : 'Me interesa'
+                : detail.isFull ? 'Actividad completa' : detail.joined ? 'Te sumaste' : 'Me sumo'}
             </Text>
           </PressScale>
 
@@ -690,6 +833,58 @@ const styles = StyleSheet.create({
     letterSpacing: 0,
     lineHeight: 18,
     marginTop: 4,
+  },
+  interestedCard: {
+    backgroundColor: '#F7FAF5',
+    borderColor: '#D7E8CC',
+    borderRadius: 18,
+    borderWidth: 1,
+    marginTop: 14,
+    padding: 16,
+  },
+  interestedCount: {
+    color: '#063C31',
+    fontSize: 18,
+    fontWeight: '900',
+    letterSpacing: 0,
+  },
+  interestedList: {
+    gap: 7,
+    marginTop: 12,
+  },
+  interestedName: {
+    color: '#163B34',
+    fontSize: 14,
+    fontWeight: '800',
+    letterSpacing: 0,
+  },
+  interestedEmpty: {
+    color: '#596A65',
+    fontSize: 14,
+    fontWeight: '700',
+    letterSpacing: 0,
+  },
+  interestedActions: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginTop: 12,
+  },
+  futureAction: {
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    borderColor: '#DCE8E1',
+    borderRadius: 999,
+    borderWidth: 1,
+    minHeight: 34,
+    paddingHorizontal: 12,
+    justifyContent: 'center',
+  },
+  futureActionText: {
+    color: '#006A32',
+    fontSize: 13,
+    fontWeight: '900',
+    letterSpacing: 0,
   },
   primaryButton: {
     alignItems: 'center',

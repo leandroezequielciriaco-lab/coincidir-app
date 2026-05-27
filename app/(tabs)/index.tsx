@@ -50,12 +50,11 @@ import {
 
 import CoincidirLogo from '../../components/CoincidirLogo'
 import { InviteFriendsSheet, type InviteShareTarget } from '../../components/InviteFriendsSheet'
-import { ActivityCard, PrivateCard, SuggestionCard } from '../../components/home/HomeCards'
+import { ActivityCard, SuggestionCard } from '../../components/home/HomeCards'
 import { CategoryButton } from '../../components/home/CategoryButton'
 import { PressScale } from '../../components/home/PressScale'
 import type {
   ActivityCardItem,
-  PrivateCardItem,
   SuggestionCardItem,
   ThemeTone,
 } from '../../components/home/types'
@@ -88,6 +87,10 @@ type JoinableCollection = 'activities' | 'groups'
 type JoinState = {
   count: number
   joined: boolean
+}
+type InterestState = {
+  count: number
+  interested: boolean
 }
 
 type UserNamesById = Record<string, string>
@@ -138,6 +141,18 @@ function getParticipantCount(data: Record<string, unknown>) {
   }
 
   return Array.isArray(participants) ? participants.length : 0
+}
+
+function getInterestedCount(data: Record<string, unknown>) {
+  const interestedCount = readNumber(data.interestedCount, -1)
+  if (interestedCount >= 0) return interestedCount
+
+  const interestedUsers = data.interestedUsers
+  if (typeof interestedUsers === 'object' && interestedUsers) {
+    return Object.keys(interestedUsers).length
+  }
+
+  return 0
 }
 
 function getMaxParticipants(data: Record<string, unknown>) {
@@ -237,6 +252,10 @@ function getJoinKey(collectionName: JoinableCollection, id: string) {
   return `${collectionName}:${id}`
 }
 
+function getInterestKey(id: string) {
+  return `activities:${id}`
+}
+
 function hasUserInMap(value: unknown, userId: string) {
   return typeof value === 'object' && value !== null && userId in value
 }
@@ -266,6 +285,30 @@ function isUserJoined(data: Record<string, unknown>, userId: string | null) {
     || hasUserInList(data.members, userId)
 }
 
+function isUserInterested(data: Record<string, unknown>, userId: string | null) {
+  if (!userId) return false
+
+  return hasUserInMap(data.interestedUsers, userId)
+}
+
+function requiresInterestAction(data: Record<string, unknown>) {
+  const categoryId = getCategoryId(data)
+  const additionalSettings = getAdditionalSettings(data)
+  const privacy = normalize(additionalSettings.privacy)
+  const cost = normalize(additionalSettings.cost)
+  const detail = `${normalize(data.category)} ${normalize(data.subcategory)} ${normalize(data.type)} ${normalize(data.description)}`
+
+  return categoryId === 'private'
+    || privacy.includes('privada')
+    || privacy.includes('aprobacion')
+    || cost === 'pago'
+    || cost === 'a la gorra'
+    || detail.includes('aprobacion')
+    || detail.includes('coordinar')
+    || detail.includes('coordinacion')
+    || detail.includes('cerrad')
+}
+
 function getJoinState(
   record: CreatedRecord,
   collectionName: JoinableCollection,
@@ -283,14 +326,40 @@ function getJoinState(
   }
 }
 
+function getInterestState(
+  record: CreatedRecord,
+  userId: string | null,
+  optimisticInterests: Record<string, boolean>,
+): InterestState {
+  const persistedInterested = isUserInterested(record.data, userId)
+  const key = getInterestKey(record.id)
+  const interested = key in optimisticInterests ? optimisticInterests[key] : persistedInterested
+  const countDelta = interested === persistedInterested ? 0 : interested ? 1 : -1
+
+  return {
+    count: Math.max(0, getInterestedCount(record.data) + countDelta),
+    interested,
+  }
+}
+
 function getJoinCta(joined: boolean) {
   return joined ? '✓ Te sumaste' : 'Me sumo'
 }
 
-function mapActivityCard(record: CreatedRecord, joinState: JoinState, userNamesById: UserNamesById): ActivityCardItem {
+function getInterestCta(interested: boolean) {
+  return interested ? '✓ Te interesa' : 'Me interesa'
+}
+
+function mapActivityCard(
+  record: CreatedRecord,
+  joinState: JoinState,
+  interestState: InterestState,
+  userNamesById: UserNamesById,
+): ActivityCardItem {
   const { data } = record
   const category = readString(data.category, 'Encuentro')
   const maxParticipants = getMaxParticipants(data)
+  const action = requiresInterestAction(data) ? 'interest' : 'join'
 
   return {
     id: record.id,
@@ -304,24 +373,8 @@ function mapActivityCard(record: CreatedRecord, joinState: JoinState, userNamesB
     location: getRecordLocation(data),
     organizer: getOrganizerName(data, userNamesById),
     iconLabel: category,
-    cta: getJoinCta(joinState.joined),
-    Icon: getIcon(data),
-  }
-}
-
-function mapPrivateCard(record: CreatedRecord, joinState: JoinState): PrivateCardItem {
-  const { data } = record
-  const time = readString(data.time)
-
-  return {
-    id: record.id,
-    recordId: record.id,
-    title: readString(data.name, 'Actividad sin titulo'),
-    image: getCategoryImage(data),
-    capacity: `${joinState.count}/${getMaxParticipants(data)}`,
-    dateTime: `${readString(data.date, 'Fecha a definir')}${time ? ` ${time}` : ''}`,
-    place: readString(data.location, 'Ubicacion a definir'),
-    cta: 'Ver detalle',
+    cta: action === 'interest' ? getInterestCta(interestState.interested) : getJoinCta(joinState.joined),
+    action,
     Icon: getIcon(data),
   }
 }
@@ -482,7 +535,9 @@ export default function HomeScreen() {
   const [createdActivities, setCreatedActivities] = useState<CreatedRecord[]>([])
   const [createdGroups, setCreatedGroups] = useState<CreatedRecord[]>([])
   const [optimisticJoins, setOptimisticJoins] = useState<Record<string, boolean>>({})
+  const [optimisticInterests, setOptimisticInterests] = useState<Record<string, boolean>>({})
   const [pendingJoinKeys, setPendingJoinKeys] = useState<string[]>([])
+  const [pendingInterestKeys, setPendingInterestKeys] = useState<string[]>([])
   const [selectedCity, setSelectedCity] = useState(DEFAULT_CITY)
   const [isCitySelectorVisible, setIsCitySelectorVisible] = useState(false)
   const [isCitySearchVisible, setIsCitySearchVisible] = useState(false)
@@ -742,20 +797,86 @@ export default function HomeScreen() {
       setPendingJoinKeys((current) => current.filter((item) => item !== key))
     }
   }
+  const toggleInterest = async (record: CreatedRecord) => {
+    if (!currentUserId) return
+
+    const key = getInterestKey(record.id)
+    if (pendingInterestKeys.includes(key)) return
+
+    const nextInterested = !getInterestState(record, currentUserId, optimisticInterests).interested
+
+    setOptimisticInterests((current) => ({ ...current, [key]: nextInterested }))
+    setPendingInterestKeys((current) => [...current, key])
+
+    try {
+      const { db } = getFirebaseServices()
+      const targetRef = doc(db, 'activities', record.id)
+
+      await runTransaction(db, async (transaction) => {
+        const snapshot = await transaction.get(targetRef)
+        if (!snapshot.exists()) return
+
+        const data = snapshot.data() as Record<string, unknown>
+        const wasInterested = isUserInterested(data, currentUserId)
+        const currentCount = getInterestedCount(data)
+        const nextCount = Math.max(0, currentCount + (wasInterested ? -1 : 1))
+
+        transaction.update(targetRef, wasInterested
+          ? {
+            [`interestedUsers.${currentUserId}`]: deleteField(),
+            interestedCount: nextCount,
+            updatedAt: serverTimestamp(),
+          }
+          : {
+            [`interestedUsers.${currentUserId}`]: {
+              interestedAt: serverTimestamp(),
+              status: 'interested',
+              uid: currentUserId,
+              name: userName ?? '',
+            },
+            interestedCount: nextCount,
+            updatedAt: serverTimestamp(),
+          })
+      })
+
+      if (nextInterested) {
+        Alert.alert('Te interesa', 'Le avisamos al organizador para que pueda contactarte.')
+      }
+    } catch {
+      setOptimisticInterests((current) => {
+        const next = { ...current }
+        delete next[key]
+        return next
+      })
+    } finally {
+      setPendingInterestKeys((current) => current.filter((item) => item !== key))
+    }
+  }
   const nearbyMeetups = useMemo(
     () =>
       filteredActivities
         .filter((item) => getCategoryId(item.data) !== 'private')
         .sort((left, right) => getActivityTime(left) - getActivityTime(right))
-        .map((item) => mapActivityCard(item, getJoinState(item, 'activities', currentUserId, optimisticJoins), userNamesById)),
-    [currentUserId, filteredActivities, optimisticJoins, userNamesById],
+        .map((item) => mapActivityCard(
+          item,
+          getJoinState(item, 'activities', currentUserId, optimisticJoins),
+          getInterestState(item, currentUserId, optimisticInterests),
+          userNamesById,
+        )),
+    [currentUserId, filteredActivities, optimisticInterests, optimisticJoins, userNamesById],
   )
   const privateSpaces = useMemo(
     () =>
       filteredActivities
         .filter((item) => getCategoryId(item.data) === 'private')
-        .map((item) => mapPrivateCard(item, getJoinState(item, 'activities', currentUserId, optimisticJoins))),
-    [currentUserId, filteredActivities, optimisticJoins],
+        .sort((left, right) => getActivityTime(left) - getActivityTime(right))
+        .map((item) => mapActivityCard(
+          item,
+          getJoinState(item, 'activities', currentUserId, optimisticJoins),
+          getInterestState(item, currentUserId, optimisticInterests),
+          userNamesById,
+        )),
+    [currentUserId, filteredActivities, optimisticInterests, optimisticJoins, userNamesById],
   )
   const suggestions = useMemo(
     () => [
@@ -968,7 +1089,12 @@ export default function HomeScreen() {
                   })}
                   onCtaPress={() => {
                     const record = activityRecordsById.get(item.recordId)
-                    if (record) toggleJoin(record, 'activities')
+                    if (!record) return
+                    if (item.action === 'interest') {
+                      toggleInterest(record)
+                    } else {
+                      toggleJoin(record, 'activities')
+                    }
                   }}
                 />
               )}
@@ -981,15 +1107,26 @@ export default function HomeScreen() {
               accent="violet"
               data={privateSpaces}
               renderItem={({ item }) => (
-                <PrivateCard
+                <ActivityCard
                   item={item}
+                  onSharePress={() => openActivityShare(item)}
                   onPress={() => router.push({
                     pathname: '/activity/[activityId]',
                     params: { activityId: item.recordId },
                   })}
+                  onCtaPress={() => {
+                    const record = activityRecordsById.get(item.recordId)
+                    if (!record) return
+                    if (item.action === 'interest') {
+                      toggleInterest(record)
+                    } else {
+                      toggleJoin(record, 'activities')
+                    }
+                  }}
                 />
               )}
               title="Actividades en espacios privados"
+              variant="vertical"
             />
 
             <Section

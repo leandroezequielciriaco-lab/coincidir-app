@@ -16,6 +16,7 @@ export type ActivityCardItem = {
   organizer: string
   iconLabel: string
   cta: string
+  action: 'join' | 'interest'
   Icon: LucideIcon
 }
 

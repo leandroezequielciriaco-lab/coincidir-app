@@ -549,6 +549,8 @@ export default function CrearScreen() {
           currency: cost === 'Gratis' ? '' : currency,
           quickSettings,
         },
+        interestedUsers: {},
+        interestedCount: 0,
         createdBy: user.uid,
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),

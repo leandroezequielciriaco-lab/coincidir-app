@@ -3,6 +3,7 @@ import {
   ActivityIndicator,
   Alert,
   Image,
+  Linking,
   Modal,
   Platform,
   Pressable,
@@ -37,6 +38,7 @@ import {
   Globe2,
   HandHeart,
   Heart,
+  Image as ImageIcon,
   Laptop,
   LockKeyhole,
   Mic,
@@ -663,15 +665,41 @@ type EditProfileModalProps = {
 function EditProfileModal({ onClose, profile, userId, visible }: EditProfileModalProps) {
   const [draft, setDraft] = useState(profile)
   const [isSaving, setIsSaving] = useState(false)
-  const [isUploadingPhoto, setIsUploadingPhoto] = useState(false)
+  const [isPickingPhoto, setIsPickingPhoto] = useState(false)
+  const [isPhotoOptionsVisible, setIsPhotoOptionsVisible] = useState(false)
+  const [selectedPhotoAsset, setSelectedPhotoAsset] = useState<ImagePicker.ImagePickerAsset | null>(null)
   const [showAllInterests, setShowAllInterests] = useState(false)
 
   useEffect(() => {
     if (visible) {
       setDraft(profile)
+      setSelectedPhotoAsset(null)
+      setIsPhotoOptionsVisible(false)
       setShowAllInterests(false)
     }
   }, [profile, visible])
+
+  useEffect(() => {
+    if (!visible) return
+
+    let mounted = true
+
+    ImagePicker.getPendingResultAsync()
+      .then((pendingResult) => {
+        if (!mounted || !pendingResult || 'code' in pendingResult || pendingResult.canceled || !pendingResult.assets?.[0]) return
+
+        const asset = pendingResult.assets[0]
+        setSelectedPhotoAsset(asset)
+        setDraft((current) => ({ ...current, photoURL: asset.uri }))
+      })
+      .catch(() => {
+        // Android can restore picker results after Activity recreation; there may simply be no result.
+      })
+
+    return () => {
+      mounted = false
+    }
+  }, [visible])
 
   const toggleInterest = (interest: string) => {
     setDraft((current) => ({
@@ -682,84 +710,120 @@ function EditProfileModal({ onClose, profile, userId, visible }: EditProfileModa
     }))
   }
 
-  const uploadProfilePhoto = async (asset: ImagePicker.ImagePickerAsset) => {
-    if (!userId || isUploadingPhoto) return
+  const photoPickerOptions: ImagePicker.ImagePickerOptions = {
+    allowsEditing: true,
+    aspect: [1, 1],
+    mediaTypes: ['images'],
+    quality: 0.82,
+  }
 
+  const openAppSettings = () => {
+    Linking.openSettings().catch(() => {
+      Alert.alert('Permiso necesario', 'Activa los permisos desde la configuracion de Android.')
+    })
+  }
+
+  const ensureCameraPermission = async () => {
+    const permission = await ImagePicker.requestCameraPermissionsAsync()
+
+    if (permission.granted) return true
+
+    Alert.alert(
+      'Permiso necesario',
+      'Necesitamos acceso a la camara para tomar tu foto de perfil.',
+      permission.canAskAgain
+        ? [{ text: 'Entendido' }]
+        : [
+          { text: 'Cancelar', style: 'cancel' },
+          { text: 'Abrir ajustes', onPress: openAppSettings },
+        ],
+    )
+
+    return false
+  }
+
+  const ensureMediaLibraryPermission = async () => {
+    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync(false)
+
+    if (permission.granted) return true
+
+    Alert.alert(
+      'Permiso necesario',
+      'Necesitamos acceso a tus fotos para elegir una imagen de perfil.',
+      permission.canAskAgain
+        ? [{ text: 'Entendido' }]
+        : [
+          { text: 'Cancelar', style: 'cancel' },
+          { text: 'Abrir ajustes', onPress: openAppSettings },
+        ],
+    )
+
+    return false
+  }
+
+  const applyPickedPhoto = (result: ImagePicker.ImagePickerResult) => {
+    if (result.canceled || !result.assets?.[0]) return
+
+    const asset = result.assets[0]
+    setSelectedPhotoAsset(asset)
     setDraft((current) => ({ ...current, photoURL: asset.uri }))
-    setIsUploadingPhoto(true)
+  }
 
-    try {
-      const { db, storage } = getFirebaseServices()
-      const response = await fetch(asset.uri)
-      const blob = await response.blob()
-      const extension = asset.fileName?.split('.').pop() || asset.mimeType?.split('/').pop() || 'jpg'
-      const cleanExtension = extension.replace(/[^a-zA-Z0-9]/g, '') || 'jpg'
-      const storageRef = ref(storage, `users/${userId}/profile-photo-${Date.now()}.${cleanExtension}`)
+  const uploadProfilePhoto = async (asset: ImagePicker.ImagePickerAsset) => {
+    if (!userId) return asset.uri
 
-      await uploadBytes(storageRef, blob, {
-        contentType: asset.mimeType || 'image/jpeg',
-      })
+    const { storage } = getFirebaseServices()
+    const response = await fetch(asset.uri)
+    const blob = await response.blob()
+    const extension = asset.fileName?.split('.').pop() || asset.mimeType?.split('/').pop() || 'jpg'
+    const cleanExtension = extension.replace(/[^a-zA-Z0-9]/g, '') || 'jpg'
+    const storageRef = ref(storage, `users/${userId}/profile-photo-${Date.now()}.${cleanExtension}`)
 
-      const photoURL = await getDownloadURL(storageRef)
-      setDraft((current) => ({ ...current, photoURL }))
-      await setDoc(doc(db, 'users', userId), {
-        photoURL,
-        updatedAt: serverTimestamp(),
-      }, { merge: true })
-    } catch {
-      Alert.alert('No pudimos actualizar la foto', 'Probá de nuevo en unos segundos.')
-      setDraft((current) => ({ ...current, photoURL: profile.photoURL }))
-    } finally {
-      setIsUploadingPhoto(false)
-    }
+    await uploadBytes(storageRef, blob, {
+      contentType: asset.mimeType || 'image/jpeg',
+    })
+
+    return getDownloadURL(storageRef)
   }
 
   const choosePhotoFromLibrary = async () => {
-    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync()
+    if (isPickingPhoto) return
+    setIsPhotoOptionsVisible(false)
+    setIsPickingPhoto(true)
 
-    if (!permission.granted) {
-      Alert.alert('Permiso necesario', 'Necesitamos acceso a tus fotos para elegir una imagen de perfil.')
-      return
-    }
+    try {
+      const hasPermission = await ensureMediaLibraryPermission()
+      if (!hasPermission) return
 
-    const result = await ImagePicker.launchImageLibraryAsync({
-      allowsEditing: true,
-      aspect: [1, 1],
-      mediaTypes: ['images'],
-      quality: 0.86,
-    })
-
-    if (!result.canceled && result.assets[0]) {
-      await uploadProfilePhoto(result.assets[0])
+      const result = await ImagePicker.launchImageLibraryAsync(photoPickerOptions)
+      applyPickedPhoto(result)
+    } catch {
+      Alert.alert('No pudimos abrir la galeria', 'Proba nuevamente en unos segundos.')
+    } finally {
+      setIsPickingPhoto(false)
     }
   }
 
   const takeProfilePhoto = async () => {
-    const permission = await ImagePicker.requestCameraPermissionsAsync()
+    if (isPickingPhoto) return
+    setIsPhotoOptionsVisible(false)
+    setIsPickingPhoto(true)
 
-    if (!permission.granted) {
-      Alert.alert('Permiso necesario', 'Necesitamos acceso a la cámara para tomar tu foto de perfil.')
-      return
-    }
+    try {
+      const hasPermission = await ensureCameraPermission()
+      if (!hasPermission) return
 
-    const result = await ImagePicker.launchCameraAsync({
-      allowsEditing: true,
-      aspect: [1, 1],
-      mediaTypes: ['images'],
-      quality: 0.86,
-    })
-
-    if (!result.canceled && result.assets[0]) {
-      await uploadProfilePhoto(result.assets[0])
+      const result = await ImagePicker.launchCameraAsync(photoPickerOptions)
+      applyPickedPhoto(result)
+    } catch {
+      Alert.alert('No pudimos abrir la camara', 'Proba nuevamente en unos segundos.')
+    } finally {
+      setIsPickingPhoto(false)
     }
   }
 
   const openPhotoOptions = () => {
-    Alert.alert('Foto de perfil', 'Elegí cómo querés actualizar tu foto.', [
-      { text: 'Tomar foto con cámara', onPress: takeProfilePhoto },
-      { text: 'Elegir foto desde galería', onPress: choosePhotoFromLibrary },
-      { text: 'Cancelar', style: 'cancel' },
-    ])
+    if (!isSaving) setIsPhotoOptionsVisible(true)
   }
 
   const save = async () => {
@@ -768,15 +832,21 @@ function EditProfileModal({ onClose, profile, userId, visible }: EditProfileModa
     setIsSaving(true)
     try {
       const { db } = getFirebaseServices()
+      const savedPhotoURL = selectedPhotoAsset ? await uploadProfilePhoto(selectedPhotoAsset) : draft.photoURL.trim()
+
       await setDoc(doc(db, 'users', userId), {
         bio: draft.bio.trim(),
         fullName: draft.fullName.trim(),
         interests: draft.interests,
         location: draft.location.trim(),
-        photoURL: draft.photoURL.trim(),
+        photoURL: savedPhotoURL,
         updatedAt: serverTimestamp(),
       }, { merge: true })
+      setDraft((current) => ({ ...current, photoURL: savedPhotoURL }))
+      setSelectedPhotoAsset(null)
       onClose()
+    } catch {
+      Alert.alert('No pudimos guardar', 'Revisa tu conexion e intenta nuevamente.')
     } finally {
       setIsSaving(false)
     }
@@ -799,21 +869,21 @@ function EditProfileModal({ onClose, profile, userId, visible }: EditProfileModa
           </View>
 
           <View style={styles.editHero}>
-          <PressScale onPress={openPhotoOptions} scaleTo={0.96} style={styles.editAvatar}>
-            {draft.photoURL ? (
-              <Image source={{ uri: draft.photoURL }} style={styles.editAvatarImage} />
-            ) : (
-              <UserRound color="#4B348A" size={58} strokeWidth={2.1} />
-            )}
-            {isUploadingPhoto ? (
-              <View style={styles.photoUploadingOverlay}>
-                <ActivityIndicator color="#FFFFFF" />
+            <PressScale accessibilityLabel="Cambiar foto de perfil" accessibilityRole="button" onPress={openPhotoOptions} scaleTo={0.96} style={styles.editAvatar}>
+              {draft.photoURL ? (
+                <Image source={{ uri: draft.photoURL }} style={styles.editAvatarImage} />
+              ) : (
+                <UserRound color="#4B348A" size={58} strokeWidth={2.1} />
+              )}
+              {isPickingPhoto || (isSaving && selectedPhotoAsset) ? (
+                <View style={styles.photoUploadingOverlay}>
+                  <ActivityIndicator color="#FFFFFF" />
+                </View>
+              ) : null}
+              <View style={styles.cameraBadge}>
+                <Camera color="#FFFFFF" size={20} strokeWidth={2.5} />
               </View>
-            ) : null}
-            <View style={styles.cameraBadge}>
-              <Camera color="#FFFFFF" size={20} strokeWidth={2.5} />
-            </View>
-          </PressScale>
+            </PressScale>
             <Text numberOfLines={1} style={styles.editHeroName}>{draft.fullName}</Text>
             <View style={styles.editHeroLocation}>
               <MapPin color="#4B348A" size={17} strokeWidth={2.4} />
@@ -848,6 +918,34 @@ function EditProfileModal({ onClose, profile, userId, visible }: EditProfileModa
             </View>
           </View>
         </ScrollView>
+        <Modal
+          animationType="fade"
+          onRequestClose={() => setIsPhotoOptionsVisible(false)}
+          transparent
+          visible={isPhotoOptionsVisible}
+        >
+          <Pressable style={styles.photoSheetBackdrop} onPress={() => setIsPhotoOptionsVisible(false)}>
+            <Pressable accessibilityRole="menu" style={styles.photoSheet}>
+              <View style={styles.photoSheetHandle} />
+              <Text style={styles.photoSheetTitle}>Foto de perfil</Text>
+              <Pressable accessibilityRole="menuitem" onPress={takeProfilePhoto} style={styles.photoSheetOption}>
+                <View style={styles.photoSheetIcon}>
+                  <Camera color="#4B348A" size={22} strokeWidth={2.4} />
+                </View>
+                <Text style={styles.photoSheetOptionText}>Sacar foto</Text>
+              </Pressable>
+              <Pressable accessibilityRole="menuitem" onPress={choosePhotoFromLibrary} style={styles.photoSheetOption}>
+                <View style={styles.photoSheetIcon}>
+                  <ImageIcon color="#4B348A" size={22} strokeWidth={2.4} />
+                </View>
+                <Text style={styles.photoSheetOptionText}>Elegir de galeria</Text>
+              </Pressable>
+              <Pressable accessibilityRole="menuitem" onPress={() => setIsPhotoOptionsVisible(false)} style={styles.photoSheetCancel}>
+                <Text style={styles.photoSheetCancelText}>Cancelar</Text>
+              </Pressable>
+            </Pressable>
+          </Pressable>
+        </Modal>
       </SafeAreaView>
     </Modal>
   )
@@ -1432,12 +1530,15 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     alignSelf: 'center',
     backgroundColor: '#F4EEF9',
+    borderColor: '#D9CBF3',
+    borderWidth: 3,
     borderRadius: 999,
     height: 132,
     justifyContent: 'center',
     marginBottom: 16,
     position: 'relative',
     width: 132,
+    ...cardShadow,
   },
   editAvatarImage: {
     borderRadius: 999,
@@ -1470,6 +1571,7 @@ const styles = StyleSheet.create({
     ...StyleSheet.absoluteFillObject,
     alignItems: 'center',
     backgroundColor: 'rgba(7, 29, 25, 0.34)',
+    borderRadius: 999,
     justifyContent: 'center',
   },
   cameraBadge: {
@@ -1485,6 +1587,72 @@ const styles = StyleSheet.create({
     right: -4,
     width: 50,
     ...cardShadow,
+  },
+  photoSheetBackdrop: {
+    backgroundColor: 'rgba(7, 29, 25, 0.34)',
+    flex: 1,
+    justifyContent: 'flex-end',
+    padding: 18,
+  },
+  photoSheet: {
+    backgroundColor: '#FFFFFF',
+    borderColor: '#E7E0F2',
+    borderRadius: 22,
+    borderWidth: 1,
+    padding: 16,
+    ...cardShadow,
+  },
+  photoSheetHandle: {
+    alignSelf: 'center',
+    backgroundColor: '#D9CBF3',
+    borderRadius: 999,
+    height: 4,
+    marginBottom: 14,
+    width: 44,
+  },
+  photoSheetTitle: {
+    color: '#071D19',
+    fontSize: 18,
+    fontWeight: '900',
+    letterSpacing: 0,
+    marginBottom: 10,
+  },
+  photoSheetOption: {
+    alignItems: 'center',
+    borderRadius: 16,
+    flexDirection: 'row',
+    gap: 12,
+    minHeight: 58,
+    paddingHorizontal: 8,
+  },
+  photoSheetIcon: {
+    alignItems: 'center',
+    backgroundColor: '#F4EEF9',
+    borderRadius: 999,
+    height: 42,
+    justifyContent: 'center',
+    width: 42,
+  },
+  photoSheetOptionText: {
+    color: '#071D19',
+    flex: 1,
+    fontSize: 16,
+    fontWeight: '900',
+    letterSpacing: 0,
+  },
+  photoSheetCancel: {
+    alignItems: 'center',
+    backgroundColor: '#F7F4FA',
+    borderRadius: 999,
+    justifyContent: 'center',
+    marginTop: 10,
+    minHeight: 46,
+  },
+  photoSheetCancelText: {
+    color: '#4B348A',
+    fontSize: 15,
+    fontWeight: '900',
+    letterSpacing: 0,
   },
   editFieldCard: {
     alignItems: 'center',
