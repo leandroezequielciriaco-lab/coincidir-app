@@ -711,10 +711,9 @@ function EditProfileModal({ onClose, profile, userId, visible }: EditProfileModa
   }
 
   const photoPickerOptions: ImagePicker.ImagePickerOptions = {
-    allowsEditing: true,
-    aspect: [1, 1],
+    allowsEditing: false,
     mediaTypes: ['images'],
-    quality: 0.82,
+    quality: 0.6,
   }
 
   const openAppSettings = () => {
@@ -762,19 +761,34 @@ function EditProfileModal({ onClose, profile, userId, visible }: EditProfileModa
   }
 
   const applyPickedPhoto = (result: ImagePicker.ImagePickerResult) => {
-    if (result.canceled || !result.assets?.[0]) return
+    if (result.canceled) return
 
-    const asset = result.assets[0]
+    const asset = result.assets?.[0]
+
+    if (!asset?.uri) {
+      Alert.alert('No pudimos cargar la foto', 'La imagen seleccionada no tiene un archivo válido.')
+      return
+    }
+
     setSelectedPhotoAsset(asset)
     setDraft((current) => ({ ...current, photoURL: asset.uri }))
   }
 
+  const getBlobFromUri = (uri: string) => new Promise<Blob>((resolve, reject) => {
+    const request = new XMLHttpRequest()
+    request.onload = () => resolve(request.response as Blob)
+    request.onerror = () => reject(new Error('profile-photo-read-failed'))
+    request.responseType = 'blob'
+    request.open('GET', uri, true)
+    request.send()
+  })
+
   const uploadProfilePhoto = async (asset: ImagePicker.ImagePickerAsset) => {
     if (!userId) return asset.uri
+    if (!asset.uri) throw new Error('profile-photo-missing-uri')
 
     const { storage } = getFirebaseServices()
-    const response = await fetch(asset.uri)
-    const blob = await response.blob()
+    const blob = await getBlobFromUri(asset.uri)
     const extension = asset.fileName?.split('.').pop() || asset.mimeType?.split('/').pop() || 'jpg'
     const cleanExtension = extension.replace(/[^a-zA-Z0-9]/g, '') || 'jpg'
     const storageRef = ref(storage, `users/${userId}/profile-photo-${Date.now()}.${cleanExtension}`)
@@ -797,8 +811,9 @@ function EditProfileModal({ onClose, profile, userId, visible }: EditProfileModa
 
       const result = await ImagePicker.launchImageLibraryAsync(photoPickerOptions)
       applyPickedPhoto(result)
-    } catch {
-      Alert.alert('No pudimos abrir la galeria', 'Proba nuevamente en unos segundos.')
+    } catch (error) {
+      if (__DEV__) console.warn('profile-image-library-error', error)
+      Alert.alert('No pudimos abrir la galería', 'Revisá los permisos de fotos e intentá nuevamente.')
     } finally {
       setIsPickingPhoto(false)
     }
@@ -815,8 +830,9 @@ function EditProfileModal({ onClose, profile, userId, visible }: EditProfileModa
 
       const result = await ImagePicker.launchCameraAsync(photoPickerOptions)
       applyPickedPhoto(result)
-    } catch {
-      Alert.alert('No pudimos abrir la camara', 'Proba nuevamente en unos segundos.')
+    } catch (error) {
+      if (__DEV__) console.warn('profile-camera-error', error)
+      Alert.alert('No pudimos abrir la cámara', 'Revisá los permisos de cámara e intentá nuevamente.')
     } finally {
       setIsPickingPhoto(false)
     }
@@ -845,8 +861,9 @@ function EditProfileModal({ onClose, profile, userId, visible }: EditProfileModa
       setDraft((current) => ({ ...current, photoURL: savedPhotoURL }))
       setSelectedPhotoAsset(null)
       onClose()
-    } catch {
-      Alert.alert('No pudimos guardar', 'Revisa tu conexion e intenta nuevamente.')
+    } catch (error) {
+      if (__DEV__) console.warn('profile-save-error', error)
+      Alert.alert('No pudimos guardar', 'La foto quedó en vista previa, pero no pudimos subir los cambios. Revisá la conexión e intentá nuevamente.')
     } finally {
       setIsSaving(false)
     }
@@ -869,24 +886,26 @@ function EditProfileModal({ onClose, profile, userId, visible }: EditProfileModa
           </View>
 
           <View style={styles.editHero}>
-            <PressScale accessibilityLabel="Cambiar foto de perfil" accessibilityRole="button" onPress={openPhotoOptions} scaleTo={0.96} style={styles.editAvatar}>
-              {draft.photoURL ? (
-                <Image source={{ uri: draft.photoURL }} style={styles.editAvatarImage} />
-              ) : (
-                <UserRound color="#4B348A" size={58} strokeWidth={2.1} />
-              )}
-              {isPickingPhoto || (isSaving && selectedPhotoAsset) ? (
-                <View style={styles.photoUploadingOverlay}>
-                  <ActivityIndicator color="#FFFFFF" />
-                </View>
-              ) : null}
-              <View style={styles.cameraBadge}>
+            <View style={styles.editAvatarStage}>
+              <PressScale accessibilityLabel="Cambiar foto de perfil" accessibilityRole="button" onPress={openPhotoOptions} scaleTo={0.96} style={styles.editAvatar}>
+                {draft.photoURL ? (
+                  <Image source={{ uri: draft.photoURL }} style={styles.editAvatarImage} />
+                ) : (
+                  <UserRound color="#4B348A" size={58} strokeWidth={2.1} />
+                )}
+                {isPickingPhoto || (isSaving && selectedPhotoAsset) ? (
+                  <View style={styles.photoUploadingOverlay}>
+                    <ActivityIndicator color="#FFFFFF" />
+                  </View>
+                ) : null}
+              </PressScale>
+              <PressScale accessibilityLabel="Cambiar foto de perfil" accessibilityRole="button" onPress={openPhotoOptions} scaleTo={0.92} style={styles.cameraBadge}>
                 <Camera color="#FFFFFF" size={20} strokeWidth={2.5} />
-              </View>
-            </PressScale>
+              </PressScale>
+            </View>
             <Text numberOfLines={1} style={styles.editHeroName}>{draft.fullName}</Text>
             <View style={styles.editHeroLocation}>
-              <MapPin color="#4B348A" size={17} strokeWidth={2.4} />
+              <MapPin color="#6A746F" size={16} strokeWidth={2.2} />
               <Text numberOfLines={1} style={styles.editHeroLocationText}>{draft.location}</Text>
             </View>
           </View>
@@ -1001,7 +1020,9 @@ function EditInterestPill({ label, selected, onPress }: { label: string; selecte
       scaleTo={0.96}
       style={[styles.editInterestPill, selected && styles.editInterestPillSelected]}
     >
-      <Icon color="#17803C" size={22} strokeWidth={2.2} />
+      <View style={[styles.editInterestIconBubble, selected && styles.editInterestIconBubbleSelected]}>
+        <Icon color={selected ? '#006A32' : '#4B348A'} size={16} strokeWidth={2.2} />
+      </View>
       <Text numberOfLines={1} style={styles.editInterestPillText}>{label}</Text>
       {selected ? (
         <View style={styles.editInterestCheck}>
@@ -1027,14 +1048,14 @@ const shadow = Platform.select({
 
 const cardShadow = Platform.select({
   web: {
-    boxShadow: '0 8px 18px rgba(7, 57, 45, 0.06)',
+    boxShadow: '0 10px 24px rgba(7, 57, 45, 0.07)',
   },
   default: {
-    elevation: 1,
+    elevation: 2,
     shadowColor: '#07392D',
-    shadowOffset: { width: 0, height: 5 },
-    shadowOpacity: 0.05,
-    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.06,
+    shadowRadius: 14,
   },
 })
 
@@ -1485,9 +1506,9 @@ const styles = StyleSheet.create({
     fontWeight: '800',
   },
   editContent: {
-    paddingBottom: 42,
+    paddingBottom: 44,
     paddingHorizontal: 20,
-    paddingTop: 12,
+    paddingTop: 10,
   },
   interestsEditContent: {
     paddingBottom: 112,
@@ -1499,7 +1520,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginBottom: 20,
+    marginBottom: 18,
   },
   editHeaderButton: {
     minWidth: 76,
@@ -1524,30 +1545,44 @@ const styles = StyleSheet.create({
   },
   editHero: {
     alignItems: 'center',
-    marginBottom: 22,
+    marginBottom: 26,
+    paddingTop: 4,
+  },
+  editAvatarStage: {
+    alignItems: 'center',
+    height: 148,
+    justifyContent: 'center',
+    marginBottom: 14,
+    position: 'relative',
+    width: 148,
   },
   editAvatar: {
     alignItems: 'center',
     alignSelf: 'center',
     backgroundColor: '#F4EEF9',
-    borderColor: '#D9CBF3',
-    borderWidth: 3,
+    borderColor: '#DCCFF4',
+    borderWidth: 2,
     borderRadius: 999,
-    height: 132,
+    height: 128,
     justifyContent: 'center',
-    marginBottom: 16,
+    overflow: 'hidden',
     position: 'relative',
-    width: 132,
-    ...cardShadow,
+    width: 128,
+    shadowColor: '#4B348A',
+    shadowOffset: { width: 0, height: 12 },
+    shadowOpacity: 0.12,
+    shadowRadius: 20,
+    elevation: 4,
   },
   editAvatarImage: {
     borderRadius: 999,
     height: '100%',
+    resizeMode: 'cover',
     width: '100%',
   },
   editHeroName: {
     color: '#071D19',
-    fontSize: 25,
+    fontSize: 26,
     fontWeight: '900',
     letterSpacing: 0,
     lineHeight: 31,
@@ -1559,12 +1594,12 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: 6,
     justifyContent: 'center',
-    marginTop: 5,
+    marginTop: 6,
   },
   editHeroLocationText: {
-    color: '#596A65',
-    fontSize: 15,
-    fontWeight: '800',
+    color: '#6A746F',
+    fontSize: 14,
+    fontWeight: '700',
     letterSpacing: 0,
   },
   photoUploadingOverlay: {
@@ -1579,14 +1614,18 @@ const styles = StyleSheet.create({
     backgroundColor: '#6C3DE5',
     borderColor: '#FFFFFF',
     borderRadius: 999,
-    borderWidth: 4,
-    bottom: 6,
-    height: 50,
+    borderWidth: 3,
+    bottom: 8,
+    height: 46,
     justifyContent: 'center',
     position: 'absolute',
-    right: -4,
-    width: 50,
-    ...cardShadow,
+    right: 8,
+    width: 46,
+    shadowColor: '#4B348A',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.18,
+    shadowRadius: 14,
+    elevation: 5,
   },
   photoSheetBackdrop: {
     backgroundColor: 'rgba(7, 29, 25, 0.34)',
@@ -1657,50 +1696,56 @@ const styles = StyleSheet.create({
   editFieldCard: {
     alignItems: 'center',
     backgroundColor: '#FFFFFF',
-    borderColor: '#E7E7E1',
-    borderRadius: 18,
+    borderColor: '#E8E8E2',
+    borderRadius: 20,
     borderWidth: 1,
     flexDirection: 'row',
-    gap: 14,
-    minHeight: 76,
-    marginBottom: 12,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
+    gap: 13,
+    minHeight: 82,
+    marginBottom: 14,
+    paddingHorizontal: 17,
+    paddingVertical: 14,
     ...cardShadow,
   },
   editBioCard: {
     alignItems: 'flex-start',
-    minHeight: 128,
-    paddingVertical: 16,
+    minHeight: 140,
+    paddingVertical: 17,
   },
   editFieldIcon: {
     alignItems: 'center',
-    height: 42,
+    backgroundColor: '#F7F3FB',
+    borderColor: '#EEE6F8',
+    borderRadius: 999,
+    borderWidth: 1,
+    height: 46,
     justifyContent: 'center',
-    width: 42,
+    width: 46,
   },
   editFieldCopy: {
     flex: 1,
     minWidth: 0,
   },
   editFieldLabel: {
-    color: '#6A746F',
-    fontSize: 13,
-    fontWeight: '800',
+    color: '#6D7671',
+    fontSize: 12,
+    fontWeight: '900',
     letterSpacing: 0,
-    marginBottom: 3,
+    marginBottom: 5,
+    textTransform: 'uppercase',
   },
   editFieldInput: {
     color: '#071D19',
     fontSize: 17,
-    fontWeight: '600',
+    fontWeight: '800',
     letterSpacing: 0,
     minHeight: 30,
     padding: 0,
   },
   editBioInput: {
-    lineHeight: 22,
-    minHeight: 68,
+    fontWeight: '700',
+    lineHeight: 23,
+    minHeight: 74,
     paddingTop: 2,
   },
   editFieldCount: {
@@ -1737,50 +1782,60 @@ const styles = StyleSheet.create({
   },
   editSectionTitle: {
     color: '#39206C',
-    fontSize: 19,
+    fontSize: 20,
     fontWeight: '900',
     letterSpacing: 0,
-    marginBottom: 14,
-    marginTop: 12,
+    marginBottom: 12,
+    marginTop: 14,
   },
   editInterestGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 10,
+    gap: 9,
   },
   editInterestPill: {
     alignItems: 'center',
-    backgroundColor: '#FFFFFF',
-    borderColor: '#E7E7E1',
-    borderRadius: 24,
+    backgroundColor: '#F9FBF7',
+    borderColor: '#E1E9DE',
+    borderRadius: 999,
     borderWidth: 1,
-    flexBasis: '47%',
+    flexBasis: 'auto',
     flexDirection: 'row',
-    flexGrow: 1,
-    gap: 9,
-    minHeight: 54,
-    paddingLeft: 14,
+    flexGrow: 0,
+    gap: 7,
+    minHeight: 40,
+    paddingLeft: 10,
     paddingRight: 12,
-    ...cardShadow,
   },
   editInterestPillSelected: {
     backgroundColor: '#EAF7E7',
-    borderColor: '#D1EBD1',
+    borderColor: '#BBDDB7',
+  },
+  editInterestIconBubble: {
+    alignItems: 'center',
+    backgroundColor: '#F2EDF8',
+    borderRadius: 999,
+    height: 26,
+    justifyContent: 'center',
+    width: 26,
+  },
+  editInterestIconBubbleSelected: {
+    backgroundColor: '#DDF1DA',
   },
   editInterestPillText: {
     color: '#071D19',
-    flex: 1,
     fontSize: 14,
-    fontWeight: '800',
+    fontWeight: '900',
     letterSpacing: 0,
+    maxWidth: 132,
   },
   editInterestCheck: {
     alignItems: 'center',
     backgroundColor: '#17803C',
     borderRadius: 999,
-    height: 24,
+    height: 20,
     justifyContent: 'center',
-    width: 24,
+    width: 20,
   },
   showAllInterestsButton: {
     alignItems: 'center',
@@ -1806,21 +1861,25 @@ const styles = StyleSheet.create({
   },
   privacyCard: {
     alignItems: 'center',
-    backgroundColor: '#F4EEF9',
+    backgroundColor: '#F7F2FB',
     borderColor: '#E6DDF7',
-    borderRadius: 18,
+    borderRadius: 16,
     borderWidth: 1,
     flexDirection: 'row',
-    gap: 14,
-    marginTop: 16,
-    paddingHorizontal: 16,
-    paddingVertical: 16,
+    gap: 12,
+    marginTop: 18,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
   },
   privacyIcon: {
     alignItems: 'center',
-    height: 42,
+    backgroundColor: '#FFFFFF',
+    borderColor: '#E6DDF7',
+    borderRadius: 999,
+    borderWidth: 1,
+    height: 38,
     justifyContent: 'center',
-    width: 42,
+    width: 38,
   },
   privacyCopy: {
     flex: 1,
@@ -1828,17 +1887,17 @@ const styles = StyleSheet.create({
   },
   privacyTitle: {
     color: '#4B348A',
-    fontSize: 15,
+    fontSize: 14,
     fontWeight: '900',
     letterSpacing: 0,
   },
   privacyText: {
     color: '#596A65',
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: '700',
     letterSpacing: 0,
-    lineHeight: 18,
-    marginTop: 3,
+    lineHeight: 16,
+    marginTop: 2,
   },
 })
 

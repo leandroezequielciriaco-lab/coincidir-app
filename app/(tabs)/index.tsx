@@ -473,17 +473,44 @@ function getList(value: unknown) {
   return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : []
 }
 
+function stringifySearchValue(value: unknown): string {
+  if (Array.isArray(value)) return value.map(stringifySearchValue).filter(Boolean).join(' ')
+  if (typeof value === 'string') return value
+  if (typeof value === 'number' || typeof value === 'boolean') return String(value)
+  if (typeof value === 'object' && value) return Object.values(value).map(stringifySearchValue).filter(Boolean).join(' ')
+  return ''
+}
+
+function getRecommendationCategoryAliases(data: Record<string, unknown>) {
+  const aliasesByCategory: Record<CategoryId | 'default', string[]> = {
+    outdoor: ['al aire libre', 'outdoor', 'naturaleza', 'caminatas', 'trekking', 'senderismo'],
+    sports: ['deportes', 'deporte', 'sports', 'running', 'correr', 'gimnasio', 'gym', 'fitness'],
+    wellness: ['bienestar', 'wellness', 'yoga', 'meditacion'],
+    groups: ['grupales', 'sociales', 'groups', 'grupo', 'encuentros grupales'],
+    private: ['espacios privados', 'privados', 'private'],
+    default: [],
+  }
+
+  return aliasesByCategory[getCategoryId(data)]
+}
+
 function getRecommendationTerms(interests: string[]) {
   const aliases: Record<string, string[]> = {
     bicicleta: ['bicicleta', 'bici', 'ciclismo', 'bike'],
     caminatas: ['caminatas', 'caminata', 'trekking', 'senderismo'],
     'clases grupales (tango, salsa, folklore)': ['clases grupales', 'tango', 'salsa', 'folklore'],
+    deportes: ['deportes', 'deporte', 'sports', 'gimnasio', 'gym', 'fitness', 'funcional', 'running', 'run', 'correr', 'trotar', 'futbol', 'ciclismo', 'natacion', 'paddle', 'padel', 'tenis'],
     'encuentros grupales': ['encuentros grupales', 'grupales', 'grupo', 'sociales'],
     'futbol 5': ['futbol', 'futbol 5', 'deportes'],
-    gimnasio: ['gimnasio', 'fitness', 'funcional'],
+    gimnasio: ['gimnasio', 'gym', 'fitness', 'funcional', 'deportes'],
+    gym: ['gimnasio', 'gym', 'fitness', 'funcional', 'deportes'],
     'kayak/sup': ['kayak', 'sup', 'stand up paddle'],
     mateadas: ['mateadas', 'mate', 'sociales'],
     'paddle / tenis': ['paddle', 'padel', 'tenis'],
+    running: ['running', 'run', 'runner', 'correr', 'corrida', 'trote', 'trotar', 'deportes'],
+    trekking: ['trekking', 'caminatas', 'caminata', 'senderismo', 'naturaleza', 'al aire libre'],
+    yoga: ['yoga', 'yoga flow', 'bienestar', 'meditacion'],
+    'yoga flow': ['yoga', 'yoga flow', 'bienestar', 'meditacion'],
   }
 
   return Array.from(new Set(interests.flatMap((interest) => {
@@ -492,8 +519,12 @@ function getRecommendationTerms(interests: string[]) {
       .split(/[\/,()]/)
       .map((item) => item.trim())
       .filter(Boolean)
+    const wordTerms = normalizedInterest
+      .split(/\s+/)
+      .map((item) => item.trim())
+      .filter((item) => item.length > 2)
 
-    return [normalizedInterest, ...splitTerms, ...(aliases[normalizedInterest] ?? [])]
+    return [normalizedInterest, ...splitTerms, ...wordTerms, ...(aliases[normalizedInterest] ?? [])]
       .map((item) => normalize(item))
       .filter(Boolean)
   })))
@@ -509,9 +540,14 @@ function getRecommendationText(record: CreatedRecord, source: 'activity' | 'grou
     data.category,
     data.subcategory,
     data.type,
+    data.tags,
+    data.interests,
+    data.keywords,
     data.shortDescription,
     data.description,
     data.summary,
+    stringifySearchValue(getAdditionalSettings(data)),
+    ...getRecommendationCategoryAliases(data),
   ].filter(Boolean).join(' '))
 }
 
@@ -521,7 +557,18 @@ function getRecommendedRecords(records: CreatedRecord[], interests: string[], so
 
   return records.filter((record) => {
     const text = getRecommendationText(record, source)
-    return terms.some((term) => text.includes(term))
+    const matchesInterest = terms.some((term) => text.includes(term))
+    const activityCategory = readString(record.data.category, readString(record.data.categoryId, source))
+    const normalizedCategory = normalize(activityCategory)
+
+    console.log({
+      userInterests: interests.map((interest) => normalize(interest)),
+      activityCategory,
+      normalizedCategory,
+      matchesInterest,
+    })
+
+    return matchesInterest
   })
 }
 

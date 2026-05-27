@@ -1,9 +1,12 @@
 import { useEffect, useMemo, useState } from 'react'
 import {
   ActivityIndicator,
+  Alert,
   Image,
+  Linking,
   Platform,
   ScrollView,
+  Share,
   StyleSheet,
   Text,
   View,
@@ -14,6 +17,7 @@ import { onAuthStateChanged } from 'firebase/auth'
 import {
   deleteField,
   doc,
+  getDoc,
   onSnapshot,
   runTransaction,
   serverTimestamp,
@@ -47,6 +51,12 @@ type OrganizerProfile = {
   photoURL: string
   subtitle: string
 }
+type InterestedUser = {
+  name: string
+  phone: string
+  uid: string
+}
+type InterestedAction = 'confirm' | 'invite' | 'write'
 
 function readString(value: unknown, fallback = '') {
   return typeof value === 'string' && value.trim() ? value.trim() : fallback
@@ -143,7 +153,16 @@ function isUserInterested(data: ActivityData, userId: string | null) {
   return hasUserInMap(data.interestedUsers, userId)
 }
 
-function getInterestedUserLabels(data: ActivityData) {
+function getPhone(value: ActivityData) {
+  return readString(value.phone)
+    || readString(value.phoneNumber)
+    || readString(value.telephone)
+    || readString(value.mobile)
+    || readString(value.whatsapp)
+    || readString(value.whatsApp)
+}
+
+function getInterestedUsers(data: ActivityData): InterestedUser[] {
   const interestedUsers = data.interestedUsers
   if (typeof interestedUsers !== 'object' || !interestedUsers || Array.isArray(interestedUsers)) return []
 
@@ -151,11 +170,55 @@ function getInterestedUserLabels(data: ActivityData) {
     .map(([uid, value]) => {
       if (typeof value === 'object' && value) {
         const record = value as ActivityData
-        return readString(record.name, readString(record.displayName, readString(record.fullName, `Usuario ${uid.slice(0, 6)}`)))
+        return {
+          name: readString(record.name, readString(record.displayName, readString(record.fullName, `Usuario ${uid.slice(0, 6)}`))),
+          phone: getPhone(record),
+          uid,
+        }
       }
 
-      return `Usuario ${uid.slice(0, 6)}`
+      return {
+        name: `Usuario ${uid.slice(0, 6)}`,
+        phone: '',
+        uid,
+      }
     })
+}
+
+function getInviteMessage(user: InterestedUser, detail: {
+  date: string
+  location: string
+  maxParticipants: number
+  participantCount: number
+  price: string
+  time: string
+  title: string
+}) {
+  const availablePlaces = Math.max(0, detail.maxParticipants - detail.participantCount)
+
+  return [
+    `Hola ${user.name}! Te invito a sumarte a ${detail.title} en COINCIDIR.`,
+    `📅 ${detail.date} ${detail.time}`,
+    `📍 ${detail.location}`,
+    detail.price ? `💰 ${detail.price}` : '',
+    `Quedan ${availablePlaces} lugares.`,
+  ].filter(Boolean).join('\n')
+}
+
+function getWhatsappMessage(user: InterestedUser, title: string) {
+  return `Hola ${user.name}, vi que te interesa la actividad ${title} en COINCIDIR. ¿Querés que coordinemos?`
+}
+
+function normalizePhoneForUrl(phone: string) {
+  const trimmed = phone.trim()
+  const prefix = trimmed.startsWith('+') ? '+' : ''
+  const digits = trimmed.replace(/\D/g, '')
+  return digits ? `${prefix}${digits}` : ''
+}
+
+function getSmsUrl(phone: string, message: string) {
+  const separator = Platform.OS === 'ios' ? '&' : '?'
+  return `sms:${encodeURIComponent(phone)}${separator}body=${encodeURIComponent(message)}`
 }
 
 function requiresInterestAction(data: ActivityData) {
@@ -252,6 +315,7 @@ export default function ActivityDetailScreen() {
   const [optimisticInterested, setOptimisticInterested] = useState<boolean | null>(null)
   const [organizerProfile, setOrganizerProfile] = useState<ActivityData | null>(null)
   const [currentUserName, setCurrentUserName] = useState('')
+  const [pendingInterestedActions, setPendingInterestedActions] = useState<string[]>([])
 
   useEffect(() => {
     try {
@@ -340,7 +404,7 @@ export default function ActivityDetailScreen() {
       image: getCategoryImage(data),
       interested,
       interestedCount: safeInterestedCount,
-      interestedUsers: getInterestedUserLabels(data),
+      interestedUsers: getInterestedUsers(data),
       isFull,
       joined,
       location: readString(data.location, 'Ubicación a definir'),
@@ -353,6 +417,18 @@ export default function ActivityDetailScreen() {
       title: readString(data.name, 'Actividad sin título'),
     }
   }, [activity, currentUserId, optimisticInterested, optimisticJoined, organizerProfile])
+
+  const setInterestedActionPending = (userId: string, action: InterestedAction, pending: boolean) => {
+    const key = `${action}:${userId}`
+    setPendingInterestedActions((current) => {
+      if (pending) return current.includes(key) ? current : [...current, key]
+      return current.filter((item) => item !== key)
+    })
+  }
+
+  const isInterestedActionPending = (userId: string, action: InterestedAction) => {
+    return pendingInterestedActions.includes(`${action}:${userId}`)
+  }
 
   const toggleJoin = async () => {
     if (!activityId || !activity || !currentUserId || detail.isFull || isJoining) return
@@ -444,6 +520,166 @@ export default function ActivityDetailScreen() {
       setOptimisticInterested(null)
     } finally {
       setIsMarkingInterest(false)
+    }
+  }
+
+  const getInterestedUserWithProfile = async (user: InterestedUser) => {
+    if (user.phone) return user
+
+    try {
+      const { db } = getFirebaseServices()
+      const snapshot = await getDoc(doc(db, 'users', user.uid))
+      if (!snapshot.exists()) return user
+
+      const profile = snapshot.data() as ActivityData
+      return {
+        ...user,
+        name: readString(profile.fullName, readString(profile.displayName, readString(profile.name, user.name))),
+        phone: getPhone(profile),
+      }
+    } catch {
+      return user
+    }
+  }
+
+  const writeInterestedUser = async (user: InterestedUser) => {
+    if (isInterestedActionPending(user.uid, 'write')) return
+
+    setInterestedActionPending(user.uid, 'write', true)
+    try {
+      const targetUser = await getInterestedUserWithProfile(user)
+      const phone = normalizePhoneForUrl(targetUser.phone)
+
+      if (!phone) {
+        Alert.alert(
+          'Teléfono no disponible',
+          'Todavía no hay teléfono disponible. Vas a poder contactar desde la app cuando exista mensajería interna.',
+        )
+        return
+      }
+
+      const message = getWhatsappMessage(targetUser, detail.title)
+      const whatsappUrl = `whatsapp://send?phone=${encodeURIComponent(phone)}&text=${encodeURIComponent(message)}`
+      const canOpenWhatsApp = await Linking.canOpenURL(whatsappUrl)
+
+      if (canOpenWhatsApp) {
+        await Linking.openURL(whatsappUrl)
+        return
+      }
+
+      const smsUrl = getSmsUrl(phone, message)
+      const canOpenSms = await Linking.canOpenURL(smsUrl)
+      if (canOpenSms) {
+        await Linking.openURL(smsUrl)
+        return
+      }
+
+      await Share.share({ message })
+    } catch {
+      Alert.alert('No pudimos abrir el mensaje', 'Intentá nuevamente en unos segundos.')
+    } finally {
+      setInterestedActionPending(user.uid, 'write', false)
+    }
+  }
+
+  const inviteInterestedUser = async (user: InterestedUser) => {
+    if (isInterestedActionPending(user.uid, 'invite')) return
+
+    setInterestedActionPending(user.uid, 'invite', true)
+    try {
+      const message = getInviteMessage(user, detail)
+      await Share.share({ message })
+    } catch {
+      Alert.alert('No pudimos compartir la invitación', 'Intentá nuevamente en unos segundos.')
+    } finally {
+      setInterestedActionPending(user.uid, 'invite', false)
+    }
+  }
+
+  const confirmInterestedUser = (user: InterestedUser) => {
+    if (!activityId || !activity || isInterestedActionPending(user.uid, 'confirm')) return
+
+    Alert.alert(
+      'Confirmar participante',
+      `¿Confirmar a ${user.name} como participante?`,
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        {
+          text: 'Confirmar',
+          onPress: () => {
+            void confirmInterestedUserNow(user)
+          },
+        },
+      ],
+    )
+  }
+
+  const confirmInterestedUserNow = async (user: InterestedUser) => {
+    if (!activityId || !activity || isInterestedActionPending(user.uid, 'confirm')) return
+
+    setInterestedActionPending(user.uid, 'confirm', true)
+    try {
+      const { db } = getFirebaseServices()
+      const targetRef = doc(db, 'activities', activityId)
+
+      const result = await runTransaction(db, async (transaction) => {
+        const snapshot = await transaction.get(targetRef)
+        if (!snapshot.exists()) return 'missing'
+
+        const data = snapshot.data() as ActivityData
+        const wasJoined = isUserJoined(data, user.uid)
+        const wasInterested = isUserInterested(data, user.uid)
+        const currentCount = getParticipantCount(data)
+        const maxParticipants = getMaxParticipants(data)
+        const currentInterestedCount = getInterestedCount(data)
+        const nextInterestedCount = Math.max(0, currentInterestedCount - (wasInterested ? 1 : 0))
+
+        if (!wasJoined && currentCount >= maxParticipants) return 'full'
+
+        transaction.update(targetRef, wasJoined
+          ? {
+            [`interestedUsers.${user.uid}`]: deleteField(),
+            interestedCount: nextInterestedCount,
+            updatedAt: serverTimestamp(),
+          }
+          : {
+            [`joinedUsers.${user.uid}`]: true,
+            [`participants.${user.uid}`]: {
+              confirmedAt: serverTimestamp(),
+              joinedAt: serverTimestamp(),
+              name: user.name,
+              status: 'joined',
+              uid: user.uid,
+            },
+            [`interestedUsers.${user.uid}`]: deleteField(),
+            interestedCount: nextInterestedCount,
+            participantsCount: currentCount + 1,
+            updatedAt: serverTimestamp(),
+          })
+
+        return wasJoined ? 'already-confirmed' : 'confirmed'
+      })
+
+      if (result === 'full') {
+        Alert.alert('Sin cupos', 'No hay cupos disponibles para confirmar a esta persona.')
+        return
+      }
+
+      if (result === 'already-confirmed') {
+        Alert.alert('Participante confirmado', `${user.name} ya estaba confirmado como participante.`)
+        return
+      }
+
+      if (result === 'missing') {
+        Alert.alert('Actividad no disponible', 'No encontramos esta actividad para confirmar a la persona.')
+        return
+      }
+
+      Alert.alert('Participante confirmado', `${user.name} fue agregado a la actividad.`)
+    } catch {
+      Alert.alert('No pudimos confirmar', 'Intentá nuevamente en unos segundos.')
+    } finally {
+      setInterestedActionPending(user.uid, 'confirm', false)
     }
   }
 
@@ -548,22 +784,57 @@ export default function ActivityDetailScreen() {
               <Text style={styles.organizerEyebrow}>Personas interesadas</Text>
               <Text style={styles.interestedCount}>{detail.interestedCount} interesados</Text>
               <View style={styles.interestedList}>
-                {detail.interestedUsers.length > 0 ? detail.interestedUsers.slice(0, 5).map((name) => (
-                  <Text key={name} numberOfLines={1} style={styles.interestedName}>{name}</Text>
+                {detail.interestedUsers.length > 0 ? detail.interestedUsers.slice(0, 5).map((user) => (
+                  <View key={user.uid} style={styles.interestedItem}>
+                    <Text numberOfLines={1} style={styles.interestedName}>{user.name}</Text>
+                    <View style={styles.interestedActions}>
+                      <PressScale
+                        accessibilityLabel={`Escribir a ${user.name}`}
+                        accessibilityRole="button"
+                        disabled={isInterestedActionPending(user.uid, 'write')}
+                        onPress={() => void writeInterestedUser(user)}
+                        scaleTo={0.97}
+                        style={styles.futureAction}
+                      >
+                        {isInterestedActionPending(user.uid, 'write') ? (
+                          <ActivityIndicator color="#006A32" size="small" />
+                        ) : (
+                          <Text style={styles.futureActionText}>Escribir</Text>
+                        )}
+                      </PressScale>
+                      <PressScale
+                        accessibilityLabel={`Invitar a ${user.name}`}
+                        accessibilityRole="button"
+                        disabled={isInterestedActionPending(user.uid, 'invite')}
+                        onPress={() => void inviteInterestedUser(user)}
+                        scaleTo={0.97}
+                        style={styles.futureAction}
+                      >
+                        {isInterestedActionPending(user.uid, 'invite') ? (
+                          <ActivityIndicator color="#006A32" size="small" />
+                        ) : (
+                          <Text style={styles.futureActionText}>Invitar</Text>
+                        )}
+                      </PressScale>
+                      <PressScale
+                        accessibilityLabel={`Confirmar a ${user.name}`}
+                        accessibilityRole="button"
+                        disabled={isInterestedActionPending(user.uid, 'confirm')}
+                        onPress={() => confirmInterestedUser(user)}
+                        scaleTo={0.97}
+                        style={styles.futureAction}
+                      >
+                        {isInterestedActionPending(user.uid, 'confirm') ? (
+                          <ActivityIndicator color="#006A32" size="small" />
+                        ) : (
+                          <Text style={styles.futureActionText}>Confirmar</Text>
+                        )}
+                      </PressScale>
+                    </View>
+                  </View>
                 )) : (
                   <Text style={styles.interestedEmpty}>Todavía no hay interesados.</Text>
                 )}
-              </View>
-              <View style={styles.interestedActions}>
-                <View style={styles.futureAction}>
-                  <Text style={styles.futureActionText}>Escribir</Text>
-                </View>
-                <View style={styles.futureAction}>
-                  <Text style={styles.futureActionText}>Invitar</Text>
-                </View>
-                <View style={styles.futureAction}>
-                  <Text style={styles.futureActionText}>Confirmar</Text>
-                </View>
               </View>
             </View>
           ) : null}
@@ -852,6 +1123,9 @@ const styles = StyleSheet.create({
     gap: 7,
     marginTop: 12,
   },
+  interestedItem: {
+    gap: 10,
+  },
   interestedName: {
     color: '#163B34',
     fontSize: 14,
@@ -877,6 +1151,7 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     borderWidth: 1,
     minHeight: 34,
+    minWidth: 86,
     paddingHorizontal: 12,
     justifyContent: 'center',
   },
