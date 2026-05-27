@@ -50,12 +50,11 @@ import {
 
 import CoincidirLogo from '../../components/CoincidirLogo'
 import { InviteFriendsSheet, type InviteShareTarget } from '../../components/InviteFriendsSheet'
-import { ActivityCard, SuggestionCard } from '../../components/home/HomeCards'
+import { ActivityCard } from '../../components/home/HomeCards'
 import { CategoryButton } from '../../components/home/CategoryButton'
 import { PressScale } from '../../components/home/PressScale'
 import type {
   ActivityCardItem,
-  SuggestionCardItem,
   ThemeTone,
 } from '../../components/home/types'
 import { getFirebaseServices } from '../../firebaseConfig'
@@ -388,25 +387,6 @@ function mapActivityCard(
   }
 }
 
-function mapSuggestionCard(record: CreatedRecord, source: 'activity' | 'group', joinState: JoinState): SuggestionCardItem {
-  const { data } = record
-  const categoryId = getCategoryId(data)
-  const isViolet = categoryId === 'private' || source === 'group'
-
-  return {
-    id: `${source}-${record.id}`,
-    recordId: record.id,
-    source,
-    title: readString(data.name, source === 'group' ? 'Grupo sin titulo' : 'Encuentro sin titulo'),
-    capacity: `${joinState.count}/${getMaxParticipants(data)}`,
-    location: readString(data.location, 'Ubicacion a definir'),
-    schedule: source === 'group' ? readString(data.schedule, 'Proxima salida a definir') : formatSchedule(data),
-    cta: source === 'group' ? 'Ver grupo' : 'Ver encuentro',
-    tone: isViolet ? 'violet' : 'green',
-    Icon: source === 'group' ? UsersRound : getIcon(data),
-  }
-}
-
 function getRecordCity(data: Record<string, unknown>) {
   return readString(data.city) || readString(data.locationCity) || readString(data.town)
 }
@@ -478,118 +458,13 @@ function filterRecordsByCategory(records: CreatedRecord[], category: string) {
   return records.filter((record) => getCategoryFilterText(record).includes(normalizedCategory))
 }
 
-function getList(value: unknown) {
-  return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : []
-}
-
-function stringifySearchValue(value: unknown): string {
-  if (Array.isArray(value)) return value.map(stringifySearchValue).filter(Boolean).join(' ')
-  if (typeof value === 'string') return value
-  if (typeof value === 'number' || typeof value === 'boolean') return String(value)
-  if (typeof value === 'object' && value) return Object.values(value).map(stringifySearchValue).filter(Boolean).join(' ')
-  return ''
-}
-
-function getRecommendationCategoryAliases(data: Record<string, unknown>) {
-  const aliasesByCategory: Record<CategoryId | 'default', string[]> = {
-    outdoor: ['al aire libre', 'outdoor', 'naturaleza', 'caminatas', 'trekking', 'senderismo'],
-    sports: ['deportes', 'deporte', 'sports', 'running', 'correr', 'gimnasio', 'gym', 'fitness'],
-    wellness: ['bienestar', 'wellness', 'yoga', 'meditacion'],
-    groups: ['grupales', 'sociales', 'groups', 'grupo', 'encuentros grupales'],
-    private: ['espacios privados', 'privados', 'private'],
-    default: [],
-  }
-
-  return aliasesByCategory[getCategoryId(data)]
-}
-
-function getRecommendationTerms(interests: string[]) {
-  const aliases: Record<string, string[]> = {
-    bicicleta: ['bicicleta', 'bici', 'ciclismo', 'bike'],
-    caminatas: ['caminatas', 'caminata', 'trekking', 'senderismo'],
-    'clases grupales (tango, salsa, folklore)': ['clases grupales', 'tango', 'salsa', 'folklore'],
-    deportes: ['deportes', 'deporte', 'sports', 'gimnasio', 'gym', 'fitness', 'funcional', 'running', 'run', 'correr', 'trotar', 'futbol', 'ciclismo', 'natacion', 'paddle', 'padel', 'tenis'],
-    'encuentros grupales': ['encuentros grupales', 'grupales', 'grupo', 'sociales'],
-    'futbol 5': ['futbol', 'futbol 5', 'deportes'],
-    gimnasio: ['gimnasio', 'gym', 'fitness', 'funcional', 'deportes'],
-    gym: ['gimnasio', 'gym', 'fitness', 'funcional', 'deportes'],
-    'kayak/sup': ['kayak', 'sup', 'stand up paddle'],
-    mateadas: ['mateadas', 'mate', 'sociales'],
-    'paddle / tenis': ['paddle', 'padel', 'tenis'],
-    running: ['running', 'run', 'runner', 'correr', 'corrida', 'trote', 'trotar', 'deportes'],
-    trekking: ['trekking', 'caminatas', 'caminata', 'senderismo', 'naturaleza', 'al aire libre'],
-    yoga: ['yoga', 'yoga flow', 'bienestar', 'meditacion'],
-    'yoga flow': ['yoga', 'yoga flow', 'bienestar', 'meditacion'],
-  }
-
-  return Array.from(new Set(interests.flatMap((interest) => {
-    const normalizedInterest = normalize(interest)
-    const splitTerms = normalizedInterest
-      .split(/[\/,()]/)
-      .map((item) => item.trim())
-      .filter(Boolean)
-    const wordTerms = normalizedInterest
-      .split(/\s+/)
-      .map((item) => item.trim())
-      .filter((item) => item.length > 2)
-
-    return [normalizedInterest, ...splitTerms, ...wordTerms, ...(aliases[normalizedInterest] ?? [])]
-      .map((item) => normalize(item))
-      .filter(Boolean)
-  })))
-}
-
-function getRecommendationText(record: CreatedRecord, source: 'activity' | 'group') {
-  const { data } = record
-  return normalize([
-    source === 'group' ? 'grupo' : 'actividad',
-    data.name,
-    data.title,
-    data.categoryId,
-    data.category,
-    data.subcategory,
-    data.type,
-    data.tags,
-    data.interests,
-    data.keywords,
-    data.shortDescription,
-    data.description,
-    data.summary,
-    stringifySearchValue(getAdditionalSettings(data)),
-    ...getRecommendationCategoryAliases(data),
-  ].filter(Boolean).join(' '))
-}
-
-function getRecommendedRecords(records: CreatedRecord[], interests: string[], source: 'activity' | 'group') {
-  const terms = getRecommendationTerms(interests)
-  if (terms.length === 0) return []
-
-  return records.filter((record) => {
-    const text = getRecommendationText(record, source)
-    const matchesInterest = terms.some((term) => text.includes(term))
-    const activityCategory = readString(record.data.category, readString(record.data.categoryId, source))
-    const normalizedCategory = normalize(activityCategory)
-
-    console.log({
-      userInterests: interests.map((interest) => normalize(interest)),
-      activityCategory,
-      normalizedCategory,
-      matchesInterest,
-    })
-
-    return matchesInterest
-  })
-}
-
 export default function HomeScreen() {
   const router = useRouter()
   const [activeCategory, setActiveCategory] = useState('Todas')
   const [currentUserId, setCurrentUserId] = useState<string | null>(null)
-  const [userInterests, setUserInterests] = useState<string[]>([])
   const [userName, setUserName] = useState<string | null>(null)
   const [userNamesById, setUserNamesById] = useState<UserNamesById>({})
   const [createdActivities, setCreatedActivities] = useState<CreatedRecord[]>([])
-  const [createdGroups, setCreatedGroups] = useState<CreatedRecord[]>([])
   const [optimisticJoins, setOptimisticJoins] = useState<Record<string, boolean>>({})
   const [optimisticInterests, setOptimisticInterests] = useState<Record<string, boolean>>({})
   const [pendingJoinKeys, setPendingJoinKeys] = useState<string[]>([])
@@ -635,7 +510,6 @@ export default function HomeScreen() {
 
         if (!user) {
           setCurrentUserId(null)
-          setUserInterests([])
           setUserName(null)
           return
         }
@@ -647,7 +521,6 @@ export default function HomeScreen() {
         try {
           const profileSnap = await getDoc(doc(db, 'users', user.uid))
           const profile = profileSnap.exists() ? profileSnap.data() : null
-          const profileInterests = getList(profile?.interests)
           const profileName =
             typeof profile?.fullName === 'string'
               ? profile.fullName
@@ -661,12 +534,10 @@ export default function HomeScreen() {
 
           if (mounted) {
             const cleanName = profileName.trim()
-            setUserInterests(profileInterests)
             setUserName(cleanName ? cleanName.split(' ')[0] : authName ? authName.split(' ')[0] : null)
           }
         } catch {
           if (mounted) {
-            setUserInterests([])
             setUserName(authName ? authName.split(' ')[0] : null)
           }
         }
@@ -683,7 +554,6 @@ export default function HomeScreen() {
 
   useEffect(() => {
     let unsubscribeActivities = () => {}
-    let unsubscribeGroups = () => {}
     let unsubscribeUsers = () => {}
 
     try {
@@ -699,18 +569,6 @@ export default function HomeScreen() {
           setCreatedActivities(records)
         },
         () => setCreatedActivities([]),
-      )
-
-      unsubscribeGroups = onSnapshot(
-        collection(db, 'groups'),
-        (snapshot) => {
-          const records = snapshot.docs
-            .map((item) => ({ id: item.id, data: item.data() as Record<string, unknown> }))
-            .sort((left, right) => getRecordTime(right) - getRecordTime(left))
-
-          setCreatedGroups(records)
-        },
-        () => setCreatedGroups([]),
       )
 
       unsubscribeUsers = onSnapshot(
@@ -729,13 +587,11 @@ export default function HomeScreen() {
       )
     } catch {
       setCreatedActivities([])
-      setCreatedGroups([])
       setUserNamesById({})
     }
 
     return () => {
       unsubscribeActivities()
-      unsubscribeGroups()
       unsubscribeUsers()
     }
   }, [])
@@ -753,33 +609,13 @@ export default function HomeScreen() {
     () => createdActivities.filter((item) => matchesSelectedCity(item, selectedCity)),
     [createdActivities, selectedCity],
   )
-  const cityGroups = useMemo(
-    () => createdGroups.filter((item) => matchesSelectedCity(item, selectedCity)),
-    [createdGroups, selectedCity],
-  )
   const searchedActivities = useMemo(
     () => filterRecordsBySearch(cityActivities, debouncedSearchQuery, 'activity'),
     [cityActivities, debouncedSearchQuery],
   )
-  const searchedGroups = useMemo(
-    () => filterRecordsBySearch(cityGroups, debouncedSearchQuery, 'group'),
-    [cityGroups, debouncedSearchQuery],
-  )
   const filteredActivities = useMemo(
     () => filterRecordsByCategory(searchedActivities, activeCategory),
     [activeCategory, searchedActivities],
-  )
-  const filteredGroups = useMemo(
-    () => filterRecordsByCategory(searchedGroups, activeCategory),
-    [activeCategory, searchedGroups],
-  )
-  const recommendedActivities = useMemo(
-    () => getRecommendedRecords(filteredActivities, userInterests, 'activity'),
-    [filteredActivities, userInterests],
-  )
-  const recommendedGroups = useMemo(
-    () => getRecommendedRecords(filteredGroups, userInterests, 'group'),
-    [filteredGroups, userInterests],
   )
   const selectCity = async (city: string) => {
     const nextCity = city.trim()
@@ -946,16 +782,9 @@ export default function HomeScreen() {
         )),
     [currentUserId, filteredActivities, optimisticInterests, optimisticJoins, userNamesById],
   )
-  const suggestions = useMemo(
-    () => [
-      ...recommendedActivities.map((item) => mapSuggestionCard(item, 'activity', getJoinState(item, 'activities', currentUserId, optimisticJoins))),
-      ...recommendedGroups.map((item) => mapSuggestionCard(item, 'group', getJoinState(item, 'groups', currentUserId, optimisticJoins))),
-    ],
-    [currentUserId, optimisticJoins, recommendedActivities, recommendedGroups],
-  )
   const hasSearch = debouncedSearchQuery.trim().length > 0
   const hasCategoryFilter = activeCategory !== 'Todas'
-  const hasVisibleResults = nearbyMeetups.length + privateSpaces.length + suggestions.length > 0
+  const hasVisibleResults = nearbyMeetups.length + privateSpaces.length > 0
   const activityRecordsById = useMemo(
     () => new Map(filteredActivities.map((item) => [item.id, item])),
     [filteredActivities],
@@ -1200,31 +1029,6 @@ export default function HomeScreen() {
               )}
               title="Actividades en espacios privados"
               variant="vertical"
-            />
-
-            <Section
-              accent="green"
-              data={suggestions}
-              emptySubtitle="Cuando haya actividades y grupos relacionados con tus gustos, van a aparecer acá."
-              emptyTitle="Todavía no tenemos propuestas para vos"
-              renderItem={({ item }) => (
-                <SuggestionCard
-                  item={item}
-                  onPress={() => router.push(
-                    item.source === 'activity'
-                      ? {
-                        pathname: '/activity/[activityId]',
-                        params: { activityId: item.recordId },
-                      }
-                      : {
-                        pathname: '/group/[groupId]',
-                        params: { groupId: item.recordId },
-                      },
-                  )}
-                />
-              )}
-              subtitle="(encuentros y grupos)"
-              title="Propuestas que pueden interesarte"
             />
           </>
         )}
