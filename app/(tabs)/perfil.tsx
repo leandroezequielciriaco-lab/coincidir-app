@@ -13,8 +13,7 @@ import {
   TextInput,
   View,
 } from 'react-native'
-import AsyncStorage from '@react-native-async-storage/async-storage'
-import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
+import { SafeAreaView } from 'react-native-safe-area-context'
 import * as ImagePicker from 'expo-image-picker'
 import { useRouter } from 'expo-router'
 import { onAuthStateChanged } from 'firebase/auth'
@@ -92,7 +91,6 @@ type FirebaseStorageLikeError = {
 
 const DEFAULT_BIO = 'Siempre listo para nuevos planes.'
 const DEFAULT_LOCATION = 'Tandil'
-const PROFILE_INTERESTS_STORAGE_KEY = 'profile:selectedInterests'
 const editableInterests = [
   'Deportes',
   'Yoga',
@@ -274,9 +272,9 @@ export default function PerfilScreen() {
   const [groups, setGroups] = useState<FirestoreRecord[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [isEditing, setIsEditing] = useState(false)
-  const [isInterestsVisible, setIsInterestsVisible] = useState(false)
-  const [localInterests, setLocalInterests] = useState<string[]>([])
-  const [draftInterests, setDraftInterests] = useState<string[]>([])
+  const [optimisticInterests, setOptimisticInterests] = useState<string[] | null>(null)
+  const [pendingInterest, setPendingInterest] = useState<string | null>(null)
+  const [showAllProfileInterests, setShowAllProfileInterests] = useState(false)
 
   useEffect(() => {
     try {
@@ -301,6 +299,7 @@ export default function PerfilScreen() {
         doc(db, 'users', userId),
         (snapshot) => {
           setProfile(buildProfile(snapshot.exists() ? snapshot.data() : null, authName))
+          setOptimisticInterests(null)
           setIsLoading(false)
         },
         () => setIsLoading(false),
@@ -310,27 +309,6 @@ export default function PerfilScreen() {
       return undefined
     }
   }, [authName, userId])
-
-  useEffect(() => {
-    const storageKey = `${PROFILE_INTERESTS_STORAGE_KEY}:${userId ?? 'guest'}`
-    let mounted = true
-
-    setLocalInterests([])
-    AsyncStorage.getItem(storageKey)
-      .then((value) => {
-        if (!mounted || !value) return
-
-        const parsed = JSON.parse(value)
-        if (Array.isArray(parsed)) {
-          setLocalInterests(parsed.filter((item): item is string => typeof item === 'string'))
-        }
-      })
-      .catch(() => undefined)
-
-    return () => {
-      mounted = false
-    }
-  }, [userId])
 
   useEffect(() => {
     try {
@@ -372,18 +350,37 @@ export default function PerfilScreen() {
     { label: 'Grupos', value: String(myGroups.length), Icon: UsersRound, color: '#17803C' },
     { label: 'Coincidencias', value: String(createdActivities.length + joinedActivities.length + myGroups.length), Icon: Star, color: '#F2A900' },
   ], [createdActivities.length, joinedActivities.length, myGroups.length])
-  const visibleInterests = localInterests.length > 0 ? localInterests : profile.interests
+  const selectedInterests = optimisticInterests ?? profile.interests
+  const visibleProfileInterestOptions = showAllProfileInterests
+    ? editableInterests
+    : selectedInterests.length > 0
+      ? selectedInterests.slice(0, 8)
+      : editableInterests.slice(0, 8)
+  const shouldShowInterestToggle = editableInterests.length > visibleProfileInterestOptions.length
 
-  const openInterests = () => {
-    setDraftInterests(visibleInterests)
-    setIsInterestsVisible(true)
-  }
+  const toggleProfileInterest = async (interest: string) => {
+    if (!userId || pendingInterest) return
 
-  const saveInterests = async () => {
-    const storageKey = `${PROFILE_INTERESTS_STORAGE_KEY}:${userId ?? 'guest'}`
-    await AsyncStorage.setItem(storageKey, JSON.stringify(draftInterests))
-    setLocalInterests(draftInterests)
-    setIsInterestsVisible(false)
+    const previousInterests = selectedInterests
+    const nextInterests = previousInterests.includes(interest)
+      ? previousInterests.filter((item) => item !== interest)
+      : [...previousInterests, interest]
+
+    setOptimisticInterests(nextInterests)
+    setPendingInterest(interest)
+
+    try {
+      const { db } = getFirebaseServices()
+      await setDoc(doc(db, 'users', userId), {
+        interests: nextInterests,
+        updatedAt: serverTimestamp(),
+      }, { merge: true })
+    } catch {
+      setOptimisticInterests(previousInterests)
+      Alert.alert('No pudimos guardar', 'Intentá cambiar tus intereses nuevamente en unos segundos.')
+    } finally {
+      setPendingInterest(null)
+    }
   }
 
   if (isLoading) {
@@ -437,17 +434,19 @@ export default function PerfilScreen() {
           </PressScale>
         </View>
 
-        <ProfileSection title="Mis intereses">
-          <PressScale
-            accessibilityLabel="Editar mis intereses"
-            accessibilityRole="button"
-            onPress={openInterests}
-            scaleTo={0.98}
-            style={styles.interestsCard}
-          >
-            {visibleInterests.length > 0 ? (
+        <ProfileSection subtitle="Tocá para editar" title="Mis intereses" TitleIcon={Pencil}>
+          <View style={styles.interestsCard}>
+            {visibleProfileInterestOptions.length > 0 ? (
               <View style={styles.chipWrap}>
-                {visibleInterests.map((interest) => <InterestChip key={interest} label={interest} />)}
+                {visibleProfileInterestOptions.map((interest) => (
+                  <InterestChip
+                    key={interest}
+                    label={interest}
+                    loading={pendingInterest === interest}
+                    onPress={() => void toggleProfileInterest(interest)}
+                    selected={selectedInterests.includes(interest)}
+                  />
+                ))}
               </View>
             ) : (
               <View style={styles.interestsEmptyContent}>
@@ -457,7 +456,21 @@ export default function PerfilScreen() {
                 <Text style={styles.emptyText}>Agregá tus intereses para mejorar tus coincidencias.</Text>
               </View>
             )}
-          </PressScale>
+            {selectedInterests.length === 0 ? (
+              <Text style={styles.interestsHint}>Elegí al menos un interés para mejorar tus coincidencias.</Text>
+            ) : null}
+            {shouldShowInterestToggle ? (
+              <PressScale
+                accessibilityRole="button"
+                onPress={() => setShowAllProfileInterests((current) => !current)}
+                scaleTo={0.96}
+                style={styles.profileShowAllInterestsButton}
+              >
+                <Text style={styles.showAllInterestsText}>{showAllProfileInterests ? 'Ver menos' : 'Ver más'}</Text>
+                <ChevronRight color="#4B348A" size={18} strokeWidth={2.6} style={showAllProfileInterests ? styles.showLessIcon : styles.showAllIcon} />
+              </PressScale>
+            ) : null}
+          </View>
         </ProfileSection>
 
         <ProfileListSection
@@ -489,32 +502,35 @@ export default function PerfilScreen() {
         userId={userId}
         visible={isEditing}
       />
-      <InterestsModal
-        interests={draftInterests}
-        onChange={setDraftInterests}
-        onClose={() => setIsInterestsVisible(false)}
-        onSave={saveInterests}
-        visible={isInterestsVisible}
-      />
     </SafeAreaView>
   )
 }
 
 type ProfileSectionProps = {
   children: React.ReactNode
+  subtitle?: string
   title: string
+  TitleIcon?: LucideIcon
 }
 
-function ProfileSection({ children, title }: ProfileSectionProps) {
+function ProfileSection({ children, subtitle, title, TitleIcon }: ProfileSectionProps) {
   return (
     <View style={styles.section}>
-      <Text style={styles.sectionTitle}>{title}</Text>
+      <View style={styles.sectionTitleRow}>
+        <Text style={styles.sectionTitle}>{title}</Text>
+        {subtitle ? (
+          <View style={styles.sectionHint}>
+            {TitleIcon ? <TitleIcon color="#4B348A" size={13} strokeWidth={2.4} /> : null}
+            <Text style={styles.sectionHintText}>{subtitle}</Text>
+          </View>
+        ) : null}
+      </View>
       {children}
     </View>
   )
 }
 
-function InterestChip({ label, selected = false, onPress }: { label: string; selected?: boolean; onPress?: () => void }) {
+function InterestChip({ label, loading = false, selected = false, onPress }: { label: string; loading?: boolean; selected?: boolean; onPress?: () => void }) {
   const Icon = getInterestIcon(label)
   const interactive = Boolean(onPress)
 
@@ -522,11 +538,16 @@ function InterestChip({ label, selected = false, onPress }: { label: string; sel
     <PressScale
       accessibilityRole={interactive ? 'button' : undefined}
       accessibilityState={interactive ? { selected } : undefined}
+      disabled={loading}
       onPress={onPress}
       scaleTo={interactive ? 0.96 : 1}
       style={[styles.chip, !interactive && styles.chipCompact, selected && styles.chipSelected]}
     >
-      {selected ? (
+      {loading ? (
+        <View style={styles.chipCheck}>
+          <ActivityIndicator color="#FFFFFF" size="small" />
+        </View>
+      ) : selected ? (
         <View style={styles.chipCheck}>
           <Check color="#FFFFFF" size={12} strokeWidth={3} />
         </View>
@@ -628,73 +649,6 @@ function ProfileRow({ item, onPress, variant }: { item: FirestoreRecord; onPress
   )
 }
 
-type InterestsModalProps = {
-  interests: string[]
-  onChange: (interests: string[]) => void
-  onClose: () => void
-  onSave: () => void
-  visible: boolean
-}
-
-function InterestsModal({ interests, onChange, onClose, onSave, visible }: InterestsModalProps) {
-  const insets = useSafeAreaInsets()
-  const saveButtonSpacing = {
-    marginBottom: Math.max(insets.bottom + 24, 32),
-  }
-
-  const toggleInterest = (interest: string) => {
-    onChange(
-      interests.includes(interest)
-        ? interests.filter((item) => item !== interest)
-        : [...interests, interest],
-    )
-  }
-
-  return (
-    <Modal animationType="slide" onRequestClose={onClose} visible={visible}>
-      <SafeAreaView edges={['top', 'bottom']} style={styles.safeArea}>
-        <ScrollView contentContainerStyle={[styles.editContent, styles.interestsEditContent]} showsVerticalScrollIndicator={false} style={styles.interestsScroll}>
-          <View style={styles.editHeader}>
-            <PressScale onPress={onClose} scaleTo={0.94} style={styles.editHeaderButton}>
-              <Text style={styles.cancelEditText}>Cancelar</Text>
-            </PressScale>
-            <Text style={styles.editTitle}>Mis intereses</Text>
-            <View style={styles.editHeaderButton} />
-          </View>
-
-          <View style={styles.interestsModalCard}>
-            <View style={styles.interestsIcon}>
-              <Heart color="#17803C" size={30} strokeWidth={2.1} />
-            </View>
-            <Text style={styles.interestsModalTitle}>Elegí tus gustos</Text>
-            <Text style={styles.interestsModalText}>
-              Seleccioná lo que te interesa para mejorar tus coincidencias dentro de COINCIDIR.
-            </Text>
-
-            <View style={styles.chipWrap}>
-              {editableInterests.map((interest) => (
-                <InterestChip
-                  key={interest}
-                  label={interest}
-                  onPress={() => toggleInterest(interest)}
-                  selected={interests.includes(interest)}
-                />
-              ))}
-            </View>
-
-          </View>
-          <Pressable onPress={onSave} style={({ pressed }) => [styles.saveInterestsButtonWrap, saveButtonSpacing, pressed && styles.saveInterestsButtonPressed]}>
-            <View style={styles.saveInterestsButton}>
-              <Heart color="#FFFFFF" size={26} strokeWidth={2.4} />
-              <Text style={styles.saveInterestsText}>Guardar intereses</Text>
-            </View>
-          </Pressable>
-        </ScrollView>
-      </SafeAreaView>
-    </Modal>
-  )
-}
-
 type EditProfileModalProps = {
   onClose: () => void
   profile: UserProfile
@@ -708,14 +662,12 @@ function EditProfileModal({ onClose, profile, userId, visible }: EditProfileModa
   const [isPickingPhoto, setIsPickingPhoto] = useState(false)
   const [isPhotoOptionsVisible, setIsPhotoOptionsVisible] = useState(false)
   const [selectedPhotoAsset, setSelectedPhotoAsset] = useState<ImagePicker.ImagePickerAsset | null>(null)
-  const [showAllInterests, setShowAllInterests] = useState(false)
 
   useEffect(() => {
     if (visible) {
       setDraft(profile)
       setSelectedPhotoAsset(null)
       setIsPhotoOptionsVisible(false)
-      setShowAllInterests(false)
     }
   }, [profile, visible])
 
@@ -740,15 +692,6 @@ function EditProfileModal({ onClose, profile, userId, visible }: EditProfileModa
       mounted = false
     }
   }, [visible])
-
-  const toggleInterest = (interest: string) => {
-    setDraft((current) => ({
-      ...current,
-      interests: current.interests.includes(interest)
-        ? current.interests.filter((item) => item !== interest)
-        : [...current.interests, interest],
-    }))
-  }
 
   const photoPickerOptions: ImagePicker.ImagePickerOptions = {
     allowsEditing: false,
@@ -923,7 +866,6 @@ function EditProfileModal({ onClose, profile, userId, visible }: EditProfileModa
         avatarUrl: savedPhotoURL,
         bio: draft.bio.trim(),
         fullName: draft.fullName.trim(),
-        interests: draft.interests,
         location: draft.location.trim(),
         photoURL: savedPhotoURL,
         updatedAt: serverTimestamp(),
@@ -939,8 +881,6 @@ function EditProfileModal({ onClose, profile, userId, visible }: EditProfileModa
       setIsSaving(false)
     }
   }
-
-  const visibleEditableInterests = showAllInterests ? editableInterests : editableInterests.slice(0, 12)
 
   return (
     <Modal animationType="slide" onRequestClose={onClose} visible={visible}>
@@ -984,19 +924,6 @@ function EditProfileModal({ onClose, profile, userId, visible }: EditProfileModa
           <EditProfileField Icon={UserRound} label="Nombre" value={draft.fullName} onChangeText={(fullName) => setDraft((current) => ({ ...current, fullName }))} />
           <EditProfileField Icon={MapPin} label="Ubicación" value={draft.location} onChangeText={(location) => setDraft((current) => ({ ...current, location }))} />
           <EditProfileField Icon={Pencil} label="Bio" multiline maxLength={150} showCount value={draft.bio} onChangeText={(bio) => setDraft((current) => ({ ...current, bio }))} />
-
-          <Text style={styles.editSectionTitle}>Intereses</Text>
-          <View style={styles.editInterestGrid}>
-            {visibleEditableInterests.map((interest) => (
-              <EditInterestPill key={interest} label={interest} onPress={() => toggleInterest(interest)} selected={draft.interests.includes(interest)} />
-            ))}
-          </View>
-          {editableInterests.length > 12 ? (
-            <PressScale accessibilityRole="button" onPress={() => setShowAllInterests((current) => !current)} scaleTo={0.96} style={styles.showAllInterestsButton}>
-              <Text style={styles.showAllInterestsText}>{showAllInterests ? 'Ver menos' : 'Ver todos'}</Text>
-              <ChevronRight color="#4B348A" size={18} strokeWidth={2.6} style={showAllInterests ? styles.showLessIcon : styles.showAllIcon} />
-            </PressScale>
-          ) : null}
 
           <View style={styles.privacyCard}>
             <View style={styles.privacyIcon}>
@@ -1077,30 +1004,6 @@ function EditProfileField({
         {showCount ? <Text style={styles.editFieldCount}>{value.length}/{maxLength ?? 150}</Text> : null}
       </View>
     </View>
-  )
-}
-
-function EditInterestPill({ label, selected, onPress }: { label: string; selected: boolean; onPress: () => void }) {
-  const Icon = getInterestIcon(label)
-
-  return (
-    <PressScale
-      accessibilityRole="button"
-      accessibilityState={{ selected }}
-      onPress={onPress}
-      scaleTo={0.96}
-      style={[styles.editInterestPill, selected && styles.editInterestPillSelected]}
-    >
-      <View style={[styles.editInterestIconBubble, selected && styles.editInterestIconBubbleSelected]}>
-        <Icon color={selected ? '#006A32' : '#4B348A'} size={16} strokeWidth={2.2} />
-      </View>
-      <Text numberOfLines={1} style={styles.editInterestPillText}>{label}</Text>
-      {selected ? (
-        <View style={styles.editInterestCheck}>
-          <Check color="#FFFFFF" size={13} strokeWidth={3} />
-        </View>
-      ) : null}
-    </PressScale>
   )
 }
 
@@ -1269,13 +1172,36 @@ const styles = StyleSheet.create({
   section: {
     marginTop: 26,
   },
+  sectionTitleRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginBottom: 10,
+  },
   sectionTitle: {
     color: '#39206C',
     fontSize: 18,
     fontWeight: '900',
     letterSpacing: 0,
     lineHeight: 23,
-    marginBottom: 10,
+  },
+  sectionHint: {
+    alignItems: 'center',
+    backgroundColor: '#F4EEF9',
+    borderColor: '#E6DDF7',
+    borderRadius: 999,
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: 4,
+    minHeight: 26,
+    paddingHorizontal: 9,
+  },
+  sectionHintText: {
+    color: '#4B348A',
+    fontSize: 12,
+    fontWeight: '900',
+    letterSpacing: 0,
   },
   chipWrap: {
     alignSelf: 'stretch',
@@ -1298,6 +1224,25 @@ const styles = StyleSheet.create({
     gap: 7,
     justifyContent: 'center',
     minHeight: 44,
+  },
+  interestsHint: {
+    color: '#596A65',
+    fontSize: 12,
+    fontWeight: '800',
+    letterSpacing: 0,
+    lineHeight: 17,
+    marginTop: 10,
+    textAlign: 'center',
+  },
+  profileShowAllInterestsButton: {
+    alignItems: 'center',
+    alignSelf: 'center',
+    flexDirection: 'row',
+    gap: 6,
+    justifyContent: 'center',
+    marginTop: 12,
+    minHeight: 36,
+    paddingHorizontal: 14,
   },
   chip: {
     alignItems: 'center',
@@ -1404,86 +1349,6 @@ const styles = StyleSheet.create({
     lineHeight: 18,
     textAlign: 'center',
   },
-  interestsModalCard: {
-    backgroundColor: '#FFFFFF',
-    borderColor: '#E7E7E1',
-    borderRadius: 24,
-    borderWidth: 1,
-    paddingBottom: 22,
-    paddingHorizontal: 18,
-    paddingTop: 18,
-    ...shadow,
-  },
-  interestsIcon: {
-    alignItems: 'center',
-    alignSelf: 'center',
-    backgroundColor: '#EFF6E9',
-    borderColor: '#D7E8CC',
-    borderRadius: 999,
-    borderWidth: 1,
-    height: 58,
-    justifyContent: 'center',
-    marginBottom: 10,
-    width: 58,
-  },
-  interestsModalTitle: {
-    color: '#063C31',
-    fontSize: 20,
-    fontWeight: '900',
-    letterSpacing: 0,
-    lineHeight: 25,
-    textAlign: 'center',
-  },
-  interestsModalText: {
-    color: '#596A65',
-    fontSize: 13,
-    fontWeight: '700',
-    letterSpacing: 0,
-    lineHeight: 18,
-    marginBottom: 16,
-    marginTop: 6,
-    textAlign: 'center',
-  },
-  interestsFooter: {
-    alignItems: 'center',
-    backgroundColor: '#FAFAF8',
-    borderTopColor: '#E7E7E1',
-    borderTopWidth: 1,
-    paddingHorizontal: 20,
-    paddingTop: 14,
-    zIndex: 10,
-  },
-  saveInterestsButtonWrap: {
-    alignSelf: 'center',
-    marginTop: 24,
-    width: '85%',
-  },
-  saveInterestsButton: {
-    alignItems: 'center',
-    backgroundColor: '#006A32',
-    borderColor: '#006A32',
-    borderRadius: 18,
-    borderWidth: 1,
-    flexDirection: 'row',
-    gap: 12,
-    minHeight: 58,
-    justifyContent: 'center',
-    width: '100%',
-    shadowColor: '#07392D',
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.16,
-    shadowRadius: 18,
-    elevation: 4,
-  },
-  saveInterestsButtonPressed: {
-    opacity: 0.9,
-  },
-  saveInterestsText: {
-    color: '#FFFFFF',
-    fontSize: 17,
-    fontWeight: '900',
-    letterSpacing: 0,
-  },
   list: {
     gap: 10,
   },
@@ -1580,12 +1445,6 @@ const styles = StyleSheet.create({
     paddingBottom: 44,
     paddingHorizontal: 20,
     paddingTop: 10,
-  },
-  interestsEditContent: {
-    paddingBottom: 112,
-  },
-  interestsScroll: {
-    flex: 1,
   },
   editHeader: {
     alignItems: 'center',
@@ -1853,73 +1712,6 @@ const styles = StyleSheet.create({
   multilineInput: {
     minHeight: 104,
     paddingTop: 13,
-  },
-  editSectionTitle: {
-    color: '#39206C',
-    fontSize: 20,
-    fontWeight: '900',
-    letterSpacing: 0,
-    marginBottom: 12,
-    marginTop: 14,
-  },
-  editInterestGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 9,
-  },
-  editInterestPill: {
-    alignItems: 'center',
-    backgroundColor: '#F9FBF7',
-    borderColor: '#E1E9DE',
-    borderRadius: 999,
-    borderWidth: 1,
-    flexBasis: 'auto',
-    flexDirection: 'row',
-    flexGrow: 0,
-    gap: 7,
-    minHeight: 40,
-    paddingLeft: 10,
-    paddingRight: 12,
-  },
-  editInterestPillSelected: {
-    backgroundColor: '#EAF7E7',
-    borderColor: '#BBDDB7',
-  },
-  editInterestIconBubble: {
-    alignItems: 'center',
-    backgroundColor: '#F2EDF8',
-    borderRadius: 999,
-    height: 26,
-    justifyContent: 'center',
-    width: 26,
-  },
-  editInterestIconBubbleSelected: {
-    backgroundColor: '#DDF1DA',
-  },
-  editInterestPillText: {
-    color: '#071D19',
-    fontSize: 14,
-    fontWeight: '900',
-    letterSpacing: 0,
-    maxWidth: 132,
-  },
-  editInterestCheck: {
-    alignItems: 'center',
-    backgroundColor: '#17803C',
-    borderRadius: 999,
-    height: 20,
-    justifyContent: 'center',
-    width: 20,
-  },
-  showAllInterestsButton: {
-    alignItems: 'center',
-    alignSelf: 'center',
-    flexDirection: 'row',
-    gap: 6,
-    justifyContent: 'center',
-    marginTop: 18,
-    minHeight: 40,
-    paddingHorizontal: 18,
   },
   showAllInterestsText: {
     color: '#4B348A',
