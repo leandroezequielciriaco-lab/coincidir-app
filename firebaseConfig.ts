@@ -26,6 +26,10 @@ const missingFirebaseKeys = Object.entries(firebaseConfig)
 
 let cachedAuth: Auth | null = null
 
+function normalizeStorageBucket(bucket?: string) {
+  return bucket?.trim().replace(/^gs:\/\//, '').replace(/\/$/, '') ?? ''
+}
+
 export function assertFirebaseConfig() {
   if (missingFirebaseKeys.length > 0) {
     throw new Error(
@@ -53,7 +57,7 @@ export function getFirebaseServices(): { auth: Auth; db: Firestore; storage: Fir
   assertFirebaseConfig()
 
   const app = getApps().length ? getApp() : initializeApp(firebaseConfig)
-  const storageBucket = firebaseConfig.storageBucket?.trim()
+  const storageBucket = normalizeStorageBucket(firebaseConfig.storageBucket)
 
   if (!storageBucket) {
     throw new Error('Firebase Storage no está configurado: falta EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET.')
@@ -64,4 +68,22 @@ export function getFirebaseServices(): { auth: Auth; db: Firestore; storage: Fir
     db: getFirestore(app),
     storage: getStorage(app, `gs://${storageBucket}`),
   }
+}
+
+export function getFirebaseStorageBucketCandidates(): Array<{ bucket: string; storage: FirebaseStorage }> {
+  assertFirebaseConfig()
+
+  const app = getApps().length ? getApp() : initializeApp(firebaseConfig)
+  const primaryBucket = normalizeStorageBucket(firebaseConfig.storageBucket)
+  const legacyBucket = firebaseConfig.projectId ? `${firebaseConfig.projectId}.appspot.com` : ''
+  const buckets = [primaryBucket, legacyBucket].filter((bucket, index, list): bucket is string => Boolean(bucket) && list.indexOf(bucket) === index)
+
+  if (buckets.length === 0) {
+    throw new Error('Firebase Storage no esta configurado: falta EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET.')
+  }
+
+  return buckets.map((bucket) => ({
+    bucket,
+    storage: getStorage(app, `gs://${bucket}`),
+  }))
 }

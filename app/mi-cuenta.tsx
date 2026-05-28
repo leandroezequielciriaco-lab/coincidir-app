@@ -2,7 +2,6 @@ import { useEffect, useState } from 'react'
 import {
   ActivityIndicator,
   Alert,
-  Image,
   Modal,
   Platform,
   Pressable,
@@ -20,9 +19,8 @@ import {
   reauthenticateWithCredential,
   updatePassword,
 } from 'firebase/auth'
-import { doc, getDoc, serverTimestamp, setDoc } from 'firebase/firestore'
+import { doc, getDoc } from 'firebase/firestore'
 import {
-  Camera,
   ChevronLeft,
   ChevronRight,
   KeyRound,
@@ -40,7 +38,6 @@ type AccountData = {
   city: string
   email: string
   name: string
-  photoURL: string
 }
 
 type PasswordDraft = {
@@ -53,7 +50,6 @@ const fallbackAccount: AccountData = {
   city: 'Ciudad no configurada',
   email: 'Email no disponible',
   name: 'Sin nombre',
-  photoURL: '',
 }
 
 const emptyPasswordDraft: PasswordDraft = {
@@ -68,7 +64,7 @@ function readString(value: unknown, fallback = '') {
 
 function buildAccountData(
   profile: Record<string, unknown> | null,
-  authUser: { displayName: string | null; email: string | null; photoURL: string | null } | null,
+  authUser: { displayName: string | null; email: string | null } | null,
 ): AccountData {
   return {
     city: readString(profile?.city, readString(profile?.location, fallbackAccount.city)),
@@ -77,17 +73,13 @@ function buildAccountData(
       profile?.fullName,
       readString(profile?.displayName, readString(profile?.name, readString(authUser?.displayName, fallbackAccount.name))),
     ),
-    photoURL: readString(profile?.photoURL, readString(authUser?.photoURL)),
   }
 }
 
 export default function MiCuentaScreen() {
   const router = useRouter()
   const [account, setAccount] = useState<AccountData>(fallbackAccount)
-  const [draftAccount, setDraftAccount] = useState<AccountData>(fallbackAccount)
   const [isLoading, setIsLoading] = useState(true)
-  const [isEditing, setIsEditing] = useState(false)
-  const [isSavingProfile, setIsSavingProfile] = useState(false)
   const [isChangingPassword, setIsChangingPassword] = useState(false)
   const [isUpdatingPassword, setIsUpdatingPassword] = useState(false)
   const [passwordDraft, setPasswordDraft] = useState<PasswordDraft>(emptyPasswordDraft)
@@ -110,18 +102,9 @@ export default function MiCuentaScreen() {
         try {
           const profileSnap = await getDoc(doc(db, 'users', user.uid))
           const profile = profileSnap.exists() ? profileSnap.data() : null
-
-          if (mounted) {
-            const nextAccount = buildAccountData(profile, user)
-            setAccount(nextAccount)
-            setDraftAccount(nextAccount)
-          }
+          if (mounted) setAccount(buildAccountData(profile, user))
         } catch {
-          if (mounted) {
-            const nextAccount = buildAccountData(null, user)
-            setAccount(nextAccount)
-            setDraftAccount(nextAccount)
-          }
+          if (mounted) setAccount(buildAccountData(null, user))
         } finally {
           if (mounted) setIsLoading(false)
         }
@@ -133,58 +116,8 @@ export default function MiCuentaScreen() {
     }
   }, [])
 
-  const editProfile = () => {
-    setDraftAccount(account)
-    setIsEditing(true)
-  }
-
-  const updateDraft = (field: keyof AccountData) => (value: string) => {
-    setDraftAccount((current) => ({ ...current, [field]: value }))
-  }
-
-  const cancelEdit = () => {
-    setDraftAccount(account)
-    setIsEditing(false)
-  }
-
-  const saveProfile = async () => {
-    if (isSavingProfile) return
-
-    const nextAccount = {
-      ...draftAccount,
-      city: draftAccount.city.trim() || fallbackAccount.city,
-      name: draftAccount.name.trim() || fallbackAccount.name,
-      photoURL: draftAccount.photoURL.trim(),
-    }
-
-    setIsSavingProfile(true)
-    try {
-      const { auth, db } = getFirebaseServices()
-      const user = auth.currentUser
-
-      if (!user) {
-        Alert.alert('No pudimos guardar', 'Iniciá sesión nuevamente para editar tu cuenta.')
-        return
-      }
-
-      await setDoc(doc(db, 'users', user.uid), {
-        city: nextAccount.city,
-        displayName: nextAccount.name,
-        email: account.email,
-        fullName: nextAccount.name,
-        location: nextAccount.city,
-        photoURL: nextAccount.photoURL,
-        updatedAt: serverTimestamp(),
-      }, { merge: true })
-
-      setAccount(nextAccount)
-      setDraftAccount(nextAccount)
-      setIsEditing(false)
-    } catch {
-      Alert.alert('No pudimos guardar los cambios', 'Intentá nuevamente en unos segundos.')
-    } finally {
-      setIsSavingProfile(false)
-    }
+  const openProfileEditor = () => {
+    router.push({ pathname: '/(tabs)/perfil', params: { edit: '1' } })
   }
 
   const openPasswordModal = () => {
@@ -214,17 +147,17 @@ export default function MiCuentaScreen() {
     const confirmPassword = passwordDraft.confirmPassword
 
     if (!currentPassword || !newPassword || !confirmPassword) {
-      setPasswordError('Completá todos los campos para cambiar tu contraseña.')
+      setPasswordError('Completa todos los campos para cambiar tu contrasena.')
       return
     }
 
     if (newPassword.length < 6) {
-      setPasswordError('La nueva contraseña debe tener al menos 6 caracteres.')
+      setPasswordError('La nueva contrasena debe tener al menos 6 caracteres.')
       return
     }
 
     if (newPassword !== confirmPassword) {
-      setPasswordError('Las nuevas contraseñas no coinciden.')
+      setPasswordError('Las nuevas contrasenas no coinciden.')
       return
     }
 
@@ -234,7 +167,7 @@ export default function MiCuentaScreen() {
       const user = auth.currentUser
 
       if (!user?.email) {
-        setPasswordError('Necesitamos un email asociado a tu cuenta para cambiar la contraseña.')
+        setPasswordError('Necesitamos un email asociado a tu cuenta para cambiar la contrasena.')
         return
       }
 
@@ -245,25 +178,26 @@ export default function MiCuentaScreen() {
       setPasswordDraft(emptyPasswordDraft)
       setPasswordError('')
       setIsChangingPassword(false)
-      Alert.alert('Contraseña actualizada', 'Tu contraseña se cambió correctamente.')
+      Alert.alert('Contrasena actualizada', 'Tu contrasena se cambio correctamente.')
     } catch (error) {
       const code = typeof error === 'object' && error && 'code' in error ? String(error.code) : ''
 
       if (code === 'auth/wrong-password' || code === 'auth/invalid-credential' || code === 'auth/invalid-login-credentials') {
-        setPasswordError('La contraseña actual es incorrecta.')
+        setPasswordError('La contrasena actual es incorrecta.')
         return
       }
 
       if (code === 'auth/weak-password') {
-        setPasswordError('La nueva contraseña es demasiado débil.')
+        setPasswordError('La nueva contrasena es demasiado debil.')
         return
       }
 
-      setPasswordError('No pudimos actualizar la contraseña. Intentá nuevamente.')
+      setPasswordError('No pudimos actualizar la contrasena. Intenta nuevamente.')
     } finally {
       setIsUpdatingPassword(false)
     }
   }
+
   return (
     <SafeAreaView edges={['top']} style={styles.safeArea}>
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
@@ -288,12 +222,8 @@ export default function MiCuentaScreen() {
         ) : (
           <>
             <View style={styles.profileCard}>
-              <View style={styles.avatar}>
-                {account.photoURL ? (
-                  <Image source={{ uri: account.photoURL }} style={styles.avatarImage} />
-                ) : (
-                  <UserRound color="#17803C" size={42} strokeWidth={2.1} />
-                )}
+              <View style={styles.accountIcon}>
+                <UserRound color="#17803C" size={32} strokeWidth={2.1} />
               </View>
               <Text numberOfLines={2} style={styles.name}>{account.name}</Text>
               <InfoRow Icon={Mail} label="Email" value={account.email} />
@@ -301,25 +231,13 @@ export default function MiCuentaScreen() {
             </View>
 
             <View style={styles.actionsCard}>
-              <ActionRow Icon={Pencil} label="Editar perfil" onPress={editProfile} />
-              <ActionRow
-                Icon={KeyRound}
-                label="Cambiar contraseña"
-                onPress={openPasswordModal}
-              />
+              <ActionRow Icon={Pencil} label="Editar perfil social" onPress={openProfileEditor} />
+              <ActionRow Icon={KeyRound} label="Cambiar contrasena" onPress={openPasswordModal} />
             </View>
           </>
         )}
       </ScrollView>
 
-      <EditAccountModal
-        account={draftAccount}
-        isSaving={isSavingProfile}
-        onCancel={cancelEdit}
-        onChange={updateDraft}
-        onSave={saveProfile}
-        visible={isEditing}
-      />
       <ChangePasswordModal
         draft={passwordDraft}
         error={passwordError}
@@ -330,75 +248,6 @@ export default function MiCuentaScreen() {
         visible={isChangingPassword}
       />
     </SafeAreaView>
-  )
-}
-
-function EditAccountModal({
-  account,
-  isSaving,
-  onCancel,
-  onChange,
-  onSave,
-  visible,
-}: {
-  account: AccountData
-  isSaving: boolean
-  onCancel: () => void
-  onChange: (field: keyof AccountData) => (value: string) => void
-  onSave: () => void
-  visible: boolean
-}) {
-  return (
-    <Modal animationType="slide" onRequestClose={onCancel} visible={visible}>
-      <SafeAreaView edges={['top']} style={styles.safeArea}>
-        <ScrollView contentContainerStyle={styles.editContent} showsVerticalScrollIndicator={false}>
-          <View style={styles.header}>
-            <PressScale
-              accessibilityLabel="Cancelar edición"
-              accessibilityRole="button"
-              onPress={onCancel}
-              scaleTo={0.94}
-              style={styles.backButton}
-            >
-              <ChevronLeft color="#063C31" size={27} strokeWidth={2.5} />
-            </PressScale>
-            <Text style={styles.title}>Editar perfil</Text>
-            <View style={styles.headerSpacer} />
-          </View>
-
-          <View style={styles.editCard}>
-            <View style={styles.editAvatar}>
-              {account.photoURL ? (
-                <Image source={{ uri: account.photoURL }} style={styles.avatarImage} />
-              ) : (
-                <UserRound color="#17803C" size={42} strokeWidth={2.1} />
-              )}
-            </View>
-            <View style={styles.photoHint}>
-              <Camera color="#17803C" size={18} strokeWidth={2.2} />
-              <Text style={styles.photoHintText}>Cambiar foto</Text>
-            </View>
-
-            <EditField label="Foto" onChangeText={onChange('photoURL')} placeholder="URL de imagen" value={account.photoURL} />
-            <EditField label="Nombre" onChangeText={onChange('name')} placeholder="Sin nombre" value={account.name} />
-            <EditField editable={false} label="Email" onChangeText={onChange('email')} value={account.email} />
-            <EditField label="Ciudad" onChangeText={onChange('city')} placeholder="Ciudad no configurada" value={account.city} />
-
-            <Pressable
-              accessibilityRole="button"
-              onPress={onSave}
-              style={({ pressed }) => [styles.saveButton, pressed && styles.rowPressed]}
-            >
-              {isSaving ? <ActivityIndicator color="#FFFFFF" /> : <Text style={styles.saveButtonText}>Guardar cambios</Text>}
-            </Pressable>
-
-            <Pressable accessibilityRole="button" onPress={onCancel} style={styles.cancelButton}>
-              <Text style={styles.cancelButtonText}>Cancelar</Text>
-            </Pressable>
-          </View>
-        </ScrollView>
-      </SafeAreaView>
-    </Modal>
   )
 }
 
@@ -425,7 +274,7 @@ function ChangePasswordModal({
         <ScrollView contentContainerStyle={styles.editContent} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
           <View style={styles.header}>
             <PressScale
-              accessibilityLabel="Cancelar cambio de contraseña"
+              accessibilityLabel="Cancelar cambio de contrasena"
               accessibilityRole="button"
               onPress={onCancel}
               scaleTo={0.94}
@@ -433,7 +282,7 @@ function ChangePasswordModal({
             >
               <ChevronLeft color="#063C31" size={27} strokeWidth={2.5} />
             </PressScale>
-            <Text style={styles.title}>Cambiar contraseña</Text>
+            <Text style={styles.title}>Cambiar contrasena</Text>
             <View style={styles.headerSpacer} />
           </View>
 
@@ -441,29 +290,29 @@ function ChangePasswordModal({
             <View style={styles.passwordIcon}>
               <KeyRound color="#17803C" size={34} strokeWidth={2.1} />
             </View>
-            <Text style={styles.passwordTitle}>Actualizá tu contraseña</Text>
+            <Text style={styles.passwordTitle}>Actualiza tu contrasena</Text>
             <Text style={styles.passwordSubtitle}>
-              Confirmá tu contraseña actual y elegí una nueva para mantener tu cuenta segura.
+              Confirma tu contrasena actual y elegi una nueva para mantener tu cuenta segura.
             </Text>
 
             <EditField
-              label="Contraseña actual"
+              label="Contrasena actual"
               onChangeText={onChange('currentPassword')}
-              placeholder="Ingresá tu contraseña actual"
+              placeholder="Ingresa tu contrasena actual"
               secureTextEntry
               value={draft.currentPassword}
             />
             <EditField
-              label="Nueva contraseña"
+              label="Nueva contrasena"
               onChangeText={onChange('newPassword')}
-              placeholder="Mínimo 6 caracteres"
+              placeholder="Minimo 6 caracteres"
               secureTextEntry
               value={draft.newPassword}
             />
             <EditField
-              label="Confirmar nueva contraseña"
+              label="Confirmar nueva contrasena"
               onChangeText={onChange('confirmPassword')}
-              placeholder="Repetí la nueva contraseña"
+              placeholder="Repeti la nueva contrasena"
               secureTextEntry
               value={draft.confirmPassword}
             />
@@ -472,13 +321,14 @@ function ChangePasswordModal({
 
             <Pressable
               accessibilityRole="button"
+              disabled={isSaving}
               onPress={onSave}
-              style={({ pressed }) => [styles.saveButton, pressed && styles.rowPressed]}
+              style={({ pressed }) => [styles.saveButton, pressed && styles.rowPressed, isSaving && styles.saveButtonDisabled]}
             >
               {isSaving ? <ActivityIndicator color="#FFFFFF" /> : <Text style={styles.saveButtonText}>Guardar</Text>}
             </Pressable>
 
-            <Pressable accessibilityRole="button" onPress={onCancel} style={styles.cancelButton}>
+            <Pressable accessibilityRole="button" disabled={isSaving} onPress={onCancel} style={styles.cancelButton}>
               <Text style={styles.cancelButtonText}>Cancelar</Text>
             </Pressable>
           </View>
@@ -489,14 +339,12 @@ function ChangePasswordModal({
 }
 
 function EditField({
-  editable = true,
   label,
   onChangeText,
   placeholder,
   secureTextEntry = false,
   value,
 }: {
-  editable?: boolean
   label: string
   onChangeText: (value: string) => void
   placeholder?: string
@@ -507,14 +355,12 @@ function EditField({
     <View style={styles.editField}>
       <Text style={styles.editFieldLabel}>{label}</Text>
       <TextInput
-        autoCapitalize={secureTextEntry || label === 'Email' ? 'none' : 'words'}
-        editable={editable}
-        keyboardType={label === 'Email' ? 'email-address' : 'default'}
+        autoCapitalize="none"
         onChangeText={onChangeText}
         placeholder={placeholder}
         placeholderTextColor="#8B9692"
         secureTextEntry={secureTextEntry}
-        style={[styles.editInput, !editable && styles.editInputDisabled]}
+        style={styles.editInput}
         value={value}
       />
     </View>
@@ -626,21 +472,16 @@ const styles = StyleSheet.create({
     padding: 22,
     ...shadow,
   },
-  avatar: {
+  accountIcon: {
     alignItems: 'center',
     backgroundColor: '#F0F8EC',
     borderColor: '#B7DC9D',
     borderRadius: 999,
     borderWidth: 1,
-    height: 96,
+    height: 76,
     justifyContent: 'center',
     marginBottom: 14,
-    overflow: 'hidden',
-    width: 96,
-  },
-  avatarImage: {
-    height: '100%',
-    width: '100%',
+    width: 76,
   },
   name: {
     color: '#063C31',
@@ -732,18 +573,6 @@ const styles = StyleSheet.create({
     padding: 20,
     ...shadow,
   },
-  editAvatar: {
-    alignItems: 'center',
-    backgroundColor: '#F0F8EC',
-    borderColor: '#B7DC9D',
-    borderRadius: 999,
-    borderWidth: 1,
-    height: 96,
-    justifyContent: 'center',
-    marginBottom: 10,
-    overflow: 'hidden',
-    width: 96,
-  },
   passwordIcon: {
     alignItems: 'center',
     backgroundColor: '#F0F8EC',
@@ -773,18 +602,6 @@ const styles = StyleSheet.create({
     marginBottom: 18,
     textAlign: 'center',
   },
-  photoHint: {
-    alignItems: 'center',
-    flexDirection: 'row',
-    gap: 7,
-    marginBottom: 16,
-  },
-  photoHintText: {
-    color: '#17803C',
-    fontSize: 14,
-    fontWeight: '900',
-    letterSpacing: 0,
-  },
   editField: {
     alignSelf: 'stretch',
     marginBottom: 14,
@@ -807,10 +624,6 @@ const styles = StyleSheet.create({
     minHeight: 50,
     paddingHorizontal: 14,
   },
-  editInputDisabled: {
-    backgroundColor: '#F1F2EF',
-    color: '#596A65',
-  },
   errorText: {
     alignSelf: 'stretch',
     color: '#B42318',
@@ -829,6 +642,9 @@ const styles = StyleSheet.create({
     height: 50,
     justifyContent: 'center',
     marginTop: 4,
+  },
+  saveButtonDisabled: {
+    opacity: 0.72,
   },
   saveButtonText: {
     color: '#FFFFFF',
@@ -849,4 +665,3 @@ const styles = StyleSheet.create({
     letterSpacing: 0,
   },
 })
-

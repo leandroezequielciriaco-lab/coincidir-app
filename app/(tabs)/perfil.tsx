@@ -1,34 +1,21 @@
-import { useEffect, useMemo, useState } from 'react'
-import {
-  ActivityIndicator,
-  Alert,
-  Image,
-  Linking,
-  Modal,
-  Platform,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from 'react-native'
-import { SafeAreaView } from 'react-native-safe-area-context'
 import * as ImagePicker from 'expo-image-picker'
-import { useRouter } from 'expo-router'
+import { useLocalSearchParams, useRouter } from 'expo-router'
 import { onAuthStateChanged } from 'firebase/auth'
 import { collection, doc, onSnapshot, serverTimestamp, setDoc } from 'firebase/firestore'
 import { getDownloadURL, ref, uploadBytes } from 'firebase/storage'
+import type { LucideIcon } from 'lucide-react-native'
 import {
+  Bike,
+  BookOpen,
   CalendarDays,
   Camera,
+  Car,
   Check,
+  ChefHat,
   ChevronRight,
   Circle,
   CircleDot,
   Coffee,
-  Car,
-  ChefHat,
   DollarSign,
   Dumbbell,
   Film,
@@ -40,16 +27,14 @@ import {
   Image as ImageIcon,
   Laptop,
   LockKeyhole,
-  Mic,
-  Music,
   MapPin,
+  Mic,
   Mountain,
+  Music,
   Palette,
   PawPrint,
   Pencil,
   Plane,
-  BookOpen,
-  Bike,
   Rocket,
   Scissors,
   Star,
@@ -61,10 +46,26 @@ import {
   Waves,
   Wine,
 } from 'lucide-react-native'
-import type { LucideIcon } from 'lucide-react-native'
+import { useEffect, useMemo, useState } from 'react'
+import {
+  ActivityIndicator,
+  Alert,
+  Image,
+  InteractionManager,
+  Linking,
+  Modal,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from 'react-native'
+import { SafeAreaView } from 'react-native-safe-area-context'
 
 import { PressScale } from '../../components/home/PressScale'
-import { getFirebaseServices } from '../../firebaseConfig'
+import { getFirebaseServices, getFirebaseStorageBucketCandidates } from '../../firebaseConfig'
 import { defaultActivityImage, getCategoryImage } from '../../utils/categoryImages'
 
 type FirestoreRecord = {
@@ -87,6 +88,7 @@ type FirebaseStorageLikeError = {
   }
   message?: string
   serverResponse?: string
+  status_?: number
 }
 
 const DEFAULT_BIO = 'Siempre listo para nuevos planes.'
@@ -207,6 +209,12 @@ function logAvatarUploadError(error: unknown) {
   }
 }
 
+function isStorageNotFoundError(error: unknown) {
+  const firebaseError = error as FirebaseStorageLikeError
+  return firebaseError?.code === 'storage/bucket-not-found'
+    || (firebaseError?.code === 'storage/unknown' && firebaseError?.status_ === 404)
+}
+
 function getAvatarUploadErrorMessage(error: unknown) {
   const firebaseError = error as FirebaseStorageLikeError
 
@@ -265,6 +273,7 @@ function buildProfile(data: Record<string, unknown> | null, authName?: string | 
 
 export default function PerfilScreen() {
   const router = useRouter()
+  const params = useLocalSearchParams<{ edit?: string }>()
   const [userId, setUserId] = useState<string | null>(null)
   const [authName, setAuthName] = useState<string | null>(null)
   const [profile, setProfile] = useState<UserProfile>(buildProfile(null))
@@ -275,6 +284,13 @@ export default function PerfilScreen() {
   const [optimisticInterests, setOptimisticInterests] = useState<string[] | null>(null)
   const [pendingInterest, setPendingInterest] = useState<string | null>(null)
   const [showAllProfileInterests, setShowAllProfileInterests] = useState(false)
+
+  useEffect(() => {
+    if (params.edit === '1') {
+      setIsEditing(true)
+      router.setParams({ edit: undefined })
+    }
+  }, [params.edit, router])
 
   useEffect(() => {
     try {
@@ -434,7 +450,14 @@ export default function PerfilScreen() {
           </PressScale>
         </View>
 
-        <ProfileSection subtitle="Tocá para editar" title="Mis intereses" TitleIcon={Pencil}>
+        <ProfileSection
+  subtitle={showAllProfileInterests ? 'Listo' : 'Tocá para editar'}
+  title="Mis intereses"
+  TitleIcon={Pencil}
+  onSubtitlePress={() =>
+    setShowAllProfileInterests((prev) => !prev)
+  }
+>
           <View style={styles.interestsCard}>
             {visibleProfileInterestOptions.length > 0 ? (
               <View style={styles.chipWrap}>
@@ -458,17 +481,6 @@ export default function PerfilScreen() {
             )}
             {selectedInterests.length === 0 ? (
               <Text style={styles.interestsHint}>Elegí al menos un interés para mejorar tus coincidencias.</Text>
-            ) : null}
-            {shouldShowInterestToggle ? (
-              <PressScale
-                accessibilityRole="button"
-                onPress={() => setShowAllProfileInterests((current) => !current)}
-                scaleTo={0.96}
-                style={styles.profileShowAllInterestsButton}
-              >
-                <Text style={styles.showAllInterestsText}>{showAllProfileInterests ? 'Ver menos' : 'Ver más'}</Text>
-                <ChevronRight color="#4B348A" size={18} strokeWidth={2.6} style={showAllProfileInterests ? styles.showLessIcon : styles.showAllIcon} />
-              </PressScale>
             ) : null}
           </View>
         </ProfileSection>
@@ -511,18 +523,22 @@ type ProfileSectionProps = {
   subtitle?: string
   title: string
   TitleIcon?: LucideIcon
+  onSubtitlePress?: () => void
 }
 
-function ProfileSection({ children, subtitle, title, TitleIcon }: ProfileSectionProps) {
+function ProfileSection({ children, subtitle, title, TitleIcon, onSubtitlePress, }: ProfileSectionProps) {
   return (
     <View style={styles.section}>
       <View style={styles.sectionTitleRow}>
         <Text style={styles.sectionTitle}>{title}</Text>
         {subtitle ? (
-          <View style={styles.sectionHint}>
+          <Pressable
+  style={styles.sectionHint}
+  onPress={onSubtitlePress}
+>
             {TitleIcon ? <TitleIcon color="#4B348A" size={13} strokeWidth={2.4} /> : null}
             <Text style={styles.sectionHintText}>{subtitle}</Text>
-          </View>
+          </Pressable>
         ) : null}
       </View>
       {children}
@@ -695,9 +711,17 @@ function EditProfileModal({ onClose, profile, userId, visible }: EditProfileModa
 
   const photoPickerOptions: ImagePicker.ImagePickerOptions = {
     allowsEditing: false,
+    base64: false,
+    exif: false,
     mediaTypes: ['images'],
     quality: 0.6,
   }
+
+  const waitForNativePicker = () => new Promise<void>((resolve) => {
+    InteractionManager.runAfterInteractions(() => {
+      setTimeout(resolve, 250)
+    })
+  })
 
   const openAppSettings = () => {
     Linking.openSettings().catch(() => {
@@ -777,7 +801,7 @@ function EditProfileModal({ onClose, profile, userId, visible }: EditProfileModa
   const uploadProfilePhoto = async (asset: ImagePicker.ImagePickerAsset) => {
     if (!asset.uri) throw new Error('profile-photo-missing-uri')
 
-    const { auth, storage } = getFirebaseServices()
+    const { auth } = getFirebaseServices()
     const currentUser = auth.currentUser
 
     if (!currentUser?.uid) throw new Error('profile-photo-auth-required')
@@ -794,13 +818,42 @@ function EditProfileModal({ onClose, profile, userId, visible }: EditProfileModa
       const uploadBlob = blob.type?.startsWith('image/')
         ? blob
         : new Blob([blob], { type: contentType })
-      const storageRef = ref(storage, `avatars/${currentUser.uid}/profile.jpg`)
+      const uploadPath = `avatars/${currentUser.uid}/profile.jpg`
+      const bucketCandidates = getFirebaseStorageBucketCandidates()
 
-      await uploadBytes(storageRef, uploadBlob, {
-        contentType: uploadBlob.type || contentType,
-      })
+      if (__DEV__) {
+        console.log('Avatar upload metadata', {
+          buckets: bucketCandidates.map((candidate) => candidate.bucket),
+          path: uploadPath,
+          size: uploadBlob.size,
+          type: uploadBlob.type || contentType,
+        })
+      }
 
-      return getDownloadURL(storageRef)
+      let lastError: unknown = null
+
+      for (const candidate of bucketCandidates) {
+        const storageRef = ref(candidate.storage, uploadPath)
+
+        try {
+          await Promise.race([
+            uploadBytes(storageRef, uploadBlob, {
+              contentType: uploadBlob.type || contentType,
+            }),
+            new Promise<never>((_, reject) => {
+              setTimeout(() => reject(new Error('profile-photo-upload-timeout')), 30000)
+            }),
+          ])
+
+          return getDownloadURL(storageRef)
+        } catch (error) {
+          lastError = error
+          if (__DEV__) console.warn('avatar-upload-bucket-failed', { bucket: candidate.bucket, path: uploadPath, error })
+          if (!isStorageNotFoundError(error)) throw error
+        }
+      }
+
+      throw lastError ?? new Error('profile-photo-upload-failed')
     } finally {
       const close = (blob as Blob & { close?: () => void } | null)?.close
       if (typeof close === 'function') close.call(blob)
@@ -816,6 +869,7 @@ function EditProfileModal({ onClose, profile, userId, visible }: EditProfileModa
       const hasPermission = await ensureMediaLibraryPermission()
       if (!hasPermission) return
 
+      await waitForNativePicker()
       const result = await ImagePicker.launchImageLibraryAsync(photoPickerOptions)
       applyPickedPhoto(result)
     } catch (error) {
@@ -835,6 +889,7 @@ function EditProfileModal({ onClose, profile, userId, visible }: EditProfileModa
       const hasPermission = await ensureCameraPermission()
       if (!hasPermission) return
 
+      await waitForNativePicker()
       const result = await ImagePicker.launchCameraAsync(photoPickerOptions)
       applyPickedPhoto(result)
     } catch (error) {
@@ -860,7 +915,7 @@ function EditProfileModal({ onClose, profile, userId, visible }: EditProfileModa
         return
       }
 
-      const savedPhotoURL = selectedPhotoAsset ? await uploadProfilePhoto(selectedPhotoAsset) : draft.photoURL.trim()
+      const savedPhotoURL = draft.photoURL.trim()
 
       await setDoc(doc(db, 'users', userId), {
         avatarUrl: savedPhotoURL,
@@ -898,7 +953,18 @@ function EditProfileModal({ onClose, profile, userId, visible }: EditProfileModa
 
           <View style={styles.editHero}>
             <View style={styles.editAvatarStage}>
-              <PressScale accessibilityLabel="Cambiar foto de perfil" accessibilityRole="button" onPress={openPhotoOptions} scaleTo={0.96} style={styles.editAvatar}>
+              <PressScale
+  accessibilityLabel="Cambiar foto de perfil"
+  accessibilityRole="button"
+  onPress={() =>
+    Alert.alert(
+      'Foto de perfil',
+      'Si ingresaste con Google usamos automáticamente tu foto de Google. La carga manual de imágenes estará disponible más adelante.'
+    )
+  }
+  scaleTo={0.96}
+  style={styles.editAvatar}
+>
                 {draft.photoURL ? (
                   <Image source={{ uri: draft.photoURL }} style={styles.editAvatarImage} />
                 ) : (
@@ -910,9 +976,19 @@ function EditProfileModal({ onClose, profile, userId, visible }: EditProfileModa
                   </View>
                 ) : null}
               </PressScale>
-              <PressScale accessibilityLabel="Cambiar foto de perfil" accessibilityRole="button" onPress={openPhotoOptions} scaleTo={0.92} style={styles.cameraBadge}>
-                <Camera color="#FFFFFF" size={20} strokeWidth={2.5} />
-              </PressScale>
+              <PressScale
+  accessibilityLabel="Cambiar foto de perfil"
+  accessibilityRole="button"
+  onPress={() => {
+  Alert.alert(
+    'Foto de perfil',
+    'Si ingresaste con Google usamos automáticamente tu foto de Google. La carga manual de imágenes estará disponible más adelante.'
+  )
+}}
+  scaleTo={0.92}
+  style={styles.cameraBadge}>
+  <Camera color="#FFFFFF" size={20} strokeWidth={2.5} />
+</PressScale>
             </View>
             <Text numberOfLines={1} style={styles.editHeroName}>{draft.fullName}</Text>
             <View style={styles.editHeroLocation}>
