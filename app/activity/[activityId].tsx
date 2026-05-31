@@ -16,6 +16,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router'
 import { onAuthStateChanged } from 'firebase/auth'
 import {
   deleteField,
+  deleteDoc,
   doc,
   getDoc,
   onSnapshot,
@@ -317,6 +318,7 @@ export default function ActivityDetailScreen() {
   const [organizerProfile, setOrganizerProfile] = useState<ActivityData | null>(null)
   const [currentUserName, setCurrentUserName] = useState('')
   const [pendingInterestedActions, setPendingInterestedActions] = useState<string[]>([])
+  const [isDeletingActivity, setIsDeletingActivity] = useState(false)
 
   useEffect(() => {
     try {
@@ -361,6 +363,7 @@ export default function ActivityDetailScreen() {
   }, [activityId])
 
   const creatorId = activity ? getCreatorId(activity) : ''
+  const isOrganizer = Boolean(currentUserId && creatorId === currentUserId)
 
   useEffect(() => {
     if (!creatorId) {
@@ -705,6 +708,57 @@ export default function ActivityDetailScreen() {
     }
   }
 
+  const deleteActivityNow = async () => {
+    if (!activityId || !currentUserId || isDeletingActivity) return
+
+    setIsDeletingActivity(true)
+    try {
+      const { db } = getFirebaseServices()
+      const targetRef = doc(db, 'activities', activityId)
+      const snapshot = await getDoc(targetRef)
+
+      if (!snapshot.exists()) {
+        Alert.alert('Actividad no disponible', 'No encontramos esta actividad para eliminarla.')
+        return
+      }
+
+      const latestActivity = snapshot.data() as ActivityData
+      if (getCreatorId(latestActivity) !== currentUserId) {
+        Alert.alert('No podés eliminar esta actividad', 'Solo quien organiza la actividad puede eliminarla.')
+        return
+      }
+
+      await deleteDoc(targetRef)
+      router.replace('/home')
+    } catch {
+      Alert.alert('No pudimos eliminar', 'Intentá nuevamente en unos segundos.')
+    } finally {
+      setIsDeletingActivity(false)
+    }
+  }
+
+  const confirmDeleteActivity = () => {
+    if (!isOrganizer || isDeletingActivity) return
+
+    const hasPeople = detail.interestedCount > 0 || detail.participantCount > 0
+    Alert.alert(
+      'Eliminar actividad',
+      hasPeople
+        ? 'Esta actividad tiene personas interesadas o confirmadas. Si la eliminás, dejará de estar disponible para todos. Esta acción no se puede deshacer.'
+        : 'Esta acción no se puede deshacer.',
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        {
+          text: 'Eliminar',
+          style: 'destructive',
+          onPress: () => {
+            void deleteActivityNow()
+          },
+        },
+      ],
+    )
+  }
+
   if (isLoading) {
     return (
       <SafeAreaView style={styles.safeArea}>
@@ -728,7 +782,6 @@ export default function ActivityDetailScreen() {
     )
   }
 
-  const isOrganizer = Boolean(currentUserId && creatorId === currentUserId)
   const availablePlaces = Math.max(0, detail.maxParticipants - detail.participantCount)
   const inviteTarget: InviteShareTarget = {
     dateTime: `${detail.date} ${detail.time}`,
@@ -800,6 +853,26 @@ export default function ActivityDetailScreen() {
               </View>
             </View>
           </View>
+
+          {isOrganizer ? (
+            <View style={styles.ownerActionsCard}>
+              <Text style={styles.organizerEyebrow}>Gestionar actividad</Text>
+              <PressScale
+                accessibilityLabel="Eliminar actividad"
+                accessibilityRole="button"
+                disabled={isDeletingActivity}
+                onPress={confirmDeleteActivity}
+                scaleTo={0.97}
+                style={[styles.deleteActivityButton, isDeletingActivity && styles.deleteActivityButtonDisabled]}
+              >
+                {isDeletingActivity ? (
+                  <ActivityIndicator color="#B42318" size="small" />
+                ) : (
+                  <Text style={styles.deleteActivityText}>Eliminar actividad</Text>
+                )}
+              </PressScale>
+            </View>
+          ) : null}
 
           {isOrganizer && detail.action === 'interest' ? (
             <View style={styles.interestedCard}>
@@ -1074,6 +1147,14 @@ const styles = StyleSheet.create({
     padding: 16,
     ...shadow,
   },
+  ownerActionsCard: {
+    backgroundColor: '#FFF8F8',
+    borderColor: '#F4C7C2',
+    borderRadius: 18,
+    borderWidth: 1,
+    marginTop: 14,
+    padding: 16,
+  },
   organizerEyebrow: {
     color: '#39206C',
     fontSize: 12,
@@ -1226,6 +1307,25 @@ const styles = StyleSheet.create({
   inviteButtonText: {
     color: '#FFFFFF',
     fontSize: 16,
+    fontWeight: '900',
+    letterSpacing: 0,
+  },
+  deleteActivityButton: {
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    borderColor: '#F4C7C2',
+    borderRadius: 14,
+    borderWidth: 1.5,
+    minHeight: 48,
+    justifyContent: 'center',
+    paddingHorizontal: 18,
+  },
+  deleteActivityButtonDisabled: {
+    opacity: 0.62,
+  },
+  deleteActivityText: {
+    color: '#B42318',
+    fontSize: 15,
     fontWeight: '900',
     letterSpacing: 0,
   },
