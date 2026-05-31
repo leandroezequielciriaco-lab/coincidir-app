@@ -101,14 +101,20 @@ function mapNotification(id: string, data: Record<string, unknown>): AppNotifica
   }
 }
 
+function omitUndefinedFields<T extends Record<string, unknown>>(data: T) {
+  return Object.fromEntries(
+    Object.entries(data).filter(([, value]) => value !== undefined),
+  ) as Partial<T>
+}
+
 export async function createNotification(data: CreateNotificationInput) {
   const { db } = getFirebaseServices()
 
-  return addDoc(collection(db, 'notifications'), {
+  return addDoc(collection(db, 'notifications'), omitUndefinedFields({
     ...data,
     read: false,
     createdAt: serverTimestamp(),
-  })
+  }))
 }
 
 async function notificationExists(filters: {
