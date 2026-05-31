@@ -4,16 +4,79 @@ declare const require: (path: string) => ImageSourcePropType
 
 export const defaultActivityImage = require('../assets/images/categories/default-activity.jpg')
 
-const yogaImage = require('../assets/images/categories/placeholder-yoga.jpg')
-const runningImage = require('../assets/images/categories/placeholder-running.jpg')
-const supImage = require('../assets/images/categories/placeholder-sup.jpg')
-const cafeImage = require('../assets/images/categories/placeholder-cafe.jpg')
-const musicaImage = require('../assets/images/categories/placeholder-musica.jpg')
-const senderismoImage = require('../assets/images/categories/placeholder-senderismo.jpg')
+const yogaImages = [
+  require('../assets/images/activities/yoga/yoga-1.png'),
+  require('../assets/images/activities/yoga/yoga-2.png'),
+  require('../assets/images/activities/yoga/yoga-3.png'),
+]
+
+const yogaImage =
+  yogaImages[Math.floor(Math.random() * yogaImages.length)]
+const runningImages = [
+  require('../assets/images/activities/running/running-1.png'),
+  require('../assets/images/activities/running/running-2.png'),
+  require('../assets/images/activities/running/running-3.png'),
+]
+
+const runningImage =
+  runningImages[Math.floor(Math.random() * runningImages.length)]
+const supImages = [
+  require('../assets/images/activities/sup/sup-1.png'),
+  require('../assets/images/activities/sup/sup-2.png'),
+  require('../assets/images/activities/sup/sup-3.png'),
+]
+
+const supImage =
+  supImages[Math.floor(Math.random() * supImages.length)]
+const cafeImages = [
+  require('../assets/images/activities/cafe/cafe-1.png'),
+  require('../assets/images/activities/cafe/cafe-2.png'),
+  require('../assets/images/activities/cafe/cafe-3.png'),
+]
+
+const cafeImage =
+  cafeImages[Math.floor(Math.random() * cafeImages.length)]
+const musicaImages = [
+  require('../assets/images/activities/musica/musica-1.png'),
+  require('../assets/images/activities/musica/musica-2.png'),
+  require('../assets/images/activities/musica/musica-3.png'),
+]
+
+const musicaImage =
+  musicaImages[Math.floor(Math.random() * musicaImages.length)]
+const senderismoImages = [
+  require('../assets/images/activities/senderismo/senderismo-1.png'),
+  require('../assets/images/activities/senderismo/senderismo-2.png'),
+  require('../assets/images/activities/senderismo/senderismo-3.png'),
+]
+
+const senderismoImage =
+  senderismoImages[Math.floor(Math.random() * senderismoImages.length)]
 const gamingImage = require('../assets/images/categories/placeholder-gaming.jpg')
-const mateadaImage = require('../assets/images/categories/placeholder-mateada.jpg')
-const ciclismoImage = require('../assets/images/categories/placeholder-ciclismo.jpg')
-const entrenamientoImage = require('../assets/images/categories/placeholder-entrenamiento.jpg')
+const mateadaImages = [
+  require('../assets/images/activities/mateada/mateada-1.png'),
+  require('../assets/images/activities/mateada/mateada-2.png'),
+  require('../assets/images/activities/mateada/mateada-3.png'),
+]
+
+const mateadaImage =
+  mateadaImages[Math.floor(Math.random() * mateadaImages.length)]
+const ciclismoImages = [
+  require('../assets/images/activities/ciclismo/ciclismo-1.png'),
+  require('../assets/images/activities/ciclismo/ciclismo-2.png'),
+  require('../assets/images/activities/ciclismo/ciclismo-3.png'),
+]
+
+const ciclismoImage =
+  ciclismoImages[Math.floor(Math.random() * ciclismoImages.length)]
+const entrenamientoImages = [
+  require('../assets/images/activities/entrenamiento/entrenamiento-1.png'),
+  require('../assets/images/activities/entrenamiento/entrenamiento-2.png'),
+  require('../assets/images/activities/entrenamiento/entrenamiento-3.png'),
+]
+
+const entrenamientoImage =
+  entrenamientoImages[Math.floor(Math.random() * entrenamientoImages.length)]
 const grupalImage = require('../assets/images/categories/placeholder-grupal.jpg')
 const privadoImage = require('../assets/images/categories/placeholder-privado.jpg')
 
