@@ -11,6 +11,7 @@
       "icon": "./assets/images/coincidir-logo-official.png"
     },
     "android": {
+      "package": "com.leandroezequielciriaco.coincidir",
       "adaptiveIcon": {
         "backgroundColor": "#FCFAF3",
         "foregroundImage": "./assets/images/coincidir-logo-official.png",
