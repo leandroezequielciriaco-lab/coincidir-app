@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "coincidir-app",
+    "name": "Coincidir",
     "slug": "coincidir-app",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -33,17 +33,17 @@
         "expo-splash-screen",
         {
           "image": "./assets/images/coincidir-logo-official.png",
-          "imageWidth": 180,
+          "imageWidth": 220,
           "resizeMode": "contain",
           "backgroundColor": "#FCFAF3",
           "android": {
             "image": "./assets/images/coincidir-logo-official.png",
-            "imageWidth": 180,
+            "imageWidth": 220,
             "backgroundColor": "#FCFAF3"
           },
           "ios": {
             "image": "./assets/images/coincidir-logo-official.png",
-            "imageWidth": 180,
+            "imageWidth": 220,
             "backgroundColor": "#FCFAF3"
           }
         }

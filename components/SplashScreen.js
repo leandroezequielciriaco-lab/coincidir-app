@@ -13,9 +13,9 @@ export default function SplashScreen() {
   const { width } = useWindowDimensions()
   const entrance = useRef(new Animated.Value(0)).current
 
-  const cardSize = Math.min(Math.max(width * 0.68, 248), 324)
-  const logoSize = Math.min(Math.max(width * 0.19, 74), 104)
-  const brandSize = Math.min(Math.max(width * 0.086, 31), 42)
+  const cardSize = Math.min(Math.max(width * 0.74, 276), 360)
+  const logoSize = Math.min(Math.max(width * 0.24, 92), 128)
+  const brandSize = Math.min(Math.max(width * 0.1, 36), 48)
 
   useEffect(() => {
     const animation = Animated.timing(entrance, {
