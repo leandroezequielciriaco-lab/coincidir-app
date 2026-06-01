@@ -34,6 +34,7 @@ import {
   Lock,
   MapPin,
   Mountain,
+  Pencil,
   Spade,
   UsersRound,
   Waves,
@@ -759,6 +760,15 @@ export default function ActivityDetailScreen() {
     )
   }
 
+  const editActivity = () => {
+    if (!isOrganizer || !activityId) return
+
+    router.push({
+      pathname: '/(tabs)/crear',
+      params: { mode: 'edit', activityId },
+    })
+  }
+
   if (isLoading) {
     return (
       <SafeAreaView style={styles.safeArea}>
@@ -857,20 +867,32 @@ export default function ActivityDetailScreen() {
           {isOrganizer ? (
             <View style={styles.ownerActionsCard}>
               <Text style={styles.organizerEyebrow}>Gestionar actividad</Text>
-              <PressScale
-                accessibilityLabel="Eliminar actividad"
-                accessibilityRole="button"
-                disabled={isDeletingActivity}
-                onPress={confirmDeleteActivity}
-                scaleTo={0.97}
-                style={[styles.deleteActivityButton, isDeletingActivity && styles.deleteActivityButtonDisabled]}
-              >
-                {isDeletingActivity ? (
-                  <ActivityIndicator color="#B42318" size="small" />
-                ) : (
-                  <Text style={styles.deleteActivityText}>Eliminar actividad</Text>
-                )}
-              </PressScale>
+              <View style={styles.ownerActionsList}>
+                <PressScale
+                  accessibilityLabel="Editar actividad"
+                  accessibilityRole="button"
+                  onPress={editActivity}
+                  scaleTo={0.97}
+                  style={styles.editActivityButton}
+                >
+                  <Pencil color="#155C47" size={18} strokeWidth={2.8} />
+                  <Text style={styles.editActivityText}>Editar actividad</Text>
+                </PressScale>
+                <PressScale
+                  accessibilityLabel="Eliminar actividad"
+                  accessibilityRole="button"
+                  disabled={isDeletingActivity}
+                  onPress={confirmDeleteActivity}
+                  scaleTo={0.97}
+                  style={[styles.deleteActivityButton, isDeletingActivity && styles.deleteActivityButtonDisabled]}
+                >
+                  {isDeletingActivity ? (
+                    <ActivityIndicator color="#B42318" size="small" />
+                  ) : (
+                    <Text style={styles.deleteActivityText}>Eliminar actividad</Text>
+                  )}
+                </PressScale>
+              </View>
             </View>
           ) : null}
 
@@ -1155,6 +1177,10 @@ const styles = StyleSheet.create({
     marginTop: 14,
     padding: 16,
   },
+  ownerActionsList: {
+    gap: 10,
+    marginTop: 12,
+  },
   organizerEyebrow: {
     color: '#39206C',
     fontSize: 12,
@@ -1320,11 +1346,29 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingHorizontal: 18,
   },
+  editActivityButton: {
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    borderColor: '#B8DCCB',
+    borderRadius: 14,
+    borderWidth: 1.5,
+    flexDirection: 'row',
+    gap: 8,
+    justifyContent: 'center',
+    minHeight: 48,
+    paddingHorizontal: 18,
+  },
   deleteActivityButtonDisabled: {
     opacity: 0.62,
   },
   deleteActivityText: {
     color: '#B42318',
+    fontSize: 15,
+    fontWeight: '900',
+    letterSpacing: 0,
+  },
+  editActivityText: {
+    color: '#155C47',
     fontSize: 15,
     fontWeight: '900',
     letterSpacing: 0,

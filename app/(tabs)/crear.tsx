@@ -1,7 +1,8 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
 import {
   ActivityIndicator,
+  Alert,
   type GestureResponderEvent,
   Modal,
   Platform,
@@ -13,8 +14,8 @@ import {
   View,
 } from 'react-native'
 import * as Location from 'expo-location'
-import { useRouter } from 'expo-router'
-import { addDoc, collection, serverTimestamp } from 'firebase/firestore'
+import { useLocalSearchParams, useRouter } from 'expo-router'
+import { addDoc, collection, doc, getDoc, serverTimestamp, updateDoc } from 'firebase/firestore'
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import {
   ArrowLeft,
@@ -67,6 +68,38 @@ type LocationSelection = {
   address: string
   latitude: number
   longitude: number
+}
+
+type ActivityData = Record<string, unknown>
+
+type ActivityFormPayload = {
+  name: string
+  category: string
+  categoryId: CategoryId
+  categoryColor: string
+  categoryIcon: string
+  subcategory: string
+  description: string
+  date: string
+  activityDate: Date
+  activityDateISO: string
+  time: string
+  location: string
+  locationAddress: string
+  locationLatitude: number
+  locationLongitude: number
+  locationPin: LocationSelection
+  city: string
+  additionalSettings: {
+    privacy: string
+    maxParticipants: number
+    level: string
+    environment: string
+    cost: string
+    price: string
+    currency: string
+    quickSettings: string[]
+  }
 }
 
 const hasGoogleMapsApiKey = Boolean(process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY)
@@ -314,6 +347,39 @@ function formatCoordinateAddress(latitude: number, longitude: number) {
   return `${latitude.toFixed(5)}, ${longitude.toFixed(5)}`
 }
 
+function readString(value: unknown, fallback = '') {
+  return typeof value === 'string' && value.trim() ? value.trim() : fallback
+}
+
+function readNumber(value: unknown, fallback = 0) {
+  return typeof value === 'number' && Number.isFinite(value) ? value : fallback
+}
+
+function readRecord(value: unknown): ActivityData {
+  return typeof value === 'object' && value !== null && !Array.isArray(value) ? value as ActivityData : {}
+}
+
+function getCreatorId(data: ActivityData) {
+  return readString(data.createdBy)
+    || readString(data.creatorId)
+    || readString(data.ownerId)
+    || readString(data.userId)
+}
+
+function readDate(value: unknown) {
+  if (value instanceof Date && !Number.isNaN(value.getTime())) return value
+  if (typeof value === 'string') {
+    const parsed = new Date(value)
+    if (!Number.isNaN(parsed.getTime())) return parsed
+  }
+  if (typeof value === 'object' && value && 'toDate' in value && typeof value.toDate === 'function') {
+    const parsed = value.toDate() as Date
+    if (!Number.isNaN(parsed.getTime())) return parsed
+  }
+
+  return null
+}
+
 function getAddressFromGeocode(place: Location.LocationGeocodedAddress) {
   return [
     place.name,
@@ -323,7 +389,7 @@ function getAddressFromGeocode(place: Location.LocationGeocodedAddress) {
   ].filter(Boolean).join(', ')
 }
 
-function getCreateError(error: unknown) {
+function getSaveError(error: unknown, isEditMode: boolean) {
   if (error instanceof Error && error.message.includes('Faltan variables')) {
     return 'Falta configurar Firebase.'
   }
@@ -332,16 +398,20 @@ function getCreateError(error: unknown) {
     const code = String(error.code)
 
     if (code === 'auth/no-current-user') return 'No encontramos una sesión activa.'
-    if (code === 'permission-denied') return 'No tenemos permiso para crear la actividad.'
+    if (code === 'permission-denied') return isEditMode
+      ? 'No tenemos permiso para editar la actividad.'
+      : 'No tenemos permiso para crear la actividad.'
     if (code === 'unavailable' || code === 'deadline-exceeded') return 'No pudimos conectar con Firestore.'
   }
 
-  return 'No pudimos crear la actividad.'
+  return isEditMode ? 'No pudimos guardar los cambios.' : 'No pudimos crear la actividad.'
 }
 
 export default function CrearScreen() {
   const router = useRouter()
+  const { activityId, mode } = useLocalSearchParams<{ activityId?: string; mode?: string }>()
   const insets = useSafeAreaInsets()
+  const isEditMode = mode === 'edit'
   const [name, setName] = useState('')
   const [category, setCategory] = useState<Category | null>(null)
   const [subcategory, setSubcategory] = useState('')
@@ -358,6 +428,7 @@ export default function CrearScreen() {
     longitude: initialLocationRegion.longitude,
   })
   const [pickerMode, setPickerMode] = useState<PickerMode>(null)
+  const [isLoadingEditActivity, setIsLoadingEditActivity] = useState(isEditMode)
   const [isSaving, setIsSaving] = useState(false)
   const [message, setMessage] = useState('')
   const [isAdditionalVisible, setIsAdditionalVisible] = useState(false)
@@ -391,6 +462,124 @@ export default function CrearScreen() {
     () => getCalendarDays(calendarMonth),
     [calendarMonth],
   )
+
+  useEffect(() => {
+    if (!isEditMode) {
+      setIsLoadingEditActivity(false)
+      return
+    }
+
+    if (!activityId) {
+      Alert.alert('No pudimos editar', 'Falta identificar la actividad.', [
+        { text: 'OK', onPress: () => router.replace('/home') },
+      ])
+      setIsLoadingEditActivity(false)
+      return
+    }
+
+    let isMounted = true
+
+    const loadActivityForEdit = async () => {
+      setIsLoadingEditActivity(true)
+      setMessage('')
+
+      try {
+        const { auth, db } = getFirebaseServices()
+        const user = auth.currentUser
+
+        if (!user) {
+          Alert.alert('No pudimos editar', 'Necesitás iniciar sesión para editar esta actividad.', [
+            { text: 'OK', onPress: () => router.replace('/home') },
+          ])
+          return
+        }
+
+        const snapshot = await getDoc(doc(db, 'activities', activityId))
+
+        if (!snapshot.exists()) {
+          Alert.alert('Actividad no disponible', 'No encontramos esta actividad para editarla.', [
+            { text: 'OK', onPress: () => router.replace('/home') },
+          ])
+          return
+        }
+
+        const data = snapshot.data() as ActivityData
+
+        if (getCreatorId(data) !== user.uid) {
+          Alert.alert('No podés editar esta actividad', 'Solo quien organiza la actividad puede editarla.', [
+            { text: 'OK', onPress: () => router.replace('/home') },
+          ])
+          return
+        }
+
+        if (!isMounted) return
+
+        const categoryId = readString(data.categoryId) as CategoryId
+        const existingCategory = categories.find((item) => item.id === categoryId)
+          ?? categories.find((item) => item.label === readString(data.category))
+          ?? null
+        const existingDate = readDate(data.activityDate) ?? readDate(data.activityDateISO)
+        const locationPin = readRecord(data.locationPin)
+        const locationLatitude = readNumber(data.locationLatitude, readNumber(locationPin.latitude, initialLocationRegion.latitude))
+        const locationLongitude = readNumber(data.locationLongitude, readNumber(locationPin.longitude, initialLocationRegion.longitude))
+        const locationAddress = readString(
+          data.locationAddress,
+          readString(locationPin.address, readString(data.location)),
+        )
+        const additionalSettings = readRecord(data.additionalSettings)
+        const existingCost = readString(additionalSettings.cost, readString(data.cost, 'Gratis'))
+        const existingCurrency = readString(additionalSettings.currency, readString(data.currency, 'ARS'))
+        const existingQuickSettings = Array.isArray(additionalSettings.quickSettings)
+          ? additionalSettings.quickSettings.filter((item): item is string => typeof item === 'string')
+          : []
+
+        setName(readString(data.name))
+        setCategory(existingCategory)
+        setSubcategory(readString(data.subcategory))
+        setDescription(readString(data.description))
+        setSelectedDate(existingDate)
+        setDate(readString(data.date, existingDate ? getDateLabel(existingDate) : ''))
+        setCalendarMonth(existingDate ? new Date(existingDate.getFullYear(), existingDate.getMonth(), 1) : startOfDay(new Date()))
+        setTime(readString(data.time))
+        setLocation(readString(data.location, locationAddress))
+        setSelectedLocation({
+          address: locationAddress,
+          latitude: locationLatitude,
+          longitude: locationLongitude,
+        })
+        setMapRegion({
+          latitude: locationLatitude,
+          longitude: locationLongitude,
+          latitudeDelta: 0.02,
+          longitudeDelta: 0.02,
+        })
+        setDraftPin({
+          latitude: locationLatitude,
+          longitude: locationLongitude,
+        })
+        setPrivacy(readString(additionalSettings.privacy, readString(data.privacy, 'Pública')))
+        setMaxParticipants(readNumber(additionalSettings.maxParticipants, readNumber(data.maxParticipants, 10)))
+        setLevel(readString(additionalSettings.level, readString(data.level, 'Principiante')))
+        setEnvironment(readString(additionalSettings.environment, readString(data.environment, 'Tranquilo')))
+        setCost(existingCost)
+        setPrice(readString(additionalSettings.price, readString(data.price)))
+        setCurrency(existingCost === 'Gratis' ? 'ARS' : existingCurrency)
+        setQuickSettings(existingQuickSettings)
+      } catch {
+        Alert.alert('No pudimos editar', 'Intentá nuevamente en unos segundos.', [
+          { text: 'OK', onPress: () => router.replace('/home') },
+        ])
+      } finally {
+        if (isMounted) setIsLoadingEditActivity(false)
+      }
+    }
+
+    void loadActivityForEdit()
+
+    return () => {
+      isMounted = false
+    }
+  }, [activityId, isEditMode, router])
 
   const openLocationPicker = async () => {
     setMessage('')
@@ -493,9 +682,47 @@ export default function CrearScreen() {
     }
   }
 
-  const createActivity = async () => {
+  const buildActivityPayload = (): ActivityFormPayload | null => {
+    if (!category || !selectedDate || !selectedLocation) return null
+
+    return {
+      name: name.trim(),
+      category: category.label,
+      categoryId: category.id,
+      categoryColor: category.color,
+      categoryIcon: category.icon,
+      subcategory,
+      description: description.trim(),
+      date,
+      activityDate: selectedDate,
+      activityDateISO: selectedDate.toISOString(),
+      time,
+      location,
+      locationAddress: selectedLocation.address,
+      locationLatitude: selectedLocation.latitude,
+      locationLongitude: selectedLocation.longitude,
+      locationPin: {
+        address: selectedLocation.address,
+        latitude: selectedLocation.latitude,
+        longitude: selectedLocation.longitude,
+      },
+      city: getCityFromLocation(location),
+      additionalSettings: {
+        privacy,
+        maxParticipants,
+        level,
+        environment,
+        cost,
+        price: cost === 'Gratis' ? '' : price.trim(),
+        currency: cost === 'Gratis' ? '' : currency,
+        quickSettings,
+      },
+    }
+  }
+
+  const saveActivity = async () => {
     if (!name.trim() || !category || !subcategory || !description.trim() || !selectedDate || !time || !selectedLocation) {
-      setMessage('Completá todos los campos para crear la actividad.')
+      setMessage(isEditMode ? 'Completá todos los campos para guardar los cambios.' : 'Completá todos los campos para crear la actividad.')
       return
     }
 
@@ -517,38 +744,49 @@ export default function CrearScreen() {
         throw authError
       }
 
+      const payload = buildActivityPayload()
+      if (!payload) return
+
+      if (isEditMode) {
+        if (!activityId) {
+          Alert.alert('No pudimos editar', 'Falta identificar la actividad.', [
+            { text: 'OK', onPress: () => router.replace('/home') },
+          ])
+          return
+        }
+
+        const targetRef = doc(db, 'activities', activityId)
+        const snapshot = await getDoc(targetRef)
+
+        if (!snapshot.exists()) {
+          Alert.alert('Actividad no disponible', 'No encontramos esta actividad para editarla.', [
+            { text: 'OK', onPress: () => router.replace('/home') },
+          ])
+          return
+        }
+
+        const latestActivity = snapshot.data() as ActivityData
+        if (getCreatorId(latestActivity) !== user.uid) {
+          Alert.alert('No podés editar esta actividad', 'Solo quien organiza la actividad puede editarla.', [
+            { text: 'OK', onPress: () => router.replace('/home') },
+          ])
+          return
+        }
+
+        await updateDoc(targetRef, {
+          ...payload,
+          updatedAt: serverTimestamp(),
+        })
+
+        router.dismissTo({
+          pathname: '/activity/[activityId]',
+          params: { activityId },
+        })
+        return
+      }
+
       await addDoc(collection(db, 'activities'), {
-        name: name.trim(),
-        category: category.label,
-        categoryId: category.id,
-        categoryColor: category.color,
-        categoryIcon: category.icon,
-        subcategory,
-        description: description.trim(),
-        date,
-        activityDate: selectedDate,
-        activityDateISO: selectedDate.toISOString(),
-        time,
-        location,
-        locationAddress: selectedLocation.address,
-        locationLatitude: selectedLocation.latitude,
-        locationLongitude: selectedLocation.longitude,
-        locationPin: {
-          address: selectedLocation.address,
-          latitude: selectedLocation.latitude,
-          longitude: selectedLocation.longitude,
-        },
-        city: getCityFromLocation(location),
-        additionalSettings: {
-          privacy,
-          maxParticipants,
-          level,
-          environment,
-          cost,
-          price: cost === 'Gratis' ? '' : price.trim(),
-          currency: cost === 'Gratis' ? '' : currency,
-          quickSettings,
-        },
+        ...payload,
         interestedUsers: {},
         interestedCount: 0,
         createdBy: user.uid,
@@ -558,7 +796,7 @@ export default function CrearScreen() {
 
       router.replace('/home')
     } catch (error) {
-      setMessage(getCreateError(error))
+      setMessage(getSaveError(error, isEditMode))
     } finally {
       setIsSaving(false)
     }
@@ -649,6 +887,16 @@ export default function CrearScreen() {
     paddingTop: Math.max(insets.top + 18, 28),
   }
 
+  if (isLoadingEditActivity) {
+    return (
+      <SafeAreaView edges={['top']} style={styles.screen}>
+        <View style={styles.createLoadingState}>
+          <ActivityIndicator color="#0E5A44" />
+        </View>
+      </SafeAreaView>
+    )
+  }
+
   return (
     <SafeAreaView edges={['left', 'right']} style={styles.screen}>
       <ScrollView
@@ -672,9 +920,11 @@ export default function CrearScreen() {
           <View style={styles.additionalTitleIcon}>
             <Sparkles color="#0E5A44" size={25} strokeWidth={2.4} />
           </View>
-          <Text style={styles.createScreenTitle}>Crear actividad</Text>
+          <Text style={styles.createScreenTitle}>{isEditMode ? 'Editar actividad' : 'Crear actividad'}</Text>
         </View>
-        <Text style={styles.createSubtitle}>Completá los datos principales para que otros puedan sumarse.</Text>
+        <Text style={styles.createSubtitle}>
+          {isEditMode ? 'Actualizá los datos principales de tu actividad.' : 'Completá los datos principales para que otros puedan sumarse.'}
+        </Text>
 
         <View style={styles.createCard}>
           <Text style={styles.createFieldLabel}>Nombre de la actividad</Text>
@@ -821,12 +1071,18 @@ export default function CrearScreen() {
 
         {message ? <Text style={styles.createMessageText}>{message}</Text> : null}
 
-        <Pressable accessibilityLabel="Crear actividad" accessibilityRole="button" disabled={isSaving} onPress={createActivity} style={[styles.createSubmitButton, isSaving && styles.createSubmitButtonDisabled]}>
+        <Pressable
+          accessibilityLabel={isEditMode ? 'Guardar cambios' : 'Crear actividad'}
+          accessibilityRole="button"
+          disabled={isSaving}
+          onPress={saveActivity}
+          style={[styles.createSubmitButton, isSaving && styles.createSubmitButtonDisabled]}
+        >
           {isSaving ? (
             <ActivityIndicator color="#FFFFFF" />
           ) : (
             <>
-              <Text style={styles.createSubmitText}>Crear actividad</Text>
+              <Text style={styles.createSubmitText}>{isEditMode ? 'Guardar cambios' : 'Crear actividad'}</Text>
               <ArrowRight color="#FFFFFF" size={32} strokeWidth={2.2} style={styles.createSubmitArrow} />
             </>
           )}
@@ -1333,6 +1589,11 @@ function MapConfigNotice({ compact = false }: MapConfigNoticeProps) {
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: '#FCFAF3' },
   scrollContent: { flexGrow: 1 },
+  createLoadingState: {
+    alignItems: 'center',
+    flex: 1,
+    justifyContent: 'center',
+  },
   createScrollContent: {
     flexGrow: 1,
     paddingHorizontal: 16,
