@@ -84,7 +84,7 @@ const initialAdvancedFilters: AdvancedFilters = {
   distance: 'Sin distancia',
   location: 'Todas',
   price: 'Todos',
-  sort: 'recent',
+  sort: 'recommended',
 }
 
 function readString(value: unknown, fallback = '') {
