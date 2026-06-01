@@ -15,7 +15,7 @@ import {
 
 import { getFirebaseServices } from '../firebaseConfig'
 
-export type NotificationType = 'activity_update' | 'confirmed' | 'interest' | 'invite' | 'message'
+export type NotificationType = 'activity_cancelled' | 'activity_update' | 'activity_updated' | 'confirmed' | 'interest' | 'invite' | 'message'
 
 export type AppNotification = {
   activityId?: string
@@ -53,6 +53,13 @@ export type NotifyActivityConfirmedInput = {
   organizerId?: string
 }
 
+export type NotifyLinkedActivityUsersInput = {
+  activity: Record<string, unknown>
+  activityId: string
+  activityTitle: string
+  organizerId?: string
+}
+
 type NotificationsState = {
   error: string | null
   isLoading: boolean
@@ -70,7 +77,15 @@ function readString(value: unknown, fallback = '') {
 }
 
 function readNotificationType(value: unknown): NotificationType {
-  if (value === 'invite' || value === 'interest' || value === 'message' || value === 'activity_update' || value === 'confirmed') return value
+  if (
+    value === 'activity_cancelled'
+    || value === 'activity_update'
+    || value === 'activity_updated'
+    || value === 'confirmed'
+    || value === 'interest'
+    || value === 'invite'
+    || value === 'message'
+  ) return value
   return 'activity_update'
 }
 
@@ -105,6 +120,80 @@ function omitUndefinedFields<T extends Record<string, unknown>>(data: T) {
   return Object.fromEntries(
     Object.entries(data).filter(([, value]) => value !== undefined),
   ) as Partial<T>
+}
+
+function readRecord(value: unknown) {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {}
+}
+
+function collectUserIdsFromValue(value: unknown) {
+  const ids = new Set<string>()
+
+  if (typeof value === 'string' && value.trim()) {
+    ids.add(value.trim())
+    return ids
+  }
+
+  if (Array.isArray(value)) {
+    value.forEach((item) => {
+      collectUserIdsFromValue(item).forEach((id) => ids.add(id))
+    })
+    return ids
+  }
+
+  if (typeof value === 'object' && value !== null) {
+    const record = value as Record<string, unknown>
+    const directId = readString(record.uid)
+      || readString(record.userId)
+      || readString(record.id)
+      || readString(record.userUID)
+
+    if (directId) ids.add(directId)
+    if (directId) return ids
+
+    Object.entries(record).forEach(([key, item]) => {
+      if (key.trim()) ids.add(key.trim())
+
+      if (typeof item === 'object' && item !== null) {
+        const nestedRecord = item as Record<string, unknown>
+        const nestedId = readString(nestedRecord.uid)
+          || readString(nestedRecord.userId)
+          || readString(nestedRecord.id)
+          || readString(nestedRecord.userUID)
+
+        if (nestedId) ids.add(nestedId)
+      }
+    })
+  }
+
+  return ids
+}
+
+function getLinkedActivityUserIds(activity: Record<string, unknown>, organizerId?: string) {
+  const data = readRecord(activity)
+  const linkedFields = [
+    data.interestedUsers,
+    data.invitedUsers,
+    data.invitations,
+    data.invites,
+    data.participants,
+    data.joinedUsers,
+    data.attendees,
+    data.members,
+    data.confirmedUsers,
+    data.confirmedParticipants,
+  ]
+  const userIds = new Set<string>()
+
+  linkedFields.forEach((field) => {
+    collectUserIdsFromValue(field).forEach((id) => {
+      if (id && id !== organizerId) userIds.add(id)
+    })
+  })
+
+  return Array.from(userIds)
 }
 
 export async function createNotification(data: CreateNotificationInput) {
@@ -193,6 +282,44 @@ export async function notifyActivityConfirmed({
     type: 'confirmed',
     userId: confirmedUserId,
   })
+}
+
+export async function notifyActivityUpdated({
+  activity,
+  activityId,
+  activityTitle,
+  organizerId,
+}: NotifyLinkedActivityUsersInput) {
+  const userIds = getLinkedActivityUserIds(activity, organizerId)
+  if (userIds.length === 0) return []
+
+  return Promise.all(userIds.map((userId) => createNotification({
+    activityId,
+    body: `Se modifico una actividad que te interesa: ${activityTitle}`,
+    senderId: organizerId,
+    title: 'Actividad modificada',
+    type: 'activity_updated',
+    userId,
+  })))
+}
+
+export async function notifyActivityCancelled({
+  activity,
+  activityId,
+  activityTitle,
+  organizerId,
+}: NotifyLinkedActivityUsersInput) {
+  const userIds = getLinkedActivityUserIds(activity, organizerId)
+  if (userIds.length === 0) return []
+
+  return Promise.all(userIds.map((userId) => createNotification({
+    activityId,
+    body: `Se cancelo una actividad que te interesa: ${activityTitle}`,
+    senderId: organizerId,
+    title: 'Actividad cancelada',
+    type: 'activity_cancelled',
+    userId,
+  })))
 }
 
 export async function markNotificationAsRead(notificationId: string) {

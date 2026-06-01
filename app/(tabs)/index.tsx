@@ -103,6 +103,10 @@ function readNumber(value: unknown, fallback = 0) {
   return typeof value === 'number' && Number.isFinite(value) ? value : fallback
 }
 
+function isCancelled(data: Record<string, unknown>) {
+  return readString(data.status) === 'cancelled'
+}
+
 function normalize(value: unknown) {
   return readString(value)
     .normalize('NFD')
@@ -368,6 +372,7 @@ function mapActivityCard(
   const category = readString(data.category, 'Encuentro')
   const maxParticipants = getMaxParticipants(data)
   const action = requiresInterestAction(data) ? 'interest' : 'join'
+  const cancelled = isCancelled(data)
 
   return {
     id: record.id,
@@ -381,8 +386,9 @@ function mapActivityCard(
     location: getRecordLocation(data),
     organizer: getOrganizerName(data, userNamesById),
     iconLabel: category,
-    cta: action === 'interest' ? getInterestCta(interestState.interested) : getJoinCta(joinState.joined),
+    cta: cancelled ? 'Cancelada' : action === 'interest' ? getInterestCta(interestState.interested) : getJoinCta(joinState.joined),
     action,
+    isCancelled: cancelled,
     Icon: getIcon(data),
   }
 }
@@ -640,6 +646,7 @@ export default function HomeScreen() {
   }
   const toggleJoin = async (record: CreatedRecord, collectionName: JoinableCollection) => {
     if (!currentUserId) return
+    if (isCancelled(record.data)) return
 
     const key = getJoinKey(collectionName, record.id)
     if (pendingJoinKeys.includes(key)) return
@@ -653,11 +660,13 @@ export default function HomeScreen() {
       const { db } = getFirebaseServices()
       const targetRef = doc(db, collectionName, record.id)
 
-      await runTransaction(db, async (transaction) => {
+      const result = await runTransaction(db, async (transaction) => {
         const snapshot = await transaction.get(targetRef)
         if (!snapshot.exists()) return
 
         const data = snapshot.data() as Record<string, unknown>
+        if (isCancelled(data)) return 'cancelled'
+
         const wasJoined = isUserJoined(data, currentUserId)
         const currentCount = getParticipantCount(data)
         const nextCount = Math.max(0, currentCount + (wasJoined ? -1 : 1))
@@ -679,7 +688,10 @@ export default function HomeScreen() {
             participantsCount: nextCount,
             updatedAt: serverTimestamp(),
           })
+        return 'updated'
       })
+
+      if (result === 'cancelled') throw new Error('activity-cancelled')
     } catch {
       setOptimisticJoins((current) => {
         const next = { ...current }
@@ -692,6 +704,7 @@ export default function HomeScreen() {
   }
   const toggleInterest = async (record: CreatedRecord) => {
     if (!currentUserId) return
+    if (isCancelled(record.data)) return
 
     const key = getInterestKey(record.id)
     if (pendingInterestKeys.includes(key)) return
@@ -705,11 +718,13 @@ export default function HomeScreen() {
       const { db } = getFirebaseServices()
       const targetRef = doc(db, 'activities', record.id)
 
-      await runTransaction(db, async (transaction) => {
+      const result = await runTransaction(db, async (transaction) => {
         const snapshot = await transaction.get(targetRef)
         if (!snapshot.exists()) return
 
         const data = snapshot.data() as Record<string, unknown>
+        if (isCancelled(data)) return 'cancelled'
+
         const wasInterested = isUserInterested(data, currentUserId)
         const currentCount = getInterestedCount(data)
         const nextCount = Math.max(0, currentCount + (wasInterested ? -1 : 1))
@@ -730,7 +745,10 @@ export default function HomeScreen() {
             interestedCount: nextCount,
             updatedAt: serverTimestamp(),
           })
+        return 'updated'
       })
+
+      if (result === 'cancelled') throw new Error('activity-cancelled')
 
       if (nextInterested) {
         Alert.alert('Te interesa', 'Le avisamos al organizador para que pueda contactarte.')
@@ -991,7 +1009,7 @@ export default function HomeScreen() {
                   })}
                   onCtaPress={() => {
                     const record = activityRecordsById.get(item.recordId)
-                    if (!record) return
+                    if (!record || item.isCancelled) return
                     if (item.action === 'interest') {
                       toggleInterest(record)
                     } else {
@@ -1018,7 +1036,7 @@ export default function HomeScreen() {
                   })}
                   onCtaPress={() => {
                     const record = activityRecordsById.get(item.recordId)
-                    if (!record) return
+                    if (!record || item.isCancelled) return
                     if (item.action === 'interest') {
                       toggleInterest(record)
                     } else {

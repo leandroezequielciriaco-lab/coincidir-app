@@ -190,6 +190,10 @@ function readString(value: unknown, fallback = '') {
   return typeof value === 'string' && value.trim() ? value.trim() : fallback
 }
 
+function isCancelled(data: Record<string, unknown>) {
+  return readString(data.status) === 'cancelled'
+}
+
 function readList(value: unknown) {
   return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : []
 }
@@ -616,6 +620,7 @@ function ProfileRow({ item, onPress, variant }: { item: FirestoreRecord; onPress
   const location = readString(item.data.location, variant === 'group' ? 'Grupo de amigos' : 'Ubicación a definir')
   const date = readString(item.data.date, readString(item.data.schedule, variant === 'group' ? 'Próximo encuentro' : 'Fecha a definir'))
   const participants = getParticipantCount(item.data)
+  const cancelled = variant === 'activity' && isCancelled(item.data)
   const iconColor = variant === 'group' ? '#4B348A' : '#006A32'
   const [imageSource, setImageSource] = useState(getCategoryImage(item.data))
 
@@ -642,7 +647,14 @@ function ProfileRow({ item, onPress, variant }: { item: FirestoreRecord; onPress
         )}
       </View>
       <View style={styles.rowCopy}>
-        <Text ellipsizeMode="tail" numberOfLines={1} style={styles.rowTitle}>{title}</Text>
+        <View style={styles.rowTitleLine}>
+          <Text ellipsizeMode="tail" numberOfLines={1} style={styles.rowTitle}>{title}</Text>
+          {cancelled ? (
+            <View style={styles.rowCancelledBadge}>
+              <Text style={styles.rowCancelledBadgeText}>Cancelada</Text>
+            </View>
+          ) : null}
+        </View>
         <View style={styles.rowLocation}>
           <MapPin color="#73827C" size={13} strokeWidth={2.1} />
           <Text ellipsizeMode="tail" numberOfLines={1} style={styles.rowMeta}>{location}</Text>
@@ -1477,9 +1489,30 @@ const styles = StyleSheet.create({
     flex: 1,
     minWidth: 0,
   },
+  rowTitleLine: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 8,
+  },
   rowTitle: {
     color: '#071D19',
+    flex: 1,
     fontSize: 15,
+    fontWeight: '900',
+    letterSpacing: 0,
+  },
+  rowCancelledBadge: {
+    backgroundColor: '#FFF2CC',
+    borderColor: '#F5C84B',
+    borderRadius: 999,
+    borderWidth: 1,
+    flexShrink: 0,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  rowCancelledBadgeText: {
+    color: '#7A4A00',
+    fontSize: 10,
     fontWeight: '900',
     letterSpacing: 0,
   },

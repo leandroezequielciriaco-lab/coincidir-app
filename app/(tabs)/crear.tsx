@@ -51,6 +51,7 @@ import MapView, { Marker, PROVIDER_GOOGLE, type Region } from 'react-native-maps
 
 import CoincidirLogo from '../../components/CoincidirLogo'
 import { getFirebaseServices } from '../../firebaseConfig'
+import { notifyActivityUpdated } from '../../lib/notifications'
 
 type CategoryId = 'outdoor' | 'sports' | 'wellness' | 'groups' | 'private'
 type PickerMode = 'category' | 'subcategory' | 'date' | 'time' | 'currency' | null
@@ -776,6 +777,15 @@ export default function CrearScreen() {
         await updateDoc(targetRef, {
           ...payload,
           updatedAt: serverTimestamp(),
+        })
+
+        notifyActivityUpdated({
+          activity: latestActivity,
+          activityId,
+          activityTitle: payload.name,
+          organizerId: user.uid,
+        }).catch((error) => {
+          if (__DEV__) console.warn('activity-updated-notification-create-error', error)
         })
 
         router.dismissTo({

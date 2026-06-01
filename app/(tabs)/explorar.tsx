@@ -65,6 +65,7 @@ type ExploreCardItem = {
   schedule: string
   cta: string
   image: ImageSourcePropType
+  isCancelled?: boolean
   Icon: LucideIcon
 }
 
@@ -90,6 +91,10 @@ function readString(value: unknown, fallback = '') {
 
 function readNumber(value: unknown, fallback = 0) {
   return typeof value === 'number' && Number.isFinite(value) ? value : fallback
+}
+
+function isCancelled(data: Record<string, unknown>) {
+  return readString(data.status) === 'cancelled'
 }
 
 function normalize(value: unknown) {
@@ -233,6 +238,7 @@ function mapExploreCard(item: RecordItem): ExploreCardItem {
   const count = getParticipantCount(data)
   const max = getMaxParticipants(data)
   const isGroup = item.source === 'group'
+  const cancelled = item.source === 'activity' && isCancelled(data)
 
   return {
     id: `${item.source}-${item.id}`,
@@ -244,8 +250,9 @@ function mapExploreCard(item: RecordItem): ExploreCardItem {
     schedule: isGroup
       ? readString(data.schedule, 'Próximo encuentro a definir')
       : `${readString(data.date, 'Fecha a definir')}${readString(data.time) ? ` ${readString(data.time)}` : ''}`,
-    cta: isGroup ? 'Ver grupo' : 'Ver encuentro',
+    cta: cancelled ? 'Cancelada' : isGroup ? 'Ver grupo' : 'Ver encuentro',
     image: getCardImage(item),
+    isCancelled: cancelled,
     Icon: getIcon(item),
   }
 }
@@ -488,6 +495,11 @@ function ExploreCard({ cardWidth, item, onPress }: { cardWidth: number; item: Ex
           source={imageSource}
           style={styles.cardImage}
         />
+        {item.isCancelled ? (
+          <View style={styles.cancelledBadge}>
+            <Text style={styles.cancelledBadgeText}>Cancelada</Text>
+          </View>
+        ) : null}
         <View style={styles.cardIcon}>
           <item.Icon color="#17803C" size={31} strokeWidth={2.2} />
         </View>
@@ -507,8 +519,8 @@ function ExploreCard({ cardWidth, item, onPress }: { cardWidth: number; item: Ex
             <UsersRound color="#006A32" size={16} strokeWidth={2.3} />
             <Text style={styles.capacityText}>{item.capacity}</Text>
           </View>
-          <View style={styles.cardCta}>
-            <Text style={styles.cardCtaText}>{item.cta}</Text>
+          <View style={[styles.cardCta, item.isCancelled && styles.cardCtaDisabled]}>
+            <Text style={[styles.cardCtaText, item.isCancelled && styles.cardCtaTextDisabled]}>{item.cta}</Text>
           </View>
         </View>
       </View>
@@ -824,6 +836,23 @@ const styles = StyleSheet.create({
     top: 84,
     width: 58,
   },
+  cancelledBadge: {
+    backgroundColor: '#FFF2CC',
+    borderColor: '#F5C84B',
+    borderRadius: 999,
+    borderWidth: 1,
+    paddingHorizontal: 11,
+    paddingVertical: 7,
+    position: 'absolute',
+    right: 12,
+    top: 12,
+  },
+  cancelledBadgeText: {
+    color: '#7A4A00',
+    fontSize: 11,
+    fontWeight: '900',
+    letterSpacing: 0,
+  },
   cardBody: {
     flex: 1,
     padding: 14,
@@ -879,10 +908,16 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingHorizontal: 12,
   },
+  cardCtaDisabled: {
+    backgroundColor: '#ECEBE7',
+  },
   cardCtaText: {
     color: '#006A32',
     fontSize: 13,
     fontWeight: '900',
+  },
+  cardCtaTextDisabled: {
+    color: '#7A817D',
   },
   carouselDots: {
     alignItems: 'center',

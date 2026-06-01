@@ -22,6 +22,7 @@ import {
   onSnapshot,
   runTransaction,
   serverTimestamp,
+  updateDoc,
 } from 'firebase/firestore'
 import {
   ArrowLeft,
@@ -44,7 +45,7 @@ import type { LucideIcon } from 'lucide-react-native'
 import { PressScale } from '../../components/home/PressScale'
 import { InviteFriendsSheet, type InviteShareTarget } from '../../components/InviteFriendsSheet'
 import { getFirebaseServices } from '../../firebaseConfig'
-import { notifyActivityConfirmed, notifyActivityInterest } from '../../lib/notifications'
+import { notifyActivityCancelled, notifyActivityConfirmed, notifyActivityInterest } from '../../lib/notifications'
 import { getCategoryImage } from '../../utils/categoryImages'
 
 type ActivityData = Record<string, unknown>
@@ -320,6 +321,7 @@ export default function ActivityDetailScreen() {
   const [currentUserName, setCurrentUserName] = useState('')
   const [pendingInterestedActions, setPendingInterestedActions] = useState<string[]>([])
   const [isDeletingActivity, setIsDeletingActivity] = useState(false)
+  const [isCancellingActivity, setIsCancellingActivity] = useState(false)
 
   useEffect(() => {
     try {
@@ -400,6 +402,8 @@ export default function ActivityDetailScreen() {
     const safeInterestedCount = Math.max(0, optimisticInterestCount)
     const action = requiresInterestAction(data) ? 'interest' : 'join'
     const isFull = safeCount >= maxParticipants && !joined
+    const status = readString(data.status)
+    const isCancelled = status === 'cancelled'
     return {
       action,
       category: readString(data.category, 'Espacio privado'),
@@ -410,6 +414,7 @@ export default function ActivityDetailScreen() {
       interested,
       interestedCount: safeInterestedCount,
       interestedUsers: getInterestedUsers(data),
+      isCancelled,
       isFull,
       joined,
       location: readString(data.location, 'Ubicación a definir'),
@@ -422,6 +427,10 @@ export default function ActivityDetailScreen() {
       title: readString(data.name, 'Actividad sin título'),
     }
   }, [activity, currentUserId, optimisticInterested, optimisticJoined, organizerProfile])
+
+  useEffect(() => {
+    if (detail.isCancelled && isInviteVisible) setIsInviteVisible(false)
+  }, [detail.isCancelled, isInviteVisible])
 
   const setInterestedActionPending = (userId: string, action: InterestedAction, pending: boolean) => {
     const key = `${action}:${userId}`
@@ -436,7 +445,7 @@ export default function ActivityDetailScreen() {
   }
 
   const toggleJoin = async () => {
-    if (!activityId || !activity || !currentUserId || detail.isFull || isJoining) return
+    if (!activityId || !activity || !currentUserId || detail.isCancelled || detail.isFull || isJoining) return
 
     const nextJoined = !detail.joined
     setOptimisticJoined(nextJoined)
@@ -451,6 +460,8 @@ export default function ActivityDetailScreen() {
         if (!snapshot.exists()) return
 
         const data = snapshot.data() as ActivityData
+        if (readString(data.status) === 'cancelled') return
+
         const wasJoined = isUserJoined(data, currentUserId)
         const currentCount = getParticipantCount(data)
         const maxParticipants = getMaxParticipants(data)
@@ -485,7 +496,7 @@ export default function ActivityDetailScreen() {
   }
 
   const toggleInterest = async () => {
-    if (!activityId || !activity || !currentUserId || isMarkingInterest) return
+    if (!activityId || !activity || !currentUserId || detail.isCancelled || isMarkingInterest) return
 
     const nextInterested = !detail.interested
     setOptimisticInterested(nextInterested)
@@ -500,6 +511,8 @@ export default function ActivityDetailScreen() {
         if (!snapshot.exists()) return
 
         const data = snapshot.data() as ActivityData
+        if (readString(data.status) === 'cancelled') return
+
         const wasInterested = isUserInterested(data, currentUserId)
         const currentCount = getInterestedCount(data)
         const nextCount = Math.max(0, currentCount + (wasInterested ? -1 : 1))
@@ -560,7 +573,7 @@ export default function ActivityDetailScreen() {
   }
 
   const writeInterestedUser = async (user: InterestedUser) => {
-    if (isInterestedActionPending(user.uid, 'write')) return
+    if (detail.isCancelled || isInterestedActionPending(user.uid, 'write')) return
 
     setInterestedActionPending(user.uid, 'write', true)
     try {
@@ -600,7 +613,7 @@ export default function ActivityDetailScreen() {
   }
 
   const inviteInterestedUser = async (user: InterestedUser) => {
-    if (isInterestedActionPending(user.uid, 'invite')) return
+    if (detail.isCancelled || isInterestedActionPending(user.uid, 'invite')) return
 
     setInterestedActionPending(user.uid, 'invite', true)
     try {
@@ -614,7 +627,7 @@ export default function ActivityDetailScreen() {
   }
 
   const confirmInterestedUser = (user: InterestedUser) => {
-    if (!activityId || !activity || isInterestedActionPending(user.uid, 'confirm')) return
+    if (!activityId || !activity || detail.isCancelled || isInterestedActionPending(user.uid, 'confirm')) return
 
     Alert.alert(
       'Confirmar participante',
@@ -632,7 +645,7 @@ export default function ActivityDetailScreen() {
   }
 
   const confirmInterestedUserNow = async (user: InterestedUser) => {
-    if (!activityId || !activity || isInterestedActionPending(user.uid, 'confirm')) return
+    if (!activityId || !activity || detail.isCancelled || isInterestedActionPending(user.uid, 'confirm')) return
 
     setInterestedActionPending(user.uid, 'confirm', true)
     try {
@@ -644,6 +657,8 @@ export default function ActivityDetailScreen() {
         if (!snapshot.exists()) return 'missing'
 
         const data = snapshot.data() as ActivityData
+        if (readString(data.status) === 'cancelled') return 'cancelled'
+
         const wasJoined = isUserJoined(data, user.uid)
         const wasInterested = isUserInterested(data, user.uid)
         const currentCount = getParticipantCount(data)
@@ -692,6 +707,11 @@ export default function ActivityDetailScreen() {
         return
       }
 
+      if (result === 'cancelled') {
+        Alert.alert('Actividad cancelada', 'No podés confirmar participantes en una actividad cancelada.')
+        return
+      }
+
       Alert.alert('Participante confirmado', `${user.name} fue agregado a la actividad.`)
 
       notifyActivityConfirmed({
@@ -707,6 +727,79 @@ export default function ActivityDetailScreen() {
     } finally {
       setInterestedActionPending(user.uid, 'confirm', false)
     }
+  }
+
+  const cancelActivityNow = async () => {
+    if (!activityId || !currentUserId || isCancellingActivity) return
+
+    setIsCancellingActivity(true)
+    try {
+      const { db } = getFirebaseServices()
+      const targetRef = doc(db, 'activities', activityId)
+      const snapshot = await getDoc(targetRef)
+
+      if (!snapshot.exists()) {
+        Alert.alert('Actividad no disponible', 'No encontramos esta actividad para cancelarla.')
+        return
+      }
+
+      const latestActivity = snapshot.data() as ActivityData
+      if (getCreatorId(latestActivity) !== currentUserId) {
+        Alert.alert('No podés cancelar esta actividad', 'Solo quien organiza la actividad puede cancelarla.')
+        return
+      }
+
+      if (readString(latestActivity.status) === 'cancelled') {
+        Alert.alert('Actividad ya cancelada', 'Esta actividad ya figura como cancelada.')
+        return
+      }
+
+      await updateDoc(targetRef, {
+        status: 'cancelled',
+        cancelledAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      })
+      notifyActivityCancelled({
+        activity: latestActivity,
+        activityId,
+        activityTitle: readString(latestActivity.name, detail.title),
+        organizerId: currentUserId,
+      }).catch((error) => {
+        if (__DEV__) console.warn('activity-cancelled-notification-create-error', error)
+      })
+      Alert.alert('Actividad cancelada', 'La actividad quedó cancelada, pero no se borró.')
+    } catch {
+      Alert.alert('No pudimos cancelar', 'Intentá nuevamente en unos segundos.')
+    } finally {
+      setIsCancellingActivity(false)
+    }
+  }
+
+  const confirmCancelActivity = () => {
+    if (!isOrganizer || isCancellingActivity) return
+
+    if (detail.isCancelled) {
+      Alert.alert('Actividad ya cancelada', 'Esta actividad ya figura como cancelada.')
+      return
+    }
+
+    const hasPeople = detail.interestedCount > 0 || detail.participantCount > 0
+    Alert.alert(
+      'Cancelar actividad',
+      hasPeople
+        ? 'Esta actividad tiene personas interesadas, participantes o confirmadas. Si la cancelás, quedará marcada como cancelada y ya no se podrán sumar ni gestionar invitaciones, pero no se borrará.'
+        : 'La actividad quedará marcada como cancelada y ya no se podrán sumar personas, pero no se borrará.',
+      [
+        { text: 'Volver', style: 'cancel' },
+        {
+          text: 'Cancelar actividad',
+          style: 'destructive',
+          onPress: () => {
+            void cancelActivityNow()
+          },
+        },
+      ],
+    )
   }
 
   const deleteActivityNow = async () => {
@@ -825,6 +918,11 @@ export default function ActivityDetailScreen() {
               <detail.Icon color="#4B348A" size={28} strokeWidth={2.2} />
             </View>
             <View style={styles.titleCopy}>
+              {detail.isCancelled ? (
+                <View style={styles.cancelledBadge}>
+                  <Text style={styles.cancelledBadgeText}>Actividad cancelada</Text>
+                </View>
+              ) : null}
               <Text style={styles.title}>{detail.title}</Text>
               <Text style={styles.subtitle}>{detail.location}</Text>
             </View>
@@ -879,6 +977,25 @@ export default function ActivityDetailScreen() {
                   <Text style={styles.editActivityText}>Editar actividad</Text>
                 </PressScale>
                 <PressScale
+                  accessibilityLabel="Cancelar actividad"
+                  accessibilityRole="button"
+                  disabled={detail.isCancelled || isCancellingActivity}
+                  onPress={confirmCancelActivity}
+                  scaleTo={0.97}
+                  style={[
+                    styles.cancelActivityButton,
+                    (detail.isCancelled || isCancellingActivity) && styles.cancelActivityButtonDisabled,
+                  ]}
+                >
+                  {isCancellingActivity ? (
+                    <ActivityIndicator color="#8A4B00" size="small" />
+                  ) : (
+                    <Text style={styles.cancelActivityText}>
+                      {detail.isCancelled ? 'Actividad cancelada' : 'Cancelar actividad'}
+                    </Text>
+                  )}
+                </PressScale>
+                <PressScale
                   accessibilityLabel="Eliminar actividad"
                   accessibilityRole="button"
                   disabled={isDeletingActivity}
@@ -908,10 +1025,10 @@ export default function ActivityDetailScreen() {
                       <PressScale
                         accessibilityLabel={`Escribir a ${user.name}`}
                         accessibilityRole="button"
-                        disabled={isInterestedActionPending(user.uid, 'write')}
+                        disabled={detail.isCancelled || isInterestedActionPending(user.uid, 'write')}
                         onPress={() => void writeInterestedUser(user)}
                         scaleTo={0.97}
-                        style={styles.futureAction}
+                        style={[styles.futureAction, detail.isCancelled && styles.futureActionDisabled]}
                       >
                         {isInterestedActionPending(user.uid, 'write') ? (
                           <ActivityIndicator color="#006A32" size="small" />
@@ -922,10 +1039,10 @@ export default function ActivityDetailScreen() {
                       <PressScale
                         accessibilityLabel={`Invitar a ${user.name}`}
                         accessibilityRole="button"
-                        disabled={isInterestedActionPending(user.uid, 'invite')}
+                        disabled={detail.isCancelled || isInterestedActionPending(user.uid, 'invite')}
                         onPress={() => void inviteInterestedUser(user)}
                         scaleTo={0.97}
-                        style={styles.futureAction}
+                        style={[styles.futureAction, detail.isCancelled && styles.futureActionDisabled]}
                       >
                         {isInterestedActionPending(user.uid, 'invite') ? (
                           <ActivityIndicator color="#006A32" size="small" />
@@ -936,10 +1053,10 @@ export default function ActivityDetailScreen() {
                       <PressScale
                         accessibilityLabel={`Confirmar a ${user.name}`}
                         accessibilityRole="button"
-                        disabled={isInterestedActionPending(user.uid, 'confirm')}
+                        disabled={detail.isCancelled || isInterestedActionPending(user.uid, 'confirm')}
                         onPress={() => confirmInterestedUser(user)}
                         scaleTo={0.97}
-                        style={styles.futureAction}
+                        style={[styles.futureAction, detail.isCancelled && styles.futureActionDisabled]}
                       >
                         {isInterestedActionPending(user.uid, 'confirm') ? (
                           <ActivityIndicator color="#006A32" size="small" />
@@ -958,33 +1075,42 @@ export default function ActivityDetailScreen() {
 
           <PressScale
             accessibilityLabel={
-              detail.action === 'interest'
+              detail.isCancelled
+                ? 'Actividad cancelada'
+                : detail.action === 'interest'
                 ? detail.interested ? 'Te interesa' : 'Me interesa'
                 : detail.joined ? 'Te sumaste' : detail.isFull ? 'Actividad completa' : 'Me sumo'
             }
             accessibilityRole="button"
-            disabled={detail.action === 'join' ? detail.isFull || isJoining : isMarkingInterest}
+            disabled={detail.isCancelled || (detail.action === 'join' ? detail.isFull || isJoining : isMarkingInterest)}
             onPress={detail.action === 'interest' ? toggleInterest : toggleJoin}
             scaleTo={0.97}
             style={[
               styles.primaryButton,
               (detail.joined || detail.interested) && styles.joinedButton,
-              detail.action === 'join' && detail.isFull && styles.disabledButton,
+              (detail.isCancelled || (detail.action === 'join' && detail.isFull)) && styles.disabledButton,
             ]}
           >
             {detail.joined || detail.interested ? <Check color="#17803C" size={20} strokeWidth={2.5} /> : null}
             <Text style={[
               styles.primaryButtonText,
               (detail.joined || detail.interested) && styles.joinedButtonText,
-              detail.action === 'join' && detail.isFull && styles.disabledButtonText,
+              (detail.isCancelled || (detail.action === 'join' && detail.isFull)) && styles.disabledButtonText,
             ]}>
-              {detail.action === 'interest'
+              {detail.isCancelled
+                ? 'Actividad cancelada'
+                : detail.action === 'interest'
                 ? detail.interested ? 'Te interesa' : 'Me interesa'
                 : detail.isFull ? 'Actividad completa' : detail.joined ? 'Te sumaste' : 'Me sumo'}
             </Text>
           </PressScale>
 
-          <PressScale onPress={() => setIsInviteVisible(true)} scaleTo={0.97} style={styles.inviteButton}>
+          <PressScale
+            disabled={detail.isCancelled}
+            onPress={() => setIsInviteVisible(true)}
+            scaleTo={0.97}
+            style={[styles.inviteButton, detail.isCancelled && styles.inviteButtonDisabled]}
+          >
             <UsersRound color="#FFFFFF" size={20} strokeWidth={2.4} />
             <Text style={styles.inviteButtonText}>Invitar amigos</Text>
           </PressScale>
@@ -1101,6 +1227,22 @@ const styles = StyleSheet.create({
   titleCopy: {
     flex: 1,
     minWidth: 0,
+  },
+  cancelledBadge: {
+    alignSelf: 'flex-start',
+    backgroundColor: '#FFF2CC',
+    borderColor: '#F5C84B',
+    borderRadius: 999,
+    borderWidth: 1,
+    marginBottom: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+  },
+  cancelledBadgeText: {
+    color: '#7A4A00',
+    fontSize: 12,
+    fontWeight: '900',
+    letterSpacing: 0,
   },
   title: {
     color: '#071D19',
@@ -1284,6 +1426,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     justifyContent: 'center',
   },
+  futureActionDisabled: {
+    opacity: 0.5,
+  },
   futureActionText: {
     color: '#006A32',
     fontSize: 13,
@@ -1330,6 +1475,9 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginTop: 12,
   },
+  inviteButtonDisabled: {
+    opacity: 0.5,
+  },
   inviteButtonText: {
     color: '#FFFFFF',
     fontSize: 16,
@@ -1358,6 +1506,19 @@ const styles = StyleSheet.create({
     minHeight: 48,
     paddingHorizontal: 18,
   },
+  cancelActivityButton: {
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    borderColor: '#F5C84B',
+    borderRadius: 14,
+    borderWidth: 1.5,
+    justifyContent: 'center',
+    minHeight: 48,
+    paddingHorizontal: 18,
+  },
+  cancelActivityButtonDisabled: {
+    opacity: 0.62,
+  },
   deleteActivityButtonDisabled: {
     opacity: 0.62,
   },
@@ -1369,6 +1530,12 @@ const styles = StyleSheet.create({
   },
   editActivityText: {
     color: '#155C47',
+    fontSize: 15,
+    fontWeight: '900',
+    letterSpacing: 0,
+  },
+  cancelActivityText: {
+    color: '#8A4B00',
     fontSize: 15,
     fontWeight: '900',
     letterSpacing: 0,

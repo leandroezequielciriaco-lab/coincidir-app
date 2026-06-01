@@ -48,6 +48,11 @@ export function ActivityCard({ item, onCtaPress, onPress, onSharePress }: Activi
         <View style={styles.dateBadge}>
           <Text style={styles.dateBadgeText}>{item.dateBadge}</Text>
         </View>
+        {item.isCancelled ? (
+          <View style={styles.cancelledBadge}>
+            <Text style={styles.cancelledBadgeText}>Cancelada</Text>
+          </View>
+        ) : null}
       </View>
       <View style={styles.activityBody}>
         <View style={styles.activityTopLine}>
@@ -92,10 +97,15 @@ export function ActivityCard({ item, onCtaPress, onPress, onSharePress }: Activi
         <Pressable
           accessibilityLabel={item.cta}
           accessibilityRole="button"
+          disabled={item.isCancelled}
           onPress={onCtaPress}
-          style={({ pressed }) => [styles.activityFooter, pressed && styles.pressed]}
+          style={({ pressed }) => [
+            styles.activityFooter,
+            item.isCancelled && styles.activityFooterDisabled,
+            pressed && styles.pressed,
+          ]}
         >
-          <Text style={styles.greenCtaText}>{item.cta}</Text>
+          <Text style={[styles.greenCtaText, item.isCancelled && styles.greenCtaTextDisabled]}>{item.cta}</Text>
         </Pressable>
       </View>
     </View>
@@ -248,6 +258,23 @@ const styles = StyleSheet.create({
     fontWeight: '900',
     letterSpacing: 0,
   },
+  cancelledBadge: {
+    backgroundColor: '#FFF2CC',
+    borderColor: '#F5C84B',
+    borderRadius: 999,
+    borderWidth: 1,
+    left: 12,
+    paddingHorizontal: 11,
+    paddingVertical: 7,
+    position: 'absolute',
+    top: 52,
+  },
+  cancelledBadgeText: {
+    color: '#7A4A00',
+    fontSize: 11,
+    fontWeight: '900',
+    letterSpacing: 0,
+  },
   activityBody: {
     flex: 1,
     justifyContent: 'center',
@@ -325,6 +352,9 @@ const styles = StyleSheet.create({
     marginTop: 9,
     zIndex: 3,
   },
+  activityFooterDisabled: {
+    backgroundColor: '#ECEBE7',
+  },
   shareButton: {
     alignItems: 'center',
     backgroundColor: '#FFFFFF',
@@ -351,6 +381,9 @@ const styles = StyleSheet.create({
     color: '#00552E',
     fontSize: 14,
     fontWeight: '900',
+  },
+  greenCtaTextDisabled: {
+    color: '#7A817D',
   },
   privateCard: {
     backgroundColor: '#FFFFFF',
