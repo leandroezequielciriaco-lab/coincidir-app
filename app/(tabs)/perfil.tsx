@@ -332,7 +332,7 @@ export default function PerfilScreen() {
   const stats = useMemo(() => [
     { label: 'Actividades', value: String(createdActivities.length + joinedActivities.length), Icon: CalendarDays, color: '#5A35D6' },
     { label: 'Grupos', value: String(myGroups.length), Icon: UsersRound, color: '#17803C' },
-    { label: 'Coincidencias', value: String(createdActivities.length + joinedActivities.length + myGroups.length), Icon: Star, color: '#F2A900' },
+    { label: 'Participaciones', value: String(createdActivities.length + joinedActivities.length + myGroups.length), Icon: Star, color: '#F2A900' },
   ], [createdActivities.length, joinedActivities.length, myGroups.length])
   const selectedInterests = optimisticInterests ?? expandUserInterests(profile.interests)
   const visibleProfileInterestOptions = showAllProfileInterests
