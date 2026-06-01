@@ -50,20 +50,16 @@ import type { LucideIcon } from 'lucide-react-native'
 import MapView, { Marker, PROVIDER_GOOGLE, type Region } from 'react-native-maps'
 
 import CoincidirLogo from '../../components/CoincidirLogo'
+import {
+  activityCategories as categories,
+  findActivityCategory,
+  type ActivityCategory as Category,
+  type ActivityCategoryId as CategoryId,
+} from '../../constants/activityCategories'
 import { getFirebaseServices } from '../../firebaseConfig'
 import { notifyActivityUpdated } from '../../lib/notifications'
 
-type CategoryId = 'outdoor' | 'sports' | 'wellness' | 'groups' | 'private'
 type PickerMode = 'category' | 'subcategory' | 'date' | 'time' | 'currency' | null
-
-type Category = {
-  id: CategoryId
-  label: string
-  icon: string
-  color: string
-  backgroundColor: string
-  subcategories: string[]
-}
 
 type LocationSelection = {
   address: string
@@ -122,112 +118,14 @@ const monthNames = [
   'diciembre',
 ]
 
-const categories: Category[] = [
-  {
-    id: 'outdoor',
-    label: 'Al aire libre',
-    icon: 'AL',
-    color: '#0E5A44',
-    backgroundColor: '#E9F4D9',
-    subcategories: [
-      'Caminatas',
-      'Trekking',
-      'Running',
-      'Kayak',
-      'Stand Up Paddle',
-      'Pesca',
-      'Camping',
-      'Mountain Bike',
-      'Avistaje',
-      'Picnic',
-      'Paseos',
-      'Escalada outdoor',
-    ],
-  },
-  {
-    id: 'sports',
-    label: 'Deportes',
-    icon: 'DEP',
-    color: '#16823A',
-    backgroundColor: '#DDF2D8',
-    subcategories: [
-      'Fútbol',
-      'Paddle',
-      'Tenis',
-      'Básquet',
-      'Hockey',
-      'Natación',
-      'Crossfit',
-      'Calistenia',
-      'Funcional',
-      'Ciclismo',
-      'Vóley',
-    ],
-  },
-  {
-    id: 'wellness',
-    label: 'Bienestar',
-    icon: 'BI',
-    color: '#2F8D5A',
-    backgroundColor: '#EAF7E4',
-    subcategories: [
-      'Yoga',
-      'Meditación',
-      'SupYoga',
-      'Respiración',
-      'Relax',
-      'Mindfulness',
-      'Stretching',
-      'Tai Chi',
-      'Sound Healing',
-      'Terapias holísticas',
-    ],
-  },
-  {
-    id: 'groups',
-    label: 'Grupales',
-    icon: 'GR',
-    color: '#2A9B37',
-    backgroundColor: '#E2F4DD',
-    subcategories: [
-      'Mateadas',
-      'Juegos de mesa',
-      'Charlas',
-      'Networking',
-      'Voluntariado',
-      'Clubes',
-      'Idiomas',
-      'Intercambio cultural',
-      'After office',
-      'Salidas grupales',
-    ],
-  },
-  {
-    id: 'private',
-    label: 'Espacios privados',
-    icon: 'EP',
-    color: '#543D78',
-    backgroundColor: '#F2ECF8',
-    subcategories: [
-      'Escalada indoor',
-      'Gimnasio',
-      'Canchas privadas',
-      'Pool',
-      'Bowling',
-      'Sala de ensayo',
-      'Workshops',
-      'Coworking',
-      'Cocina',
-      'Arte',
-    ],
-  },
-]
-
 function getCategoryIcon(categoryId: CategoryId) {
   if (categoryId === 'outdoor') return Leaf
   if (categoryId === 'sports') return Dumbbell
+  if (categoryId === 'training') return Dumbbell
   if (categoryId === 'wellness') return Sparkles
   if (categoryId === 'groups') return UsersRound
+  if (categoryId === 'culture') return Star
+  if (categoryId === 'hobbies') return Zap
 
   return LockKeyhole
 }
@@ -515,10 +413,10 @@ export default function CrearScreen() {
 
         if (!isMounted) return
 
-        const categoryId = readString(data.categoryId) as CategoryId
-        const existingCategory = categories.find((item) => item.id === categoryId)
-          ?? categories.find((item) => item.label === readString(data.category))
-          ?? null
+        const existingCategory = findActivityCategory({
+          category: readString(data.category),
+          categoryId: readString(data.categoryId),
+        })
         const existingDate = readDate(data.activityDate) ?? readDate(data.activityDateISO)
         const locationPin = readRecord(data.locationPin)
         const locationLatitude = readNumber(data.locationLatitude, readNumber(locationPin.latitude, initialLocationRegion.latitude))

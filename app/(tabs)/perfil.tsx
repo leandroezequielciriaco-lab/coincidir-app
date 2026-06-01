@@ -65,6 +65,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context'
 
 import { PressScale } from '../../components/home/PressScale'
+import { canonicalUserInterests, expandUserInterests } from '../../constants/userInterests'
 import { getFirebaseServices, getFirebaseStorageBucketCandidates } from '../../firebaseConfig'
 import { defaultActivityImage, getCategoryImage } from '../../utils/categoryImages'
 
@@ -93,44 +94,7 @@ type FirebaseStorageLikeError = {
 
 const DEFAULT_BIO = 'Siempre listo para nuevos planes.'
 const DEFAULT_LOCATION = 'Tandil'
-const editableInterests = [
-  'Deportes',
-  'Yoga',
-  'Running',
-  'Caminatas',
-  'Música',
-  'Cine',
-  'Café',
-  'Mate',
-  'Naturaleza',
-  'Viajes',
-  'Lectura',
-  'Juegos',
-  'Mascotas',
-  'Tecnología',
-  'Arte',
-  'Fotografía',
-  'Idiomas',
-  'Meditación',
-  'Gym',
-  'Ciclismo',
-  'Natación',
-  'Paddle / SUP',
-  'Surf',
-  'Trekking',
-  'Cocina',
-  'Streaming / Series',
-  'Gaming',
-  'Voluntariado',
-  'Emprendimientos',
-  'Baile',
-  'Vino',
-  'Finanzas',
-  'Autos',
-  'Podcasts',
-  'Eventos',
-  'Manualidades',
-]
+const editableInterests = canonicalUserInterests
 
 function normalize(value: unknown) {
   return readString(value)
@@ -370,7 +334,7 @@ export default function PerfilScreen() {
     { label: 'Grupos', value: String(myGroups.length), Icon: UsersRound, color: '#17803C' },
     { label: 'Coincidencias', value: String(createdActivities.length + joinedActivities.length + myGroups.length), Icon: Star, color: '#F2A900' },
   ], [createdActivities.length, joinedActivities.length, myGroups.length])
-  const selectedInterests = optimisticInterests ?? profile.interests
+  const selectedInterests = optimisticInterests ?? expandUserInterests(profile.interests)
   const visibleProfileInterestOptions = showAllProfileInterests
     ? editableInterests
     : selectedInterests.length > 0

@@ -5,32 +5,36 @@ import { serverTimestamp, setDoc, doc } from 'firebase/firestore'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 
 import { getFirebaseServices } from '../firebaseConfig'
+import { canonicalUserInterests } from '../constants/userInterests'
 import { styles } from './InterestsScreen.styles'
 
 const interestsImage = require('../assets/images/interests-fullscreen.png')
 
-export const outdoorActivities = [
-  { label: 'Caminatas', hitStyle: 'outdoorOne' },
-  { label: 'Yoga', hitStyle: 'outdoorTwo' },
-  { label: 'Running', hitStyle: 'outdoorThree' },
-  { label: 'Bicicleta', hitStyle: 'outdoorFour' },
-  { label: 'Kayak/SUP', hitStyle: 'outdoorFive' },
-  { label: 'Pesca', hitStyle: 'outdoorSix' },
-  { label: 'Mateadas', hitStyle: 'outdoorSeven' },
-  { label: 'Encuentros grupales', hitStyle: 'outdoorEight' },
-  { label: 'Calistenia', hitStyle: 'outdoorNine' },
+const interestHitStyles = [
+  'outdoorOne',
+  'outdoorTwo',
+  'outdoorThree',
+  'outdoorFour',
+  'outdoorFive',
+  'outdoorSix',
+  'outdoorSeven',
+  'outdoorEight',
+  'outdoorNine',
+  'indoorOne',
+  'indoorTwo',
+  'indoorThree',
+  'indoorFour',
+  'indoorFive',
+  'indoorSix',
 ]
 
-export const indoorActivities = [
-  { label: 'Paddle / Tenis', hitStyle: 'indoorOne' },
-  { label: 'Natación', hitStyle: 'indoorTwo' },
-  { label: 'Escalada', hitStyle: 'indoorThree' },
-  { label: 'Fútbol 5', hitStyle: 'indoorFour' },
-  { label: 'Gimnasio', hitStyle: 'indoorFive' },
-  { label: 'Clases grupales (Tango, Salsa, Folklore)', hitStyle: 'indoorSix' },
-]
+const allActivities = interestHitStyles.map((hitStyle, index) => ({
+  hitStyle,
+  label: canonicalUserInterests[index],
+})).filter((activity) => Boolean(activity.label))
 
-const allActivities = [...outdoorActivities, ...indoorActivities]
+export const outdoorActivities = allActivities.slice(0, 9)
+export const indoorActivities = allActivities.slice(9)
 
 function getFriendlySaveError(error) {
   if (error?.message?.includes('Faltan variables')) {

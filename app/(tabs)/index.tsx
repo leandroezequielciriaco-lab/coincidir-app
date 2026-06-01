@@ -59,6 +59,7 @@ import type {
 } from '../../components/home/types'
 import { getFirebaseServices } from '../../firebaseConfig'
 import { notifyActivityInterest, useUnreadNotificationsCount } from '../../lib/notifications'
+import { getActivityRecommendationScore } from '../../lib/recommendations'
 import { getCategoryImage } from '../../utils/categoryImages'
 
 type CategoryId = 'outdoor' | 'sports' | 'wellness' | 'groups' | 'private'
@@ -469,6 +470,7 @@ export default function HomeScreen() {
   const [activeCategory, setActiveCategory] = useState('Todas')
   const [currentUserId, setCurrentUserId] = useState<string | null>(null)
   const [userName, setUserName] = useState<string | null>(null)
+  const [userInterests, setUserInterests] = useState<unknown[]>([])
   const [userNamesById, setUserNamesById] = useState<UserNamesById>({})
   const [createdActivities, setCreatedActivities] = useState<CreatedRecord[]>([])
   const [optimisticJoins, setOptimisticJoins] = useState<Record<string, boolean>>({})
@@ -517,6 +519,7 @@ export default function HomeScreen() {
         if (!user) {
           setCurrentUserId(null)
           setUserName(null)
+          setUserInterests([])
           return
         }
 
@@ -541,10 +544,12 @@ export default function HomeScreen() {
           if (mounted) {
             const cleanName = profileName.trim()
             setUserName(cleanName ? cleanName.split(' ')[0] : authName ? authName.split(' ')[0] : null)
+            setUserInterests(Array.isArray(profile?.interests) ? profile.interests : [])
           }
         } catch {
           if (mounted) {
             setUserName(authName ? authName.split(' ')[0] : null)
+            setUserInterests([])
           }
         }
       })
@@ -778,27 +783,35 @@ export default function HomeScreen() {
     () =>
       filteredActivities
         .filter((item) => getCategoryId(item.data) !== 'private')
-        .sort((left, right) => getActivityTime(left) - getActivityTime(right))
+        .sort((left, right) => {
+          const scoreDiff = getActivityRecommendationScore(right.data, userInterests) - getActivityRecommendationScore(left.data, userInterests)
+          if (scoreDiff !== 0) return scoreDiff
+          return getActivityTime(left) - getActivityTime(right)
+        })
         .map((item) => mapActivityCard(
           item,
           getJoinState(item, 'activities', currentUserId, optimisticJoins),
           getInterestState(item, currentUserId, optimisticInterests),
           userNamesById,
         )),
-    [currentUserId, filteredActivities, optimisticInterests, optimisticJoins, userNamesById],
+    [currentUserId, filteredActivities, optimisticInterests, optimisticJoins, userInterests, userNamesById],
   )
   const privateSpaces = useMemo(
     () =>
       filteredActivities
         .filter((item) => getCategoryId(item.data) === 'private')
-        .sort((left, right) => getActivityTime(left) - getActivityTime(right))
+        .sort((left, right) => {
+          const scoreDiff = getActivityRecommendationScore(right.data, userInterests) - getActivityRecommendationScore(left.data, userInterests)
+          if (scoreDiff !== 0) return scoreDiff
+          return getActivityTime(left) - getActivityTime(right)
+        })
         .map((item) => mapActivityCard(
           item,
           getJoinState(item, 'activities', currentUserId, optimisticJoins),
           getInterestState(item, currentUserId, optimisticInterests),
           userNamesById,
         )),
-    [currentUserId, filteredActivities, optimisticInterests, optimisticJoins, userNamesById],
+    [currentUserId, filteredActivities, optimisticInterests, optimisticJoins, userInterests, userNamesById],
   )
   const hasSearch = debouncedSearchQuery.trim().length > 0
   const hasCategoryFilter = activeCategory !== 'Todas'

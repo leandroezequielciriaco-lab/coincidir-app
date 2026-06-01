@@ -16,7 +16,8 @@ import {
 } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { useRouter } from 'expo-router'
-import { collection, onSnapshot } from 'firebase/firestore'
+import { onAuthStateChanged } from 'firebase/auth'
+import { collection, doc, getDoc, onSnapshot } from 'firebase/firestore'
 import {
   CalendarCheck,
   CalendarDays,
@@ -37,6 +38,7 @@ import type { LucideIcon } from 'lucide-react-native'
 
 import { PressScale } from '../../components/home/PressScale'
 import { getFirebaseServices } from '../../firebaseConfig'
+import { getActivityRecommendationScore, getActivityRecommendationTerms } from '../../lib/recommendations'
 import { defaultActivityImage, getCategoryImage } from '../../utils/categoryImages'
 
 type RecordItem = {
@@ -135,6 +137,10 @@ function getRecordTime(item: RecordItem) {
 
 function getSearchText(item: RecordItem) {
   const data = item.data
+  if (item.source === 'activity') {
+    return normalize([item.source, ...getActivityRecommendationTerms(data), data.location, data.city].join(' '))
+  }
+
   return normalize([
     item.source,
     data.name,
@@ -201,9 +207,17 @@ function matchesQuickFilter(item: RecordItem, filter: string) {
   return matchesCategory(item, filter)
 }
 
-function sortRecords(items: RecordItem[], sort: SortMode) {
+function sortRecords(items: RecordItem[], sort: SortMode, userInterests: unknown[] = []) {
   return [...items].sort((left, right) => {
     if (sort === 'popular') return getParticipantCount(right.data) - getParticipantCount(left.data)
+    if (sort === 'recommended') {
+      const scoreDiff =
+        getActivityRecommendationScore(right.data, userInterests)
+        - getActivityRecommendationScore(left.data, userInterests)
+
+      if (scoreDiff !== 0) return scoreDiff
+    }
+
     return getRecordTime(right) - getRecordTime(left)
   })
 }
@@ -269,8 +283,41 @@ export default function ExplorarScreen() {
   const [draftFilters, setDraftFilters] = useState<AdvancedFilters>(initialAdvancedFilters)
   const [isFilterVisible, setIsFilterVisible] = useState(false)
   const [activeCardIndex, setActiveCardIndex] = useState(0)
+  const [userInterests, setUserInterests] = useState<unknown[]>([])
   const carouselCardWidth = Math.min(300, Math.max(236, width - 104))
   const carouselSnapInterval = carouselCardWidth + 14
+
+  useEffect(() => {
+    let mounted = true
+    let unsubscribe = () => {}
+
+    try {
+      const { auth, db } = getFirebaseServices()
+      unsubscribe = onAuthStateChanged(auth, async (user) => {
+        if (!mounted) return
+
+        if (!user) {
+          setUserInterests([])
+          return
+        }
+
+        try {
+          const profileSnap = await getDoc(doc(db, 'users', user.uid))
+          const profile = profileSnap.exists() ? profileSnap.data() : null
+          if (mounted) setUserInterests(Array.isArray(profile?.interests) ? profile.interests : [])
+        } catch {
+          if (mounted) setUserInterests([])
+        }
+      })
+    } catch {
+      setUserInterests([])
+    }
+
+    return () => {
+      mounted = false
+      unsubscribe()
+    }
+  }, [])
 
   useEffect(() => {
     let activities: RecordItem[] = []
@@ -316,8 +363,8 @@ export default function ExplorarScreen() {
       && matchesLocation(item, filters.location),
     )
 
-    return sortRecords(filtered, filters.sort)
-  }, [debouncedQuery, filters, quickFilter, records])
+    return sortRecords(filtered, filters.sort, userInterests)
+  }, [debouncedQuery, filters, quickFilter, records, userInterests])
 
   const cards = useMemo(() => filteredRecords.map(mapExploreCard), [filteredRecords])
 
