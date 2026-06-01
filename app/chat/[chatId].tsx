@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   ActivityIndicator,
+  Alert,
   FlatList,
   Image,
   KeyboardAvoidingView,
@@ -25,6 +26,7 @@ import {
   query,
   serverTimestamp,
   setDoc,
+  updateDoc,
 } from 'firebase/firestore'
 import { ArrowLeft, Send, UsersRound } from 'lucide-react-native'
 
@@ -45,6 +47,8 @@ import {
 
 type ChatMessage = {
   createdAt?: unknown
+  deleted?: boolean
+  deletedAt?: unknown
   id: string
   senderId: string
   senderName: string
@@ -131,6 +135,8 @@ export default function ChatScreen() {
           const data = item.data() as Record<string, unknown>
           return {
             createdAt: data.createdAt,
+            deleted: data.deleted === true,
+            deletedAt: data.deletedAt,
             id: item.id,
             senderId: readString(data.senderId),
             senderName: readString(data.senderName, 'Participante'),
@@ -222,6 +228,46 @@ export default function ChatScreen() {
     }
   }
 
+  const confirmDeleteMessage = (message: ChatMessage) => {
+    if (chatSource !== 'activity' || !chatId || !userId || message.senderId !== userId || message.deleted) return
+
+    Alert.alert(
+      'Eliminar mensaje',
+      'El contenido se ocultara para todos, pero el mensaje quedara en la conversacion.',
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        {
+          text: 'Eliminar',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              const { db } = getFirebaseServices()
+              await updateDoc(doc(db, getChatCollection(chatSource), chatId, 'messages', message.id), {
+                deleted: true,
+                deletedAt: serverTimestamp(),
+              })
+            } catch {
+              Alert.alert('No pudimos eliminar el mensaje', 'Intentá nuevamente en unos segundos.')
+            }
+          },
+        },
+      ],
+    )
+  }
+
+  const openMessageActions = (message: ChatMessage) => {
+    if (chatSource !== 'activity' || !userId || message.senderId !== userId || message.deleted) return
+
+    Alert.alert(
+      'Mensaje',
+      undefined,
+      [
+        { text: 'Eliminar mensaje', style: 'destructive', onPress: () => confirmDeleteMessage(message) },
+        { text: 'Cancelar', style: 'cancel' },
+      ],
+    )
+  }
+
   const composerSafeStyle = {
     paddingBottom: Math.max(insets.bottom + 8, Platform.OS === 'ios' ? 16 : 12),
   }
@@ -277,7 +323,14 @@ export default function ChatScreen() {
           data={messages}
           keyExtractor={(item) => item.id}
           ref={listRef}
-          renderItem={({ item }) => <MessageBubble isMine={item.senderId === userId} message={item} />}
+          renderItem={({ item }) => (
+            <MessageBubble
+              canDelete={chatSource === 'activity' && item.senderId === userId && !item.deleted}
+              isMine={item.senderId === userId}
+              message={item}
+              onLongPress={() => openMessageActions(item)}
+            />
+          )}
           showsVerticalScrollIndicator={false}
         />
 
@@ -321,14 +374,37 @@ function ConversationEmpty() {
   )
 }
 
-function MessageBubble({ isMine, message }: { isMine: boolean; message: ChatMessage }) {
+function MessageBubble({
+  canDelete,
+  isMine,
+  message,
+  onLongPress,
+}: {
+  canDelete: boolean
+  isMine: boolean
+  message: ChatMessage
+  onLongPress: () => void
+}) {
+  const isDeleted = message.deleted === true
+
   return (
     <View style={[styles.messageRow, isMine && styles.messageRowMine]}>
-      <View style={[styles.messageBubble, isMine ? styles.messageBubbleMine : styles.messageBubbleOther]}>
+      <Pressable
+        delayLongPress={360}
+        disabled={!canDelete}
+        onLongPress={onLongPress}
+        style={[
+          styles.messageBubble,
+          isMine ? styles.messageBubbleMine : styles.messageBubbleOther,
+          isDeleted && styles.messageBubbleDeleted,
+        ]}
+      >
         {!isMine ? <Text style={styles.senderName}>{message.senderName}</Text> : null}
-        <Text style={styles.messageText}>{message.text}</Text>
+        <Text style={[styles.messageText, isDeleted && styles.messageDeletedText]}>
+          {isDeleted ? 'Mensaje eliminado' : message.text}
+        </Text>
         <Text style={[styles.messageTime, isMine && styles.messageTimeMine]}>{formatChatTime(message.createdAt)}</Text>
-      </View>
+      </Pressable>
     </View>
   )
 }
@@ -445,6 +521,11 @@ const styles = StyleSheet.create({
     backgroundColor: '#DCF8E7',
     borderTopRightRadius: 6,
   },
+  messageBubbleDeleted: {
+    backgroundColor: '#F1F0EE',
+    borderColor: '#E2E0DC',
+    borderWidth: 1,
+  },
   senderName: {
     color: '#8C4BD6',
     fontSize: 13,
@@ -458,6 +539,11 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     letterSpacing: 0,
     lineHeight: 22,
+  },
+  messageDeletedText: {
+    color: '#7A817D',
+    fontStyle: 'italic',
+    fontWeight: '600',
   },
   messageTime: {
     alignSelf: 'flex-end',
