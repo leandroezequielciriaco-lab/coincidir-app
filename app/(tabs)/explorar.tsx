@@ -37,6 +37,7 @@ import {
 import type { LucideIcon } from 'lucide-react-native'
 
 import { PressScale } from '../../components/home/PressScale'
+import { activityCategories, type ActivityCategoryId } from '../../constants/activityCategories'
 import { getFirebaseServices } from '../../firebaseConfig'
 import { getActivityRecommendationScore, getActivityRecommendationTerms } from '../../lib/recommendations'
 import { defaultActivityImage, getCategoryImage } from '../../utils/categoryImages'
@@ -48,6 +49,10 @@ type RecordItem = {
 }
 
 type SortMode = 'recommended' | 'recent' | 'popular'
+type QuickFilterItem = {
+  id: 'all' | ActivityCategoryId
+  label: string
+}
 type AdvancedFilters = {
   category: string
   date: string
@@ -71,7 +76,35 @@ type ExploreCardItem = {
   Icon: LucideIcon
 }
 
-const quickFilters = ['Todas', 'Hoy', 'Esta semana', 'Gratis', 'Aire libre', 'Yoga', 'Running', 'Sociales']
+const quickCategoryLabels: Record<ActivityCategoryId, string> = {
+  culture: 'Cultura',
+  groups: 'Sociales',
+  hobbies: 'Juegos',
+  outdoor: 'Aire libre',
+  private: 'Privados',
+  sports: 'Deportes',
+  training: 'Entrenamiento',
+  wellness: 'Bienestar',
+}
+
+const quickCategoryLegacyTerms: Record<ActivityCategoryId, string[]> = {
+  culture: ['Cultura'],
+  groups: ['Sociales', 'Grupo', 'Grupales'],
+  hobbies: ['Juegos', 'Hobbies'],
+  outdoor: ['Aire libre', 'Al aire libre', 'Outdoor'],
+  private: ['Privados', 'Espacios privados', 'Private'],
+  sports: ['Deportes', 'Sports'],
+  training: ['Entrenamiento', 'Movimiento'],
+  wellness: ['Bienestar', 'Wellness'],
+}
+
+const quickFilters: QuickFilterItem[] = [
+  { id: 'all', label: 'Todas' },
+  ...activityCategories.map((category) => ({
+    id: category.id,
+    label: quickCategoryLabels[category.id],
+  })),
+]
 const categoryFilters = ['Todas', 'Aire libre', 'Deportes', 'Bienestar', 'Sociales', 'Espacios privados']
 const dateFilters = ['Todas', 'Hoy', 'Esta semana']
 const priceFilters = ['Todos', 'Gratis', 'Pago']
@@ -147,6 +180,7 @@ function getSearchText(item: RecordItem) {
     data.title,
     data.categoryId,
     data.category,
+    data.categoryLabel,
     data.subcategory,
     data.location,
     data.city,
@@ -195,16 +229,40 @@ function matchesCategory(item: RecordItem, filter: string) {
   return terms.some((term) => text.includes(term))
 }
 
+function matchesCategoryId(item: RecordItem, categoryId: ActivityCategoryId) {
+  const category = activityCategories.find((item) => item.id === categoryId)
+  if (!category) return false
+
+  const data = item.data
+  const recordCategoryId = normalize(data.categoryId)
+  if (recordCategoryId === categoryId) return true
+
+  const terms = [
+    category.id,
+    category.label,
+    quickCategoryLabels[category.id],
+    ...(category.legacyLabels ?? []),
+    ...quickCategoryLegacyTerms[category.id],
+  ].map(normalize)
+  const legacyCategoryText = normalize([
+    data.category,
+    data.categoryLabel,
+  ].filter(Boolean).join(' '))
+
+  if (terms.some((term) => term && legacyCategoryText.includes(term))) return true
+
+  const text = getSearchText(item)
+  return terms.some((term) => term && text.includes(term))
+}
+
 function matchesLocation(item: RecordItem, filter: string) {
   if (filter === 'Todas') return true
   return normalize([item.data.city, item.data.location].filter(Boolean).join(' ')).includes(normalize(filter))
 }
 
-function matchesQuickFilter(item: RecordItem, filter: string) {
-  if (filter === 'Todas') return true
-  if (filter === 'Hoy' || filter === 'Esta semana') return matchesDate(item, filter)
-  if (filter === 'Gratis') return matchesPrice(item, 'Gratis')
-  return matchesCategory(item, filter)
+function matchesQuickFilter(item: RecordItem, filter: QuickFilterItem) {
+  if (filter.id === 'all') return true
+  return matchesCategoryId(item, filter.id)
 }
 
 function sortRecords(items: RecordItem[], sort: SortMode, userInterests: unknown[] = []) {
@@ -236,14 +294,15 @@ function getCardImage(item: RecordItem) {
   return getCategoryImage(item.source === 'group' ? { category: 'Grupales', ...item.data } : item.data)
 }
 
-function getQuickIcon(label: string): LucideIcon {
-  if (label === 'Hoy') return CalendarDays
-  if (label === 'Esta semana') return Star
-  if (label === 'Gratis') return DollarSign
-  if (label === 'Aire libre') return Leaf
-  if (label === 'Yoga') return Sprout
-  if (label === 'Running') return Dumbbell
-  if (label === 'Sociales') return UsersRound
+function getQuickIcon(filter: QuickFilterItem): LucideIcon {
+  if (filter.id === 'outdoor') return Leaf
+  if (filter.id === 'sports') return Dumbbell
+  if (filter.id === 'training') return CalendarDays
+  if (filter.id === 'wellness') return Sprout
+  if (filter.id === 'groups') return UsersRound
+  if (filter.id === 'culture') return Star
+  if (filter.id === 'hobbies') return DollarSign
+  if (filter.id === 'private') return CalendarDays
   return Leaf
 }
 
@@ -278,7 +337,7 @@ export default function ExplorarScreen() {
   const [isLoading, setIsLoading] = useState(true)
   const [query, setQuery] = useState('')
   const [debouncedQuery, setDebouncedQuery] = useState('')
-  const [quickFilter, setQuickFilter] = useState('Todas')
+  const [quickFilter, setQuickFilter] = useState<QuickFilterItem>(quickFilters[0])
   const [filters, setFilters] = useState<AdvancedFilters>(initialAdvancedFilters)
   const [draftFilters, setDraftFilters] = useState<AdvancedFilters>(initialAdvancedFilters)
   const [isFilterVisible, setIsFilterVisible] = useState(false)
@@ -381,7 +440,7 @@ export default function ExplorarScreen() {
   const resetFilters = () => {
     setDraftFilters(initialAdvancedFilters)
     setFilters(initialAdvancedFilters)
-    setQuickFilter('Todas')
+    setQuickFilter(quickFilters[0])
     setQuery('')
   }
 
@@ -416,14 +475,14 @@ export default function ExplorarScreen() {
           contentContainerStyle={styles.quickList}
           data={quickFilters}
           horizontal
-          keyExtractor={(item) => item}
+          keyExtractor={(item) => item.id}
           renderItem={({ item }) => (
-            <PressScale onPress={() => setQuickFilter(item)} scaleTo={0.96} style={[styles.quickChip, quickFilter === item && styles.quickChipActive]}>
+            <PressScale onPress={() => setQuickFilter(item)} scaleTo={0.96} style={[styles.quickChip, quickFilter.id === item.id && styles.quickChipActive]}>
               {(() => {
                 const QuickIcon = getQuickIcon(item)
-                return <QuickIcon color={quickFilter === item ? '#006A32' : '#063C31'} size={20} strokeWidth={2.3} />
+                return <QuickIcon color={quickFilter.id === item.id ? '#006A32' : '#063C31'} size={20} strokeWidth={2.3} />
               })()}
-              <Text style={[styles.quickChipText, quickFilter === item && styles.quickChipTextActive]}>{item}</Text>
+              <Text style={[styles.quickChipText, quickFilter.id === item.id && styles.quickChipTextActive]}>{item.label}</Text>
             </PressScale>
           )}
           showsHorizontalScrollIndicator={false}
