@@ -7,12 +7,13 @@ import { onAuthStateChanged } from 'firebase/auth'
 import {
   Bell,
   CalendarClock,
+  CircleAlert,
   CheckCircle2,
   ChevronLeft,
   Compass,
-  Heart,
   Mail,
   MessageCircle,
+  UserRound,
 } from 'lucide-react-native'
 import type { LucideIcon } from 'lucide-react-native'
 
@@ -27,12 +28,112 @@ import {
 
 const EXPLORE_ROUTE = '/explorar' as Href
 
-function getNotificationIcon(type: NotificationType): LucideIcon {
-  if (type === 'invite') return Mail
-  if (type === 'interest') return Heart
-  if (type === 'message') return MessageCircle
-  if (type === 'confirmed') return CheckCircle2
-  return CalendarClock
+type NotificationTone = {
+  Icon: LucideIcon
+  accent: string
+  background: string
+  border: string
+  cardBackground: string
+}
+
+function getNotificationTone(type: NotificationType): NotificationTone {
+  if (type === 'interest') {
+    return {
+      Icon: UserRound,
+      accent: '#0E7A3A',
+      background: '#DFF4D9',
+      border: '#C6EBC1',
+      cardBackground: '#FBFEF9',
+    }
+  }
+
+  if (type === 'message') {
+    return {
+      Icon: MessageCircle,
+      accent: '#5A32C8',
+      background: '#EDE3FF',
+      border: '#DED0F7',
+      cardBackground: '#FDFBFF',
+    }
+  }
+
+  if (type === 'activity_update' || type === 'activity_updated') {
+    return {
+      Icon: CalendarClock,
+      accent: '#B55400',
+      background: '#FFE8BF',
+      border: '#F9D49A',
+      cardBackground: '#FFFCF7',
+    }
+  }
+
+  if (type === 'activity_cancelled') {
+    return {
+      Icon: CircleAlert,
+      accent: '#B42318',
+      background: '#FFE0DC',
+      border: '#F4C5BE',
+      cardBackground: '#FFFBFA',
+    }
+  }
+
+  if (type === 'confirmed') {
+    return {
+      Icon: CheckCircle2,
+      accent: '#0E7A3A',
+      background: '#DFF4D9',
+      border: '#C6EBC1',
+      cardBackground: '#FBFEF9',
+    }
+  }
+
+  return {
+    Icon: Mail,
+    accent: '#0E5A44',
+    background: '#E8F3EA',
+    border: '#D3E6D4',
+    cardBackground: '#FBFEF9',
+  }
+}
+
+function trimSentence(value: string) {
+  return value.trim().replace(/\s+\./g, '.')
+}
+
+function getActivityName(notification: AppNotification) {
+  const body = notification.body.trim()
+  const fromColon = body.match(/:\s*(.+?)\.?$/)
+  if (fromColon?.[1]) return trimSentence(fromColon[1])
+
+  if (notification.type === 'interest') {
+    const match = body.match(/\binter\S*\s+en\s+(.+?)\.?$/i)
+    if (match?.[1]) return trimSentence(match[1])
+  }
+
+  if (notification.type === 'confirmed') {
+    const match = body.match(/\bconfirmad[oa] en\s+(.+?)\.?$/i)
+    if (match?.[1]) return trimSentence(match[1])
+  }
+
+  return ''
+}
+
+function getNotificationBody(notification: AppNotification, activityName: string) {
+  if (!activityName) return notification.body
+
+  if (notification.type === 'interest') {
+    return trimSentence(notification.body.replace(new RegExp(`\\s+en\\s+${escapeRegExp(activityName)}\\.?$`, 'i'), ' en tu actividad.'))
+  }
+
+  if (notification.type === 'confirmed') return 'Ya estás confirmado en la actividad.'
+  if (notification.type === 'activity_update' || notification.type === 'activity_updated') return 'La actividad cambió de horario o detalles.'
+  if (notification.type === 'activity_cancelled') return 'Se canceló una actividad que te interesa.'
+
+  return notification.body
+}
+
+function escapeRegExp(value: string) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 }
 
 function getRelativeTime(date: Date | null) {
@@ -159,7 +260,11 @@ function NotificationCard({
   notification: AppNotification
   onPress: () => void
 }) {
-  const Icon = getNotificationIcon(notification.type)
+  const tone = getNotificationTone(notification.type)
+  const Icon = tone.Icon
+  const activityName = getActivityName(notification)
+  const body = getNotificationBody(notification, activityName)
+  const hasActivity = Boolean(notification.activityId)
 
   return (
     <PressScale
@@ -167,18 +272,37 @@ function NotificationCard({
       accessibilityRole="button"
       onPress={onPress}
       scaleTo={0.98}
-      style={[styles.notificationCard, !notification.read && styles.notificationCardUnread]}
+      style={[
+        styles.notificationCard,
+        { backgroundColor: tone.cardBackground, borderColor: tone.border },
+        !notification.read && styles.notificationCardUnread,
+      ]}
     >
-      <View style={[styles.notificationIcon, !notification.read && styles.notificationIconUnread]}>
-        <Icon color={notification.read ? '#4B348A' : '#17803C'} size={23} strokeWidth={2.2} />
+      <View style={[styles.notificationIcon, { backgroundColor: tone.background }]}>
+        <Icon color={tone.accent} size={28} strokeWidth={2.2} />
       </View>
       <View style={styles.notificationCopy}>
-        <View style={styles.notificationTitleRow}>
-          <Text numberOfLines={1} style={styles.notificationTitle}>{notification.title}</Text>
-          {!notification.read ? <View style={styles.unreadDot} /> : null}
+        <View style={styles.notificationHeaderRow}>
+          <View style={styles.notificationTitleWrap}>
+            <View style={styles.notificationTitleRow}>
+              <Text numberOfLines={2} style={styles.notificationTitle}>{notification.title}</Text>
+              {!notification.read ? <View style={[styles.unreadDot, { backgroundColor: tone.accent }]} /> : null}
+            </View>
+            {activityName ? (
+              <Text numberOfLines={1} style={[styles.activityName, { color: tone.accent }]}>
+                {activityName}
+              </Text>
+            ) : null}
+          </View>
+          <Text style={styles.notificationTime}>{getRelativeTime(notification.createdAt)}</Text>
         </View>
-        <Text numberOfLines={2} style={styles.notificationBody}>{notification.body}</Text>
-        <Text style={styles.notificationTime}>{getRelativeTime(notification.createdAt)}</Text>
+        <Text numberOfLines={2} style={styles.notificationBody}>{body}</Text>
+        {hasActivity ? (
+          <View style={styles.viewActivityRow}>
+            <Text style={styles.viewActivityText}>Ver actividad</Text>
+            <Text style={styles.viewActivityArrow}>→</Text>
+          </View>
+        ) : null}
       </View>
     </PressScale>
   )
@@ -316,72 +440,105 @@ const styles = StyleSheet.create({
     letterSpacing: 0,
   },
   notificationList: {
-    gap: 12,
+    gap: 16,
   },
   notificationCard: {
-    alignItems: 'center',
+    alignItems: 'flex-start',
     backgroundColor: '#FFFFFF',
     borderColor: '#E7E7E1',
-    borderRadius: 18,
+    borderRadius: 20,
     borderWidth: 1,
     flexDirection: 'row',
-    gap: 13,
-    minHeight: 94,
-    paddingHorizontal: 14,
-    paddingVertical: 13,
+    gap: 16,
+    minHeight: 132,
+    paddingHorizontal: 18,
+    paddingVertical: 18,
     ...shadow,
   },
   notificationCardUnread: {
-    backgroundColor: '#F7FAF5',
-    borderColor: '#CFE6C9',
+    borderWidth: 1.3,
   },
   notificationIcon: {
     alignItems: 'center',
     backgroundColor: '#F4EEF9',
     borderRadius: 999,
-    height: 48,
+    height: 64,
     justifyContent: 'center',
-    width: 48,
-  },
-  notificationIconUnread: {
-    backgroundColor: '#EAF7E7',
+    marginTop: 4,
+    width: 64,
   },
   notificationCopy: {
     flex: 1,
     minWidth: 0,
   },
+  notificationHeaderRow: {
+    alignItems: 'flex-start',
+    flexDirection: 'row',
+    gap: 10,
+  },
+  notificationTitleWrap: {
+    flex: 1,
+    minWidth: 0,
+  },
   notificationTitleRow: {
-    alignItems: 'center',
+    alignItems: 'flex-start',
     flexDirection: 'row',
     gap: 8,
   },
   notificationTitle: {
     color: '#071D19',
     flex: 1,
-    fontSize: 15,
+    fontSize: 18,
     fontWeight: '900',
     letterSpacing: 0,
-    lineHeight: 20,
+    lineHeight: 23,
+  },
+  activityName: {
+    fontSize: 16,
+    fontWeight: '900',
+    letterSpacing: 0,
+    lineHeight: 21,
+    marginTop: 5,
   },
   unreadDot: {
     backgroundColor: '#17803C',
     borderRadius: 999,
-    height: 9,
-    width: 9,
+    height: 8,
+    marginTop: 7,
+    width: 8,
   },
   notificationBody: {
-    color: '#56645F',
-    fontSize: 13,
-    fontWeight: '700',
+    color: '#1D2B28',
+    fontSize: 15,
+    fontWeight: '600',
     letterSpacing: 0,
-    lineHeight: 18,
-    marginTop: 4,
+    lineHeight: 21,
+    marginTop: 7,
   },
   notificationTime: {
-    color: '#4B348A',
-    fontSize: 12,
+    color: '#56645F',
+    fontSize: 13,
+    fontWeight: '800',
+    letterSpacing: 0,
+    lineHeight: 18,
+  },
+  viewActivityRow: {
+    alignItems: 'center',
+    alignSelf: 'flex-end',
+    flexDirection: 'row',
+    gap: 7,
+    marginTop: 16,
+  },
+  viewActivityText: {
+    color: '#006A32',
+    fontSize: 15,
     fontWeight: '900',
     letterSpacing: 0,
-    marginTop: 7,
+  },
+  viewActivityArrow: {
+    color: '#006A32',
+    fontSize: 23,
+    fontWeight: '800',
+    lineHeight: 24,
   },
 })
