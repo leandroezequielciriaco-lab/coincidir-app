@@ -26,6 +26,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context'
 
 import { getFirebaseServices } from '../firebaseConfig'
 import CoincidirLogo from '../components/CoincidirLogo'
+import GoogleLogo from '../components/GoogleLogo'
 import { styles } from '../components/LoginScreen.styles'
 
 WebBrowser.maybeCompleteAuthSession()
@@ -448,21 +449,24 @@ export default function LoginScreen() {
               <View style={styles.divider} />
             </View>
 
-            <View style={styles.socialRow}>
-              <Pressable
-                accessibilityLabel="Ingresar con Google"
-                accessibilityRole="button"
-                disabled={isSubmitting || isGoogleSubmitting}
-                onPress={handleGoogleLogin}
-                style={styles.socialButton}
-              >
-                {isGoogleSubmitting ? (
-                  <ActivityIndicator color="#155C47" />
-                ) : (
-                  <FontAwesome5 color="#4285F4" name="google" size={25} />
-                )}
-              </Pressable>
+            <Pressable
+              accessibilityLabel="Continuar con Google"
+              accessibilityRole="button"
+              disabled={isSubmitting || isGoogleSubmitting}
+              onPress={handleGoogleLogin}
+              style={styles.googleButton}
+            >
+              {isGoogleSubmitting ? (
+                <ActivityIndicator color="#155C47" />
+              ) : (
+                <>
+                  <GoogleLogo size={23} />
+                  <Text style={styles.googleButtonText}>Continuar con Google</Text>
+                </>
+              )}
+            </Pressable>
 
+            <View style={styles.socialRow}>
               <Pressable
                 accessibilityLabel="Ingresar con Apple"
                 accessibilityRole="button"

@@ -34,6 +34,7 @@ import {
 } from 'lucide-react-native'
 
 import CoincidirLogo from './CoincidirLogo'
+import GoogleLogo from './GoogleLogo'
 import { styles } from './RegisterScreen.styles'
 import { getFirebaseServices } from '../firebaseConfig'
 
@@ -492,20 +493,24 @@ export default function RegisterScreen() {
               <View style={styles.divider} />
             </View>
 
+            <Pressable
+              accessibilityLabel="Continuar con Google"
+              accessibilityRole="button"
+              disabled={isSubmitting || isGoogleSubmitting}
+              onPress={handleGoogleRegistration}
+              style={styles.googleButton}
+            >
+              {isGoogleSubmitting ? (
+                <ActivityIndicator color="#155C47" />
+              ) : (
+                <>
+                  <GoogleLogo size={23} />
+                  <Text style={styles.googleButtonText}>Continuar con Google</Text>
+                </>
+              )}
+            </Pressable>
+
             <View style={styles.socialRow}>
-              <Pressable
-                accessibilityLabel="Continuar con Google"
-                accessibilityRole="button"
-                disabled={isSubmitting || isGoogleSubmitting}
-                onPress={handleGoogleRegistration}
-                style={styles.socialButton}
-              >
-                {isGoogleSubmitting ? (
-                  <ActivityIndicator color="#155C47" />
-                ) : (
-                  <Text style={[styles.socialText, styles.googleText]}>G</Text>
-                )}
-              </Pressable>
               <Pressable
                 accessibilityLabel="Continuar con Apple"
                 accessibilityRole="button"
