@@ -45,7 +45,7 @@ import type { LucideIcon } from 'lucide-react-native'
 import { PressScale } from '../../components/home/PressScale'
 import { InviteFriendsSheet, type InviteShareTarget } from '../../components/InviteFriendsSheet'
 import { getFirebaseServices } from '../../firebaseConfig'
-import { notifyActivityCancelled, notifyActivityConfirmed, notifyActivityInterest } from '../../lib/notifications'
+import { notifyActivityCancelled, notifyActivityConfirmed, notifyActivityInterest, notifyActivityRejected } from '../../lib/notifications'
 import { getCategoryImage } from '../../utils/categoryImages'
 
 type ActivityData = Record<string, unknown>
@@ -60,7 +60,7 @@ type InterestedUser = {
   phone: string
   uid: string
 }
-type InterestedAction = 'confirm' | 'invite' | 'write'
+type InterestedAction = 'confirm' | 'invite' | 'reject' | 'write'
 
 function readString(value: unknown, fallback = '') {
   return typeof value === 'string' && value.trim() ? value.trim() : fallback
@@ -729,6 +729,87 @@ export default function ActivityDetailScreen() {
     }
   }
 
+  const rejectInterestedUser = (user: InterestedUser) => {
+    if (!activityId || !activity || detail.isCancelled || isInterestedActionPending(user.uid, 'reject')) return
+
+    Alert.alert(
+      'Rechazar solicitud',
+      '¿Rechazar esta solicitud?',
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        {
+          text: 'Rechazar',
+          style: 'destructive',
+          onPress: () => {
+            void rejectInterestedUserNow(user)
+          },
+        },
+      ],
+    )
+  }
+
+  const rejectInterestedUserNow = async (user: InterestedUser) => {
+    if (!activityId || !activity || detail.isCancelled || isInterestedActionPending(user.uid, 'reject')) return
+
+    setInterestedActionPending(user.uid, 'reject', true)
+    try {
+      const { db } = getFirebaseServices()
+      const targetRef = doc(db, 'activities', activityId)
+
+      const result = await runTransaction(db, async (transaction) => {
+        const snapshot = await transaction.get(targetRef)
+        if (!snapshot.exists()) return 'missing'
+
+        const data = snapshot.data() as ActivityData
+        if (readString(data.status) === 'cancelled') return 'cancelled'
+
+        const wasInterested = isUserInterested(data, user.uid)
+        const currentInterestedCount = getInterestedCount(data)
+        const nextInterestedCount = Math.max(0, currentInterestedCount - (wasInterested ? 1 : 0))
+
+        if (!wasInterested) return 'not-interested'
+
+        transaction.update(targetRef, {
+          [`interestedUsers.${user.uid}`]: deleteField(),
+          interestedCount: nextInterestedCount,
+          updatedAt: serverTimestamp(),
+        })
+
+        return 'rejected'
+      })
+
+      if (result === 'missing') {
+        Alert.alert('Actividad no disponible', 'No encontramos esta actividad para rechazar la solicitud.')
+        return
+      }
+
+      if (result === 'cancelled') {
+        Alert.alert('Actividad cancelada', 'No podés rechazar solicitudes en una actividad cancelada.')
+        return
+      }
+
+      if (result === 'not-interested') {
+        Alert.alert('Solicitud no disponible', `${user.name} ya no figura como interesado.`)
+        return
+      }
+
+      Alert.alert('Solicitud rechazada', `${user.name} fue quitado de personas interesadas.`)
+
+      notifyActivityRejected({
+        activityId,
+        activityTitle: detail.title,
+        organizerId: currentUserId ?? undefined,
+        rejectedUserId: user.uid,
+      }).catch((error) => {
+        if (__DEV__) console.warn('rejection-notification-create-error', error)
+      })
+    } catch {
+      Alert.alert('No pudimos rechazar', 'Intentá nuevamente en unos segundos.')
+    } finally {
+      setInterestedActionPending(user.uid, 'reject', false)
+    }
+  }
+
   const cancelActivityNow = async () => {
     if (!activityId || !currentUserId || isCancellingActivity) return
 
@@ -1062,6 +1143,20 @@ export default function ActivityDetailScreen() {
                           <ActivityIndicator color="#006A32" size="small" />
                         ) : (
                           <Text style={styles.futureActionText}>Confirmar</Text>
+                        )}
+                      </PressScale>
+                      <PressScale
+                        accessibilityLabel={`Rechazar a ${user.name}`}
+                        accessibilityRole="button"
+                        disabled={detail.isCancelled || isInterestedActionPending(user.uid, 'reject')}
+                        onPress={() => rejectInterestedUser(user)}
+                        scaleTo={0.97}
+                        style={[styles.futureAction, styles.rejectAction, detail.isCancelled && styles.futureActionDisabled]}
+                      >
+                        {isInterestedActionPending(user.uid, 'reject') ? (
+                          <ActivityIndicator color="#B42318" size="small" />
+                        ) : (
+                          <Text style={styles.rejectActionText}>Rechazar</Text>
                         )}
                       </PressScale>
                     </View>
@@ -1431,6 +1526,15 @@ const styles = StyleSheet.create({
   },
   futureActionText: {
     color: '#006A32',
+    fontSize: 13,
+    fontWeight: '900',
+    letterSpacing: 0,
+  },
+  rejectAction: {
+    borderColor: '#F4C7C2',
+  },
+  rejectActionText: {
+    color: '#B42318',
     fontSize: 13,
     fontWeight: '900',
     letterSpacing: 0,

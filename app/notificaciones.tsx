@@ -77,6 +77,16 @@ function getNotificationTone(type: NotificationType): NotificationTone {
     }
   }
 
+  if (type === 'rejected') {
+    return {
+      Icon: CircleAlert,
+      accent: '#8A3A32',
+      background: '#F1E7E5',
+      border: '#E4D2CF',
+      cardBackground: '#FFFBFA',
+    }
+  }
+
   if (type === 'confirmed') {
     return {
       Icon: CheckCircle2,
@@ -115,6 +125,11 @@ function getActivityName(notification: AppNotification) {
     if (match?.[1]) return trimSentence(match[1])
   }
 
+  if (notification.type === 'rejected') {
+    const match = body.match(/\bsolicitud para\s+(.+?)\s+no fue aprobada\.?$/i)
+    if (match?.[1]) return trimSentence(match[1])
+  }
+
   return ''
 }
 
@@ -126,6 +141,7 @@ function getNotificationBody(notification: AppNotification, activityName: string
   }
 
   if (notification.type === 'confirmed') return 'Ya estás confirmado en la actividad.'
+  if (notification.type === 'rejected') return 'Tu solicitud no fue aprobada.'
   if (notification.type === 'activity_update' || notification.type === 'activity_updated') return 'La actividad cambió de horario o detalles.'
   if (notification.type === 'activity_cancelled') return 'Se canceló una actividad que te interesa.'
 

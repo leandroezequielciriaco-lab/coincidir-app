@@ -15,7 +15,7 @@ import {
 
 import { getFirebaseServices } from '../firebaseConfig'
 
-export type NotificationType = 'activity_cancelled' | 'activity_update' | 'activity_updated' | 'confirmed' | 'interest' | 'invite' | 'message'
+export type NotificationType = 'activity_cancelled' | 'activity_update' | 'activity_updated' | 'confirmed' | 'interest' | 'invite' | 'message' | 'rejected'
 
 export type AppNotification = {
   activityId?: string
@@ -53,6 +53,13 @@ export type NotifyActivityConfirmedInput = {
   organizerId?: string
 }
 
+export type NotifyActivityRejectedInput = {
+  activityId: string
+  activityTitle: string
+  organizerId?: string
+  rejectedUserId: string
+}
+
 export type NotifyLinkedActivityUsersInput = {
   activity: Record<string, unknown>
   activityId: string
@@ -85,6 +92,7 @@ function readNotificationType(value: unknown): NotificationType {
     || value === 'interest'
     || value === 'invite'
     || value === 'message'
+    || value === 'rejected'
   ) return value
   return 'activity_update'
 }
@@ -281,6 +289,24 @@ export async function notifyActivityConfirmed({
     title: 'Te confirmaron en una actividad',
     type: 'confirmed',
     userId: confirmedUserId,
+  })
+}
+
+export async function notifyActivityRejected({
+  activityId,
+  activityTitle,
+  organizerId,
+  rejectedUserId,
+}: NotifyActivityRejectedInput) {
+  if (!activityId || !rejectedUserId) return null
+
+  return createNotification({
+    activityId,
+    body: `Tu solicitud para ${activityTitle} no fue aprobada.`,
+    senderId: organizerId,
+    title: 'Solicitud no aprobada',
+    type: 'rejected',
+    userId: rejectedUserId,
   })
 }
 
