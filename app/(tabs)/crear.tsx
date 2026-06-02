@@ -101,6 +101,7 @@ type ActivityFormPayload = {
 
 const hasGoogleMapsApiKey = Boolean(process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY)
 const shouldShowMapConfigNotice = Platform.OS === 'android' && !hasGoogleMapsApiKey
+const canUseNativeMap = !shouldShowMapConfigNotice
 const mapProvider = Platform.OS === 'android' && hasGoogleMapsApiKey ? PROVIDER_GOOGLE : undefined
 const weekDays = ['L', 'M', 'M', 'J', 'V', 'S', 'D']
 const monthNames = [
@@ -927,7 +928,7 @@ export default function CrearScreen() {
             onPress={openLocationPicker}
             style={styles.createMapCard}
           >
-            {selectedLocation ? (
+            {selectedLocation && canUseNativeMap ? (
               <MapView
                 mapType="standard"
                 provider={mapProvider}
@@ -950,6 +951,11 @@ export default function CrearScreen() {
                   pinColor="#0E5A44"
                 />
               </MapView>
+            ) : selectedLocation ? (
+              <View style={styles.createMapFallbackPreview}>
+                <MapPin color="#0E5A44" size={34} strokeWidth={2.1} />
+                <Text style={styles.createMapEmptyText}>{formatCoordinateAddress(selectedLocation.latitude, selectedLocation.longitude)}</Text>
+              </View>
             ) : (
               <View style={styles.createMapEmpty}>
                 <MapPin color="#0E5A44" size={34} strokeWidth={2.1} />
@@ -1013,47 +1019,50 @@ export default function CrearScreen() {
             </View>
 
             <View style={styles.locationPickerMapFrame}>
-              <MapView
-                loadingEnabled
-                mapType="standard"
-                moveOnMarkerPress={false}
-                onLongPress={updateDraftPin}
-                onPress={updateDraftPin}
-                onRegionChangeComplete={setMapRegion}
-                provider={mapProvider}
-                region={mapRegion}
-                showsCompass
-                showsMyLocationButton
-                style={styles.locationPickerMap}
-                toolbarEnabled={false}
-              >
-                <Marker
-                  coordinate={draftPin}
-                  draggable
-                  onDragEnd={(event) => {
-                    setDraftPin(event.nativeEvent.coordinate)
-                    setMapRegion((value) => ({
-                      ...value,
-                      latitude: event.nativeEvent.coordinate.latitude,
-                      longitude: event.nativeEvent.coordinate.longitude,
-                    }))
-                  }}
-                  pinColor="#0E5A44"
-                />
-              </MapView>
-              <View pointerEvents="none" style={styles.locationCenterPin}>
-                <MapPin color="#00613F" fill="#00613F" size={38} strokeWidth={2.2} />
-              </View>
-              {shouldShowMapConfigNotice ? <MapConfigNotice /> : null}
-              {shouldShowMapConfigNotice ? (
+              {canUseNativeMap ? (
+                <MapView
+                  loadingEnabled
+                  mapType="standard"
+                  moveOnMarkerPress={false}
+                  onLongPress={updateDraftPin}
+                  onPress={updateDraftPin}
+                  onRegionChangeComplete={setMapRegion}
+                  provider={mapProvider}
+                  region={mapRegion}
+                  showsCompass
+                  showsMyLocationButton
+                  style={styles.locationPickerMap}
+                  toolbarEnabled={false}
+                >
+                  <Marker
+                    coordinate={draftPin}
+                    draggable
+                    onDragEnd={(event) => {
+                      setDraftPin(event.nativeEvent.coordinate)
+                      setMapRegion((value) => ({
+                        ...value,
+                        latitude: event.nativeEvent.coordinate.latitude,
+                        longitude: event.nativeEvent.coordinate.longitude,
+                      }))
+                    }}
+                    pinColor="#0E5A44"
+                  />
+                </MapView>
+              ) : (
                 <Pressable
                   accessibilityLabel="Selector alternativo de ubicación"
                   accessibilityRole="button"
                   onLayout={(event) => setFallbackMapSize(event.nativeEvent.layout)}
                   onPress={moveFallbackPin}
-                  style={styles.locationFallbackTapLayer}
-                />
-              ) : null}
+                  style={styles.locationFallbackMap}
+                >
+                  <Text style={styles.mapFallbackText}>Tocá el área para ajustar el punto.</Text>
+                </Pressable>
+              )}
+              <View pointerEvents="none" style={styles.locationCenterPin}>
+                <MapPin color="#00613F" fill="#00613F" size={38} strokeWidth={2.2} />
+              </View>
+              {shouldShowMapConfigNotice ? <MapConfigNotice /> : null}
             </View>
 
             <View style={styles.locationPickerFooter}>
@@ -1660,6 +1669,13 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  createMapFallbackPreview: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingHorizontal: 16,
   },
   createMapEmptyText: {
     color: '#0E5A44',
@@ -2363,9 +2379,12 @@ const styles = StyleSheet.create({
     marginLeft: -19,
     marginTop: -38,
   },
-  locationFallbackTapLayer: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'transparent',
+  locationFallbackMap: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    padding: 20,
+    backgroundColor: '#E7E2D8',
   },
   locationPickerFooter: {
     paddingHorizontal: 20,
