@@ -28,6 +28,11 @@
       "output": "static",
       "favicon": "./assets/images/coincidir-logo-official.png"
     },
+    "extra": {
+  "eas": {
+    "projectId": "8b6b49e5-e4e5-467f-a200-fb90c6d3493b"
+  }
+},
     "plugins": [
       "expo-router",
       [
