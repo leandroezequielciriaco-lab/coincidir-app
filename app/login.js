@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import {
   ActivityIndicator,
   Alert,
@@ -10,9 +10,7 @@ import {
   TextInput,
   View,
 } from 'react-native'
-import { makeRedirectUri, ResponseType } from 'expo-auth-session'
-import * as Google from 'expo-auth-session/providers/google'
-import * as WebBrowser from 'expo-web-browser'
+import { GoogleSignin, statusCodes } from '@react-native-google-signin/google-signin'
 import { useRouter } from 'expo-router'
 import {
   GoogleAuthProvider,
@@ -29,29 +27,13 @@ import CoincidirLogo from '../components/CoincidirLogo'
 import GoogleLogo from '../components/GoogleLogo'
 import { styles } from '../components/LoginScreen.styles'
 
-WebBrowser.maybeCompleteAuthSession()
-
-const MISSING_GOOGLE_CLIENT_ID = 'missing-google-client-id'
 const googleWebClientId = process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID
-const googleRedirectUri = makeRedirectUri({
-  scheme: 'coincidirapp',
-  path: 'oauthredirect',
-})
+const googleIosClientId = process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID
 
-const googleClientConfig = {
-  clientId: googleWebClientId || MISSING_GOOGLE_CLIENT_ID,
+GoogleSignin.configure({
   webClientId: googleWebClientId,
-  iosClientId: process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID,
-  androidClientId: process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID,
-  redirectUri: googleRedirectUri,
-  responseType: ResponseType.IdToken,
-  selectAccount: true,
-  usePKCE: false,
-}
-
-function getGoogleIdToken(response) {
-  return response?.params?.id_token || response?.authentication?.idToken || ''
-}
+  iosClientId: googleIosClientId,
+})
 
 function getFriendlyLoginError(error) {
   const code = error?.code
@@ -94,7 +76,32 @@ function getFriendlyGoogleLoginError(error) {
     return 'No pudimos conectar. Revisá tu conexión e intentá de nuevo.'
   }
 
+  if (code === statusCodes.PLAY_SERVICES_NOT_AVAILABLE) {
+    return 'Google Play Services no está disponible o necesita actualizarse.'
+  }
+
   return 'No pudimos ingresar con Google. Intentá nuevamente en unos segundos.'
+}
+
+async function getGoogleNativeIdToken() {
+  if (Platform.OS === 'android') {
+    await GoogleSignin.hasPlayServices({
+      showPlayServicesUpdateDialog: true,
+    })
+  }
+
+  const signInResult = await GoogleSignin.signIn()
+
+  if (signInResult.type === 'cancelled') {
+    return ''
+  }
+
+  if (signInResult.data?.idToken) {
+    return signInResult.data.idToken
+  }
+
+  const tokens = await GoogleSignin.getTokens()
+  return tokens.idToken || ''
 }
 
 async function saveGoogleProfile(user) {
@@ -142,75 +149,15 @@ export default function LoginScreen() {
   const [isGoogleSubmitting, setIsGoogleSubmitting] = useState(false)
   const [error, setError] = useState('')
 
-  const [googleRequest, , promptGoogleAsync] = Google.useIdTokenAuthRequest(
-    googleClientConfig,
-  )
-
   const canSubmit = useMemo(
     () => email.trim().length > 0 && password.length > 0,
     [email, password],
   )
 
-  useEffect(() => {
-    if (googleRequest) {
-      console.log('Google request listo')
-      console.log('request', {
-        clientId: googleRequest.clientId,
-        redirectUri: googleRequest.redirectUri,
-        responseType: googleRequest.responseType,
-        scopes: googleRequest.scopes,
-        usePKCE: googleRequest.usePKCE,
-      })
-      console.log('redirectUri usado', googleRequest.redirectUri)
-      console.log('clientId usado', googleRequest.clientId)
-      googleRequest
-        .makeAuthUrlAsync(Google.discovery)
-        .then((authUrl) => {
-          console.log('Google auth URL', authUrl)
-        })
-        .catch((requestError) => {
-          console.error('Error login Google', requestError)
-        })
-    } else {
-      console.log('redirectUri usado', googleRedirectUri)
-      console.log('clientId usado', googleWebClientId || MISSING_GOOGLE_CLIENT_ID)
-    }
-  }, [googleRequest])
-
-  const completeGoogleLogin = async (googleResponse) => {
-    console.log('response', googleResponse)
-    console.log('Respuesta Google', {
-      type: googleResponse.type,
-      params: googleResponse.params ? Object.keys(googleResponse.params) : [],
-      error: googleResponse.error || null,
-      errorCode: googleResponse.errorCode || null,
-      hasAuthentication: Boolean(googleResponse.authentication),
-    })
-
-    if (googleResponse.type === 'cancel' || googleResponse.type === 'dismiss') {
-      setIsGoogleSubmitting(false)
-      return
-    }
-
-    if (googleResponse.type !== 'success') {
-      console.error('Error login Google', {
-        response: googleResponse,
-        redirectUri: googleRequest?.redirectUri || googleRedirectUri,
-        clientId: googleRequest?.clientId || googleWebClientId || MISSING_GOOGLE_CLIENT_ID,
-      })
-      setError('No pudimos completar el ingreso con Google. Revisá la consola para ver el error completo.')
-      setIsGoogleSubmitting(false)
-      return
-    }
-
-    const idToken = getGoogleIdToken(googleResponse)
-
+  const completeGoogleLogin = async (idToken) => {
     if (!idToken) {
       console.error('Error login Google', {
         message: 'Google no devolvió id_token.',
-        response: googleResponse,
-        redirectUri: googleRequest?.redirectUri || googleRedirectUri,
-        clientId: googleRequest?.clientId || googleWebClientId || MISSING_GOOGLE_CLIENT_ID,
       })
       setError('Google no devolvió un token válido. Revisá la configuración del cliente OAuth.')
       setIsGoogleSubmitting(false)
@@ -277,14 +224,8 @@ export default function LoginScreen() {
     if (!googleWebClientId) {
       console.error('Error login Google', {
         message: 'Falta EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID.',
-        redirectUri: googleRedirectUri,
       })
       setError('Falta configurar el Web Client ID de Google.')
-      return
-    }
-
-    if (!googleRequest) {
-      setError('Google Sign-In todavía se está preparando. Intentá nuevamente en unos segundos.')
       return
     }
 
@@ -292,25 +233,21 @@ export default function LoginScreen() {
     setIsGoogleSubmitting(true)
 
     try {
-      console.log('request', {
-        clientId: googleRequest.clientId,
-        redirectUri: googleRequest.redirectUri,
-        responseType: googleRequest.responseType,
-        scopes: googleRequest.scopes,
-        usePKCE: googleRequest.usePKCE,
-      })
-      console.log('redirectUri usado', googleRequest.redirectUri)
-      console.log('clientId usado', googleRequest.clientId)
+      const idToken = await getGoogleNativeIdToken()
 
-      const result = await promptGoogleAsync()
+      if (!idToken) {
+        setIsGoogleSubmitting(false)
+        return
+      }
 
-      await completeGoogleLogin(result)
+      await completeGoogleLogin(idToken)
     } catch (googlePromptError) {
-      console.error('Error login Google', {
-        error: googlePromptError,
-        redirectUri: googleRequest?.redirectUri || googleRedirectUri,
-        clientId: googleRequest?.clientId || googleWebClientId || MISSING_GOOGLE_CLIENT_ID,
-      })
+      if (googlePromptError?.code === statusCodes.SIGN_IN_CANCELLED) {
+        setIsGoogleSubmitting(false)
+        return
+      }
+
+      console.error('Error login Google', googlePromptError)
       setError(getFriendlyGoogleLoginError(googlePromptError))
       setIsGoogleSubmitting(false)
     }

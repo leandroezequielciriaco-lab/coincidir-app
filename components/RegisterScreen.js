@@ -11,9 +11,7 @@ import {
   View,
   useWindowDimensions,
 } from 'react-native'
-import { makeRedirectUri, ResponseType } from 'expo-auth-session'
-import * as Google from 'expo-auth-session/providers/google'
-import * as WebBrowser from 'expo-web-browser'
+import { GoogleSignin, statusCodes } from '@react-native-google-signin/google-signin'
 import { useRouter } from 'expo-router'
 import {
   createUserWithEmailAndPassword,
@@ -38,25 +36,13 @@ import GoogleLogo from './GoogleLogo'
 import { styles } from './RegisterScreen.styles'
 import { getFirebaseServices } from '../firebaseConfig'
 
-WebBrowser.maybeCompleteAuthSession()
-
-const MISSING_GOOGLE_CLIENT_ID = 'missing-google-client-id'
 const googleWebClientId = process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID
-const googleRedirectUri = makeRedirectUri({
-  scheme: 'coincidirapp',
-  path: 'oauthredirect',
-})
+const googleIosClientId = process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID
 
-const googleClientConfig = {
-  clientId: googleWebClientId || MISSING_GOOGLE_CLIENT_ID,
+GoogleSignin.configure({
   webClientId: googleWebClientId,
-  iosClientId: process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID,
-  androidClientId: process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID,
-  redirectUri: googleRedirectUri,
-  responseType: ResponseType.IdToken,
-  selectAccount: true,
-  usePKCE: false,
-}
+  iosClientId: googleIosClientId,
+})
 
 const INITIAL_FORM = {
   fullName: '',
@@ -64,10 +50,6 @@ const INITIAL_FORM = {
   password: '',
   birthDate: '',
   city: '',
-}
-
-function getGoogleIdToken(response) {
-  return response?.params?.id_token || response?.authentication?.idToken || ''
 }
 
 function getFriendlyAuthError(error) {
@@ -111,7 +93,32 @@ function getFriendlyGoogleLoginError(error) {
     return 'No pudimos conectar. Revisá tu conexión e intentá de nuevo.'
   }
 
+  if (code === statusCodes.PLAY_SERVICES_NOT_AVAILABLE) {
+    return 'Google Play Services no está disponible o necesita actualizarse.'
+  }
+
   return 'No pudimos ingresar con Google. Intentá nuevamente en unos segundos.'
+}
+
+async function getGoogleNativeIdToken() {
+  if (Platform.OS === 'android') {
+    await GoogleSignin.hasPlayServices({
+      showPlayServicesUpdateDialog: true,
+    })
+  }
+
+  const signInResult = await GoogleSignin.signIn()
+
+  if (signInResult.type === 'cancelled') {
+    return ''
+  }
+
+  if (signInResult.data?.idToken) {
+    return signInResult.data.idToken
+  }
+
+  const tokens = await GoogleSignin.getTokens()
+  return tokens.idToken || ''
 }
 
 function validateForm(form) {
@@ -272,10 +279,6 @@ export default function RegisterScreen() {
   const [isGoogleSubmitting, setIsGoogleSubmitting] = useState(false)
   const [isPasswordVisible, setIsPasswordVisible] = useState(false)
 
-  const [googleRequest, , promptGoogleAsync] = Google.useIdTokenAuthRequest(
-    googleClientConfig,
-  )
-
   const logoSizes = useMemo(
     () => ({
       mark: Math.min(Math.max(width * 0.17, 70), 96),
@@ -322,20 +325,7 @@ export default function RegisterScreen() {
     }
   }
 
-  const completeGoogleRegistration = async (googleResponse) => {
-    if (googleResponse.type === 'cancel' || googleResponse.type === 'dismiss') {
-      setIsGoogleSubmitting(false)
-      return
-    }
-
-    if (googleResponse.type !== 'success') {
-      setError('No pudimos completar el ingreso con Google. Revisá la consola para ver el error completo.')
-      setIsGoogleSubmitting(false)
-      return
-    }
-
-    const idToken = getGoogleIdToken(googleResponse)
-
+  const completeGoogleRegistration = async (idToken) => {
     if (!idToken) {
       setError('Google no devolvió un token válido. Revisá la configuración del cliente OAuth.')
       setIsGoogleSubmitting(false)
@@ -366,18 +356,24 @@ export default function RegisterScreen() {
       return
     }
 
-    if (!googleRequest) {
-      setError('Google Sign-In todavía se está preparando. Intentá nuevamente en unos segundos.')
-      return
-    }
-
     setError('')
     setIsGoogleSubmitting(true)
 
     try {
-      const result = await promptGoogleAsync()
-      await completeGoogleRegistration(result)
+      const idToken = await getGoogleNativeIdToken()
+
+      if (!idToken) {
+        setIsGoogleSubmitting(false)
+        return
+      }
+
+      await completeGoogleRegistration(idToken)
     } catch (googlePromptError) {
+      if (googlePromptError?.code === statusCodes.SIGN_IN_CANCELLED) {
+        setIsGoogleSubmitting(false)
+        return
+      }
+
       setError(getFriendlyGoogleLoginError(googlePromptError))
       setIsGoogleSubmitting(false)
     }
