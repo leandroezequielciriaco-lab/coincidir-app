@@ -11,7 +11,6 @@ import {
   View,
   useWindowDimensions,
 } from 'react-native'
-import { GoogleSignin, statusCodes } from '@react-native-google-signin/google-signin'
 import { useRouter } from 'expo-router'
 import {
   createUserWithEmailAndPassword,
@@ -38,11 +37,26 @@ import { getFirebaseServices } from '../firebaseConfig'
 
 const googleWebClientId = process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID
 const googleIosClientId = process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID
+let googleSignInModule = null
 
-GoogleSignin.configure({
-  webClientId: googleWebClientId,
-  iosClientId: googleIosClientId,
-})
+function getGoogleSignInModule() {
+  if (googleSignInModule) {
+    return googleSignInModule
+  }
+
+  try {
+    const module = require('@react-native-google-signin/google-signin')
+    module.GoogleSignin.configure({
+      webClientId: googleWebClientId,
+      iosClientId: googleIosClientId,
+    })
+    googleSignInModule = module
+    return googleSignInModule
+  } catch (moduleError) {
+    console.error('Google Sign-In native module no disponible', moduleError)
+    return null
+  }
+}
 
 const INITIAL_FORM = {
   fullName: '',
@@ -93,14 +107,14 @@ function getFriendlyGoogleLoginError(error) {
     return 'No pudimos conectar. Revisá tu conexión e intentá de nuevo.'
   }
 
-  if (code === statusCodes.PLAY_SERVICES_NOT_AVAILABLE) {
+  if (code === 'PLAY_SERVICES_NOT_AVAILABLE') {
     return 'Google Play Services no está disponible o necesita actualizarse.'
   }
 
   return 'No pudimos ingresar con Google. Intentá nuevamente en unos segundos.'
 }
 
-async function getGoogleNativeIdToken() {
+async function getGoogleNativeIdToken(GoogleSignin) {
   if (Platform.OS === 'android') {
     await GoogleSignin.hasPlayServices({
       showPlayServicesUpdateDialog: true,
@@ -360,7 +374,15 @@ export default function RegisterScreen() {
     setIsGoogleSubmitting(true)
 
     try {
-      const idToken = await getGoogleNativeIdToken()
+      const googleSignIn = getGoogleSignInModule()
+
+      if (!googleSignIn) {
+        setError('Google Sign-In no está disponible en este build. Podés registrarte con correo y contraseña.')
+        setIsGoogleSubmitting(false)
+        return
+      }
+
+      const idToken = await getGoogleNativeIdToken(googleSignIn.GoogleSignin)
 
       if (!idToken) {
         setIsGoogleSubmitting(false)
@@ -369,7 +391,12 @@ export default function RegisterScreen() {
 
       await completeGoogleRegistration(idToken)
     } catch (googlePromptError) {
-      if (googlePromptError?.code === statusCodes.SIGN_IN_CANCELLED) {
+      const statusCodes = googleSignInModule?.statusCodes
+
+      if (
+        googlePromptError?.code === 'SIGN_IN_CANCELLED' ||
+        googlePromptError?.code === statusCodes?.SIGN_IN_CANCELLED
+      ) {
         setIsGoogleSubmitting(false)
         return
       }
