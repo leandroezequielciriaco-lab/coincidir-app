@@ -229,13 +229,22 @@ function isJoined(record: FirestoreRecord, userId: string | null) {
   return false
 }
 
-function buildProfile(data: Record<string, unknown> | null, authName?: string | null): UserProfile {
+function buildProfile(data: Record<string, unknown> | null, authName?: string | null, authPhotoURL?: string | null): UserProfile {
   return {
     bio: readString(data?.bio, DEFAULT_BIO),
     fullName: readString(data?.fullName, readString(data?.displayName, readString(data?.name, authName ?? 'Mi perfil'))),
     interests: readList(data?.interests),
     location: readString(data?.location, readString(data?.city, DEFAULT_LOCATION)),
-    photoURL: readString(data?.photoURL),
+    photoURL: readString(
+      data?.photoURL,
+      readString(
+        data?.avatarUrl,
+        readString(
+          data?.avatarURL,
+          readString(data?.imageUrl, readString(data?.photoUrl, readString(data?.googlePhotoURL, authPhotoURL ?? ''))),
+        ),
+      ),
+    ),
   }
 }
 
@@ -244,6 +253,7 @@ export default function PerfilScreen() {
   const params = useLocalSearchParams<{ edit?: string }>()
   const [userId, setUserId] = useState<string | null>(null)
   const [authName, setAuthName] = useState<string | null>(null)
+  const [authPhotoURL, setAuthPhotoURL] = useState<string | null>(null)
   const [profile, setProfile] = useState<UserProfile>(buildProfile(null))
   const [activities, setActivities] = useState<FirestoreRecord[]>([])
   const [groups, setGroups] = useState<FirestoreRecord[]>([])
@@ -266,6 +276,7 @@ export default function PerfilScreen() {
       return onAuthStateChanged(auth, (user) => {
         setUserId(user?.uid ?? null)
         setAuthName(user?.displayName ?? null)
+        setAuthPhotoURL(user?.photoURL ?? null)
         if (!user) setIsLoading(false)
       })
     } catch {
@@ -282,7 +293,7 @@ export default function PerfilScreen() {
       return onSnapshot(
         doc(db, 'users', userId),
         (snapshot) => {
-          setProfile(buildProfile(snapshot.exists() ? snapshot.data() : null, authName))
+          setProfile(buildProfile(snapshot.exists() ? snapshot.data() : null, authName, authPhotoURL))
           setOptimisticInterests(null)
           setIsLoading(false)
         },
@@ -292,7 +303,7 @@ export default function PerfilScreen() {
       setIsLoading(false)
       return undefined
     }
-  }, [authName, userId])
+  }, [authName, authPhotoURL, userId])
 
   useEffect(() => {
     try {

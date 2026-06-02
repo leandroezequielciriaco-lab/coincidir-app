@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import {
   ActivityIndicator,
   Alert,
+  Image,
   Modal,
   Platform,
   Pressable,
@@ -38,6 +39,7 @@ type AccountData = {
   city: string
   email: string
   name: string
+  photoURL: string
 }
 
 type PasswordDraft = {
@@ -50,6 +52,7 @@ const fallbackAccount: AccountData = {
   city: 'Ciudad no configurada',
   email: 'Email no disponible',
   name: 'Sin nombre',
+  photoURL: '',
 }
 
 const emptyPasswordDraft: PasswordDraft = {
@@ -64,7 +67,7 @@ function readString(value: unknown, fallback = '') {
 
 function buildAccountData(
   profile: Record<string, unknown> | null,
-  authUser: { displayName: string | null; email: string | null } | null,
+  authUser: { displayName: string | null; email: string | null; photoURL: string | null } | null,
 ): AccountData {
   return {
     city: readString(profile?.city, readString(profile?.location, fallbackAccount.city)),
@@ -72,6 +75,16 @@ function buildAccountData(
     name: readString(
       profile?.fullName,
       readString(profile?.displayName, readString(profile?.name, readString(authUser?.displayName, fallbackAccount.name))),
+    ),
+    photoURL: readString(
+      profile?.photoURL,
+      readString(
+        profile?.avatarUrl,
+        readString(
+          profile?.avatarURL,
+          readString(profile?.imageUrl, readString(profile?.photoUrl, readString(profile?.googlePhotoURL, authUser?.photoURL ?? ''))),
+        ),
+      ),
     ),
   }
 }
@@ -223,7 +236,11 @@ export default function MiCuentaScreen() {
           <>
             <View style={styles.profileCard}>
               <View style={styles.accountIcon}>
-                <UserRound color="#17803C" size={32} strokeWidth={2.1} />
+                {account.photoURL ? (
+                  <Image source={{ uri: account.photoURL }} style={styles.accountImage} />
+                ) : (
+                  <UserRound color="#17803C" size={32} strokeWidth={2.1} />
+                )}
               </View>
               <Text numberOfLines={2} style={styles.name}>{account.name}</Text>
               <InfoRow Icon={Mail} label="Email" value={account.email} />
@@ -481,7 +498,12 @@ const styles = StyleSheet.create({
     height: 76,
     justifyContent: 'center',
     marginBottom: 14,
+    overflow: 'hidden',
     width: 76,
+  },
+  accountImage: {
+    height: '100%',
+    width: '100%',
   },
   name: {
     color: '#063C31',

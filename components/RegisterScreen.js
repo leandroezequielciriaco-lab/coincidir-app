@@ -135,6 +135,11 @@ async function getGoogleNativeIdToken(GoogleSignin) {
   return tokens.idToken || ''
 }
 
+function readProfileString(profile, field) {
+  const value = profile?.[field]
+  return typeof value === 'string' && value.trim() ? value.trim() : ''
+}
+
 function validateForm(form) {
   if (!form.fullName.trim()) {
     return 'Ingresá tu nombre completo.'
@@ -184,12 +189,22 @@ async function saveGoogleProfile(user) {
   const { db } = getFirebaseServices()
   const userRef = doc(db, 'users', user.uid)
   const userSnap = await getDoc(userRef)
+  const existingProfile = userSnap.exists() ? userSnap.data() : null
+  const googlePhotoURL = user.photoURL || ''
+  const existingPhotoURL = readProfileString(existingProfile, 'photoURL')
+  const existingAvatarURL =
+    readProfileString(existingProfile, 'avatarUrl') ||
+    readProfileString(existingProfile, 'avatarURL') ||
+    readProfileString(existingProfile, 'imageUrl') ||
+    readProfileString(existingProfile, 'photoUrl') ||
+    readProfileString(existingProfile, 'avatar')
+  const shouldUseGooglePhoto = Boolean(googlePhotoURL && !existingPhotoURL && !existingAvatarURL)
   const profile = {
     uid: user.uid,
     fullName: user.displayName || '',
     displayName: user.displayName || '',
     email: user.email || '',
-    photoURL: user.photoURL || '',
+    ...(googlePhotoURL ? { avatarUrl: googlePhotoURL, googlePhotoURL, photoURL: googlePhotoURL } : {}),
     provider: 'google',
     updatedAt: serverTimestamp(),
     lastLoginAt: serverTimestamp(),
@@ -206,6 +221,8 @@ async function saveGoogleProfile(user) {
   await setDoc(
     userRef,
     {
+      ...(googlePhotoURL ? { googlePhotoURL } : {}),
+      ...(shouldUseGooglePhoto ? { avatarUrl: googlePhotoURL, photoURL: googlePhotoURL } : {}),
       provider: 'google',
       updatedAt: serverTimestamp(),
       lastLoginAt: serverTimestamp(),
