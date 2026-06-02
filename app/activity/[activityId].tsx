@@ -60,6 +60,10 @@ type InterestedUser = {
   phone: string
   uid: string
 }
+type ConfirmedParticipant = {
+  name: string
+  uid: string
+}
 type InterestedAction = 'confirm' | 'invite' | 'reject' | 'write'
 
 function readString(value: unknown, fallback = '') {
@@ -104,6 +108,56 @@ function getParticipantCount(data: ActivityData) {
   if (typeof joinedUsers === 'object' && joinedUsers) return Object.keys(joinedUsers).length
 
   return Array.isArray(participants) ? participants.length : 0
+}
+
+function getParticipantName(uid: string, value: unknown) {
+  if (typeof value === 'object' && value) {
+    const record = value as ActivityData
+    return readString(record.name, readString(record.displayName, readString(record.fullName, `Usuario ${uid.slice(0, 6)}`)))
+  }
+
+  return `Usuario ${uid.slice(0, 6)}`
+}
+
+function getConfirmedParticipants(data: ActivityData): ConfirmedParticipant[] {
+  const participants = data.participants ?? data.attendees ?? data.members
+
+  if (typeof participants === 'object' && participants && !Array.isArray(participants)) {
+    return Object.entries(participants as Record<string, unknown>)
+      .map(([uid, value]) => ({
+        name: getParticipantName(uid, value),
+        uid,
+      }))
+  }
+
+  if (Array.isArray(participants)) {
+    return participants
+      .map((item, index) => {
+        if (typeof item === 'string') {
+          return { name: `Usuario ${item.slice(0, 6)}`, uid: item }
+        }
+
+        if (typeof item === 'object' && item) {
+          const record = item as ActivityData
+          const uid = readString(record.uid, readString(record.userId, readString(record.id, `participant-${index}`)))
+          return { name: getParticipantName(uid, record), uid }
+        }
+
+        return null
+      })
+      .filter((item): item is ConfirmedParticipant => Boolean(item))
+  }
+
+  const joinedUsers = data.joinedUsers
+  if (typeof joinedUsers === 'object' && joinedUsers && !Array.isArray(joinedUsers)) {
+    return Object.entries(joinedUsers as Record<string, unknown>)
+      .map(([uid, value]) => ({
+        name: getParticipantName(uid, value),
+        uid,
+      }))
+  }
+
+  return []
 }
 
 function getInterestedCount(data: ActivityData) {
@@ -276,9 +330,31 @@ function getOrganizerName(data: ActivityData) {
 
 function getCreatorId(data: ActivityData) {
   return readString(data.createdBy)
+    || readString(data.organizerId)
     || readString(data.creatorId)
     || readString(data.ownerId)
     || readString(data.userId)
+}
+
+function getLocationDisplayName(data: ActivityData) {
+  return readString(data.locationName)
+    || readString(data.placeName)
+    || readString(data.venueName)
+    || readString(data.location)
+    || 'Ubicación a definir'
+}
+
+function getLocationAddress(data: ActivityData, displayName: string) {
+  const address = readString(
+    data.locationAddress,
+    readString(data.address, readString(data.fullAddress, readString(data.formattedAddress))),
+  )
+
+  return address && normalize(address) !== normalize(displayName) ? address : ''
+}
+
+function getInterestedCountLabel(count: number) {
+  return count === 1 ? '1 persona interesada' : `${count} personas interesadas`
 }
 
 function getOrganizerProfile(data: ActivityData | null, profile: ActivityData | null): OrganizerProfile {
@@ -404,6 +480,7 @@ export default function ActivityDetailScreen() {
     const isFull = safeCount >= maxParticipants && !joined
     const status = readString(data.status)
     const isCancelled = status === 'cancelled'
+    const locationDisplayName = getLocationDisplayName(data)
     return {
       action,
       category: readString(data.category, 'Espacio privado'),
@@ -417,10 +494,12 @@ export default function ActivityDetailScreen() {
       isCancelled,
       isFull,
       joined,
-      location: readString(data.location, 'Ubicación a definir'),
+      location: locationDisplayName,
+      locationAddress: getLocationAddress(data, locationDisplayName),
       maxParticipants,
       organizer: getOrganizerProfile(activity, organizerProfile),
       participantCount: safeCount,
+      participants: getConfirmedParticipants(data),
       price: getPriceLabel(data),
       subcategory: readString(data.subcategory),
       time: readString(data.time, 'Horario a definir'),
@@ -496,7 +575,7 @@ export default function ActivityDetailScreen() {
   }
 
   const toggleInterest = async () => {
-    if (!activityId || !activity || !currentUserId || detail.isCancelled || isMarkingInterest) return
+    if (!activityId || !activity || !currentUserId || isOrganizer || detail.isCancelled || isMarkingInterest) return
 
     const nextInterested = !detail.interested
     setOptimisticInterested(nextInterested)
@@ -967,6 +1046,7 @@ export default function ActivityDetailScreen() {
   }
 
   const availablePlaces = Math.max(0, detail.maxParticipants - detail.participantCount)
+  const shouldShowPrimaryAction = !isOrganizer
   const inviteTarget: InviteShareTarget = {
     dateTime: `${detail.date} ${detail.time}`,
     id: activityId,
@@ -1006,13 +1086,16 @@ export default function ActivityDetailScreen() {
               ) : null}
               <Text style={styles.title}>{detail.title}</Text>
               <Text style={styles.subtitle}>{detail.location}</Text>
+              {detail.locationAddress ? (
+                <Text numberOfLines={2} style={styles.locationAddress}>{detail.locationAddress}</Text>
+              ) : null}
             </View>
           </View>
 
           <InfoRow Icon={CalendarDays} label={detail.date} />
           <InfoRow Icon={Clock3} label={detail.time} />
-          <InfoRow Icon={MapPin} label={detail.location} />
-          <InfoRow Icon={UsersRound} label={`${detail.participantCount}/${detail.maxParticipants} lugares ocupados`} />
+          <InfoRow Icon={MapPin} label={detail.location} secondary={detail.locationAddress} />
+          <InfoRow Icon={UsersRound} label={`${detail.participantCount} de ${detail.maxParticipants} participantes`} />
 
           <View style={styles.capacityTrack}>
             <View style={[styles.capacityFill, { width: `${Math.min(100, (detail.participantCount / detail.maxParticipants) * 100)}%` }]} />
@@ -1094,10 +1177,24 @@ export default function ActivityDetailScreen() {
             </View>
           ) : null}
 
+          {isOrganizer && detail.participants.length > 0 ? (
+            <View style={styles.confirmedCard}>
+              <Text style={styles.organizerEyebrow}>Participantes confirmados ({detail.participants.length})</Text>
+              <View style={styles.confirmedList}>
+                {detail.participants.slice(0, 8).map((participant) => (
+                  <View key={participant.uid} style={styles.confirmedItem}>
+                    <Check color="#17803C" size={15} strokeWidth={2.6} />
+                    <Text numberOfLines={1} style={styles.confirmedName}>{participant.name}</Text>
+                  </View>
+                ))}
+              </View>
+            </View>
+          ) : null}
+
           {isOrganizer && detail.action === 'interest' ? (
             <View style={styles.interestedCard}>
               <Text style={styles.organizerEyebrow}>Personas interesadas</Text>
-              <Text style={styles.interestedCount}>{detail.interestedCount} interesados</Text>
+              <Text style={styles.interestedCount}>{getInterestedCountLabel(detail.interestedCount)}</Text>
               <View style={styles.interestedList}>
                 {detail.interestedUsers.length > 0 ? detail.interestedUsers.slice(0, 5).map((user) => (
                   <View key={user.uid} style={styles.interestedItem}>
@@ -1168,37 +1265,39 @@ export default function ActivityDetailScreen() {
             </View>
           ) : null}
 
-          <PressScale
-            accessibilityLabel={
-              detail.isCancelled
-                ? 'Actividad cancelada'
-                : detail.action === 'interest'
-                ? detail.interested ? 'Te interesa' : 'Me interesa'
-                : detail.joined ? 'Te sumaste' : detail.isFull ? 'Actividad completa' : 'Me sumo'
-            }
-            accessibilityRole="button"
-            disabled={detail.isCancelled || (detail.action === 'join' ? detail.isFull || isJoining : isMarkingInterest)}
-            onPress={detail.action === 'interest' ? toggleInterest : toggleJoin}
-            scaleTo={0.97}
-            style={[
-              styles.primaryButton,
-              (detail.joined || detail.interested) && styles.joinedButton,
-              (detail.isCancelled || (detail.action === 'join' && detail.isFull)) && styles.disabledButton,
-            ]}
-          >
-            {detail.joined || detail.interested ? <Check color="#17803C" size={20} strokeWidth={2.5} /> : null}
-            <Text style={[
-              styles.primaryButtonText,
-              (detail.joined || detail.interested) && styles.joinedButtonText,
-              (detail.isCancelled || (detail.action === 'join' && detail.isFull)) && styles.disabledButtonText,
-            ]}>
-              {detail.isCancelled
-                ? 'Actividad cancelada'
-                : detail.action === 'interest'
-                ? detail.interested ? 'Te interesa' : 'Me interesa'
-                : detail.isFull ? 'Actividad completa' : detail.joined ? 'Te sumaste' : 'Me sumo'}
-            </Text>
-          </PressScale>
+          {shouldShowPrimaryAction ? (
+            <PressScale
+              accessibilityLabel={
+                detail.isCancelled
+                  ? 'Actividad cancelada'
+                  : detail.action === 'interest'
+                  ? detail.interested ? 'Te interesa' : 'Me interesa'
+                  : detail.joined ? 'Te sumaste' : detail.isFull ? 'Actividad completa' : 'Me sumo'
+              }
+              accessibilityRole="button"
+              disabled={detail.isCancelled || (detail.action === 'join' ? detail.isFull || isJoining : isMarkingInterest)}
+              onPress={detail.action === 'interest' ? toggleInterest : toggleJoin}
+              scaleTo={0.97}
+              style={[
+                styles.primaryButton,
+                (detail.joined || detail.interested) && styles.joinedButton,
+                (detail.isCancelled || (detail.action === 'join' && detail.isFull)) && styles.disabledButton,
+              ]}
+            >
+              {detail.joined || detail.interested ? <Check color="#17803C" size={20} strokeWidth={2.5} /> : null}
+              <Text style={[
+                styles.primaryButtonText,
+                (detail.joined || detail.interested) && styles.joinedButtonText,
+                (detail.isCancelled || (detail.action === 'join' && detail.isFull)) && styles.disabledButtonText,
+              ]}>
+                {detail.isCancelled
+                  ? 'Actividad cancelada'
+                  : detail.action === 'interest'
+                  ? detail.interested ? 'Te interesa' : 'Me interesa'
+                  : detail.isFull ? 'Actividad completa' : detail.joined ? 'Te sumaste' : 'Me sumo'}
+              </Text>
+            </PressScale>
+          ) : null}
 
           <PressScale
             disabled={detail.isCancelled}
@@ -1223,13 +1322,17 @@ export default function ActivityDetailScreen() {
 type InfoRowProps = {
   Icon: LucideIcon
   label: string
+  secondary?: string
 }
 
-function InfoRow({ Icon, label }: InfoRowProps) {
+function InfoRow({ Icon, label, secondary }: InfoRowProps) {
   return (
     <View style={styles.infoRow}>
       <Icon color="#4B348A" size={20} strokeWidth={2.2} />
-      <Text style={styles.infoText}>{label}</Text>
+      <View style={styles.infoCopy}>
+        <Text style={styles.infoText}>{label}</Text>
+        {secondary ? <Text numberOfLines={2} style={styles.infoSecondary}>{secondary}</Text> : null}
+      </View>
     </View>
   )
 }
@@ -1353,19 +1456,38 @@ const styles = StyleSheet.create({
     letterSpacing: 0,
     marginTop: 3,
   },
+  locationAddress: {
+    color: '#65736F',
+    fontSize: 13,
+    fontWeight: '700',
+    letterSpacing: 0,
+    lineHeight: 18,
+    marginTop: 3,
+  },
   infoRow: {
     alignItems: 'center',
     flexDirection: 'row',
     gap: 12,
     marginBottom: 14,
   },
+  infoCopy: {
+    flex: 1,
+    minWidth: 0,
+  },
   infoText: {
     color: '#163B34',
-    flex: 1,
     fontSize: 15,
     fontWeight: '700',
     letterSpacing: 0,
     lineHeight: 20,
+  },
+  infoSecondary: {
+    color: '#65736F',
+    fontSize: 13,
+    fontWeight: '700',
+    letterSpacing: 0,
+    lineHeight: 18,
+    marginTop: 2,
   },
   capacityTrack: {
     backgroundColor: '#E6E2ED',
@@ -1479,6 +1601,36 @@ const styles = StyleSheet.create({
     marginTop: 14,
     padding: 16,
   },
+  confirmedCard: {
+    backgroundColor: '#FFFFFF',
+    borderColor: '#D7E8CC',
+    borderRadius: 18,
+    borderWidth: 1,
+    marginTop: 14,
+    padding: 16,
+    ...shadow,
+  },
+  confirmedList: {
+    gap: 8,
+  },
+  confirmedItem: {
+    alignItems: 'center',
+    backgroundColor: '#F7FAF5',
+    borderColor: '#DDEAD7',
+    borderRadius: 999,
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: 8,
+    minHeight: 36,
+    paddingHorizontal: 12,
+  },
+  confirmedName: {
+    color: '#163B34',
+    flex: 1,
+    fontSize: 14,
+    fontWeight: '900',
+    letterSpacing: 0,
+  },
   interestedCount: {
     color: '#063C31',
     fontSize: 18,
@@ -1490,7 +1642,12 @@ const styles = StyleSheet.create({
     marginTop: 12,
   },
   interestedItem: {
+    backgroundColor: '#FFFFFF',
+    borderColor: '#DDEAD7',
+    borderRadius: 14,
+    borderWidth: 1,
     gap: 10,
+    padding: 12,
   },
   interestedName: {
     color: '#163B34',
@@ -1512,11 +1669,11 @@ const styles = StyleSheet.create({
   },
   futureAction: {
     alignItems: 'center',
-    backgroundColor: '#FFFFFF',
-    borderColor: '#DCE8E1',
+    backgroundColor: '#ECF8EA',
+    borderColor: '#BFE0B8',
     borderRadius: 999,
-    borderWidth: 1,
-    minHeight: 34,
+    borderWidth: 1.2,
+    minHeight: 36,
     minWidth: 86,
     paddingHorizontal: 12,
     justifyContent: 'center',
@@ -1531,6 +1688,7 @@ const styles = StyleSheet.create({
     letterSpacing: 0,
   },
   rejectAction: {
+    backgroundColor: '#FFF5F4',
     borderColor: '#F4C7C2',
   },
   rejectActionText: {
