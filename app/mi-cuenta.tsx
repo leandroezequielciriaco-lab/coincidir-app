@@ -237,7 +237,7 @@ export default function MiCuentaScreen() {
             <View style={styles.profileCard}>
               <View style={styles.accountIcon}>
                 {account.photoURL ? (
-                  <Image source={{ uri: account.photoURL }} style={styles.accountImage} />
+                  <Image resizeMode="cover" source={{ uri: account.photoURL }} style={styles.accountImage} />
                 ) : (
                   <UserRound color="#17803C" size={32} strokeWidth={2.1} />
                 )}
@@ -486,7 +486,8 @@ const styles = StyleSheet.create({
     borderColor: '#E7E7E1',
     borderRadius: 20,
     borderWidth: 1,
-    padding: 22,
+    paddingHorizontal: 22,
+    paddingVertical: 24,
     ...shadow,
   },
   accountIcon: {
@@ -495,14 +496,15 @@ const styles = StyleSheet.create({
     borderColor: '#B7DC9D',
     borderRadius: 999,
     borderWidth: 1,
-    height: 76,
+    height: 88,
     justifyContent: 'center',
-    marginBottom: 14,
+    marginBottom: 16,
     overflow: 'hidden',
-    width: 76,
+    width: 88,
   },
   accountImage: {
     height: '100%',
+    resizeMode: 'cover',
     width: '100%',
   },
   name: {
@@ -511,7 +513,8 @@ const styles = StyleSheet.create({
     fontWeight: '900',
     letterSpacing: 0,
     lineHeight: 27,
-    marginBottom: 18,
+    marginBottom: 20,
+    maxWidth: '100%',
     textAlign: 'center',
   },
   infoRow: {
@@ -553,6 +556,7 @@ const styles = StyleSheet.create({
     fontWeight: '900',
     letterSpacing: 0,
     lineHeight: 20,
+    flexShrink: 1,
   },
   actionsCard: {
     backgroundColor: '#FFFFFF',

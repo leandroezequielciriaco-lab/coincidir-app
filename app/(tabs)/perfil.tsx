@@ -1,6 +1,6 @@
 import * as ImagePicker from 'expo-image-picker'
 import { useLocalSearchParams, useRouter } from 'expo-router'
-import { onAuthStateChanged } from 'firebase/auth'
+import { onAuthStateChanged, updateProfile } from 'firebase/auth'
 import { collection, doc, onSnapshot, serverTimestamp, setDoc } from 'firebase/firestore'
 import { getDownloadURL, ref, uploadBytes } from 'firebase/storage'
 import type { LucideIcon } from 'lucide-react-native'
@@ -351,7 +351,6 @@ export default function PerfilScreen() {
     : selectedInterests.length > 0
       ? selectedInterests.slice(0, 8)
       : editableInterests.slice(0, 8)
-  const shouldShowInterestToggle = editableInterests.length > visibleProfileInterestOptions.length
 
   const toggleProfileInterest = async (interest: string) => {
     if (!userId || pendingInterest) return
@@ -396,17 +395,19 @@ export default function PerfilScreen() {
         </View>
 
         <View style={styles.profileHeader}>
-          <View style={styles.avatar}>
-            {profile.photoURL ? (
-              <Image source={{ uri: profile.photoURL }} style={styles.avatarImage} />
-            ) : (
-              <UserRound color="#4B348A" size={46} strokeWidth={2.1} />
-            )}
+          <View style={styles.avatarStage}>
+            <View style={styles.avatar}>
+              {profile.photoURL ? (
+                <Image resizeMode="cover" source={{ uri: profile.photoURL }} style={styles.avatarImage} />
+              ) : (
+                <UserRound color="#4B348A" size={46} strokeWidth={2.1} />
+              )}
+            </View>
             <PressScale onPress={() => setIsEditing(true)} scaleTo={0.94} style={styles.editAvatarButton}>
               <Pencil color="#4B348A" size={16} strokeWidth={2.4} />
             </PressScale>
           </View>
-          <Text style={styles.name}>{profile.fullName}</Text>
+          <Text numberOfLines={2} style={styles.name}>{profile.fullName}</Text>
           <View style={styles.locationRow}>
             <MapPin color="#17803C" size={16} strokeWidth={2.3} />
             <Text style={styles.location}>{profile.location}</Text>
@@ -902,12 +903,23 @@ function EditProfileModal({ onClose, profile, userId, visible }: EditProfileModa
         return
       }
 
-      const savedPhotoURL = draft.photoURL.trim()
+      let savedPhotoURL = draft.photoURL.trim()
+
+      if (selectedPhotoAsset) {
+        try {
+          savedPhotoURL = await uploadProfilePhoto(selectedPhotoAsset)
+          await updateProfile(auth.currentUser, { photoURL: savedPhotoURL })
+        } catch (uploadError) {
+          if (__DEV__) console.warn('profile-photo-upload-fallback-local-uri', uploadError)
+          savedPhotoURL = selectedPhotoAsset.uri || savedPhotoURL
+        }
+      }
 
       await setDoc(doc(db, 'users', userId), {
         avatarUrl: savedPhotoURL,
         bio: draft.bio.trim(),
         fullName: draft.fullName.trim(),
+        imageUrl: savedPhotoURL,
         location: draft.location.trim(),
         photoURL: savedPhotoURL,
         updatedAt: serverTimestamp(),
@@ -941,19 +953,14 @@ function EditProfileModal({ onClose, profile, userId, visible }: EditProfileModa
           <View style={styles.editHero}>
             <View style={styles.editAvatarStage}>
               <PressScale
-  accessibilityLabel="Cambiar foto de perfil"
-  accessibilityRole="button"
-  onPress={() =>
-    Alert.alert(
-      'Foto de perfil',
-      'Si ingresaste con Google usamos automáticamente tu foto de Google. La carga manual de imágenes estará disponible más adelante.'
-    )
-  }
-  scaleTo={0.96}
-  style={styles.editAvatar}
->
+                accessibilityLabel="Cambiar foto de perfil"
+                accessibilityRole="button"
+                onPress={openPhotoOptions}
+                scaleTo={0.96}
+                style={styles.editAvatar}
+              >
                 {draft.photoURL ? (
-                  <Image source={{ uri: draft.photoURL }} style={styles.editAvatarImage} />
+                  <Image resizeMode="cover" source={{ uri: draft.photoURL }} style={styles.editAvatarImage} />
                 ) : (
                   <UserRound color="#4B348A" size={58} strokeWidth={2.1} />
                 )}
@@ -964,18 +971,14 @@ function EditProfileModal({ onClose, profile, userId, visible }: EditProfileModa
                 ) : null}
               </PressScale>
               <PressScale
-  accessibilityLabel="Cambiar foto de perfil"
-  accessibilityRole="button"
-  onPress={() => {
-  Alert.alert(
-    'Foto de perfil',
-    'Si ingresaste con Google usamos automáticamente tu foto de Google. La carga manual de imágenes estará disponible más adelante.'
-  )
-}}
-  scaleTo={0.92}
-  style={styles.cameraBadge}>
-  <Camera color="#FFFFFF" size={20} strokeWidth={2.5} />
-</PressScale>
+                accessibilityLabel="Cambiar foto de perfil"
+                accessibilityRole="button"
+                onPress={openPhotoOptions}
+                scaleTo={0.92}
+                style={styles.cameraBadge}
+              >
+                <Camera color="#FFFFFF" size={20} strokeWidth={2.5} />
+              </PressScale>
             </View>
             <Text numberOfLines={1} style={styles.editHeroName}>{draft.fullName}</Text>
             <View style={styles.editHeroLocation}>
@@ -1132,9 +1135,18 @@ const styles = StyleSheet.create({
     padding: 20,
     ...shadow,
   },
+  avatarStage: {
+    alignItems: 'center',
+    height: 108,
+    justifyContent: 'center',
+    position: 'relative',
+    width: 108,
+  },
   avatar: {
     alignItems: 'center',
     backgroundColor: '#F4EEF9',
+    borderColor: '#FFFFFF',
+    borderWidth: 3,
     borderRadius: 999,
     height: 96,
     justifyContent: 'center',
@@ -1144,6 +1156,7 @@ const styles = StyleSheet.create({
   },
   avatarImage: {
     height: '100%',
+    resizeMode: 'cover',
     width: '100%',
   },
   avatarInitials: {
@@ -1156,20 +1169,24 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFFFFF',
     borderColor: '#E6E2ED',
     borderRadius: 999,
-    borderWidth: 1,
-    bottom: 0,
-    height: 32,
+    borderWidth: 2,
+    bottom: 6,
+    height: 34,
     justifyContent: 'center',
     position: 'absolute',
-    right: 0,
-    width: 32,
+    right: 4,
+    width: 34,
+    zIndex: 3,
   },
   name: {
     color: '#071D19',
-    fontSize: 25,
+    fontSize: 24,
     fontWeight: '900',
     letterSpacing: 0,
+    lineHeight: 29,
     marginTop: 12,
+    maxWidth: '100%',
+    textAlign: 'center',
   },
   locationRow: {
     alignItems: 'center',
@@ -1181,6 +1198,8 @@ const styles = StyleSheet.create({
     color: '#40534D',
     fontSize: 14,
     fontWeight: '800',
+    flexShrink: 1,
+    textAlign: 'center',
   },
   bio: {
     color: '#193F37',
