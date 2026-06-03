@@ -66,7 +66,7 @@ import { SafeAreaView } from 'react-native-safe-area-context'
 
 import { PressScale } from '../../components/home/PressScale'
 import { canonicalUserInterests, expandUserInterests } from '../../constants/userInterests'
-import { getFirebaseServices, getFirebaseStorageBucketCandidates } from '../../firebaseConfig'
+import { getFirebaseServices } from '../../firebaseConfig'
 import { defaultActivityImage, getCategoryImage } from '../../utils/categoryImages'
 
 type FirestoreRecord = {
@@ -163,11 +163,14 @@ function readList(value: unknown) {
 }
 
 function logAvatarUploadError(error: unknown) {
+  if (!__DEV__) return
+
   const firebaseError = error as FirebaseStorageLikeError
 
   console.error('Avatar upload error', error)
   console.error('Avatar upload error code', firebaseError?.code)
   console.error('Avatar upload error message', firebaseError?.message)
+  console.error('Avatar upload error customData', firebaseError?.customData)
   console.error('Avatar upload error serverResponse', firebaseError?.serverResponse ?? firebaseError?.customData?.serverResponse)
 
   try {
@@ -175,12 +178,6 @@ function logAvatarUploadError(error: unknown) {
   } catch (jsonError) {
     console.error('Avatar upload error JSON stringify failed', jsonError)
   }
-}
-
-function isStorageNotFoundError(error: unknown) {
-  const firebaseError = error as FirebaseStorageLikeError
-  return firebaseError?.code === 'storage/bucket-not-found'
-    || (firebaseError?.code === 'storage/unknown' && firebaseError?.status_ === 404)
 }
 
 function getAvatarUploadErrorMessage(error: unknown) {
@@ -403,10 +400,11 @@ export default function PerfilScreen() {
                 <UserRound color="#4B348A" size={46} strokeWidth={2.1} />
               )}
             </View>
-            <PressScale onPress={() => setIsEditing(true)} scaleTo={0.94} style={styles.editAvatarButton}>
-              <Pencil color="#4B348A" size={16} strokeWidth={2.4} />
-            </PressScale>
           </View>
+          <PressScale onPress={() => setIsEditing(true)} scaleTo={0.96} style={styles.editPhotoChip}>
+            <Pencil color="#4B348A" size={13} strokeWidth={2.4} />
+            <Text style={styles.editPhotoChipText}>Tocá para editar foto</Text>
+          </PressScale>
           <Text numberOfLines={2} style={styles.name}>{profile.fullName}</Text>
           <View style={styles.locationRow}>
             <MapPin color="#17803C" size={16} strokeWidth={2.3} />
@@ -717,25 +715,6 @@ function EditProfileModal({ onClose, profile, userId, visible }: EditProfileModa
     })
   }
 
-  const ensureCameraPermission = async () => {
-    const permission = await ImagePicker.requestCameraPermissionsAsync()
-
-    if (permission.granted) return true
-
-    Alert.alert(
-      'Permiso necesario',
-      'Necesitamos acceso a la camara para tomar tu foto de perfil.',
-      permission.canAskAgain
-        ? [{ text: 'Entendido' }]
-        : [
-          { text: 'Cancelar', style: 'cancel' },
-          { text: 'Abrir ajustes', onPress: openAppSettings },
-        ],
-    )
-
-    return false
-  }
-
   const ensureMediaLibraryPermission = async () => {
     const permission = await ImagePicker.requestMediaLibraryPermissionsAsync(false)
 
@@ -789,11 +768,14 @@ function EditProfileModal({ onClose, profile, userId, visible }: EditProfileModa
   const uploadProfilePhoto = async (asset: ImagePicker.ImagePickerAsset) => {
     if (!asset.uri) throw new Error('profile-photo-missing-uri')
 
-    const { auth } = getFirebaseServices()
+    const { auth, storage } = getFirebaseServices()
     const currentUser = auth.currentUser
+    const authUid = currentUser?.uid
 
-    if (!currentUser?.uid) throw new Error('profile-photo-auth-required')
-    if (userId && currentUser.uid !== userId) throw new Error('profile-photo-auth-user-mismatch')
+    if (!authUid) throw new Error('profile-photo-auth-required')
+    if (userId && authUid !== userId && __DEV__) {
+      console.warn('profile-photo-auth-user-mismatch-ignored', { authUid, userId })
+    }
 
     const contentType = asset.mimeType?.startsWith('image/') ? asset.mimeType : 'image/jpeg'
     let blob: Blob | null = null
@@ -806,42 +788,31 @@ function EditProfileModal({ onClose, profile, userId, visible }: EditProfileModa
       const uploadBlob = blob.type?.startsWith('image/')
         ? blob
         : new Blob([blob], { type: contentType })
-      const uploadPath = `avatars/${currentUser.uid}/profile.jpg`
-      const bucketCandidates = getFirebaseStorageBucketCandidates()
+      const uploadPath = `avatars/${authUid}/profile.jpg`
+      const storageRef = ref(storage, uploadPath)
 
       if (__DEV__) {
-        console.log('Avatar upload metadata', {
-          buckets: bucketCandidates.map((candidate) => candidate.bucket),
+        console.log('avatar upload uid check', {
+          authUid,
+          pathUserId: userId,
           path: uploadPath,
-          size: uploadBlob.size,
-          type: uploadBlob.type || contentType,
         })
       }
 
-      let lastError: unknown = null
+      await Promise.race([
+        uploadBytes(storageRef, uploadBlob, {
+          cacheControl: 'public,max-age=3600',
+          contentType: uploadBlob.type || contentType,
+          customMetadata: {
+            owner: authUid,
+          },
+        }),
+        new Promise<never>((_, reject) => {
+          setTimeout(() => reject(new Error('profile-photo-upload-timeout')), 30000)
+        }),
+      ])
 
-      for (const candidate of bucketCandidates) {
-        const storageRef = ref(candidate.storage, uploadPath)
-
-        try {
-          await Promise.race([
-            uploadBytes(storageRef, uploadBlob, {
-              contentType: uploadBlob.type || contentType,
-            }),
-            new Promise<never>((_, reject) => {
-              setTimeout(() => reject(new Error('profile-photo-upload-timeout')), 30000)
-            }),
-          ])
-
-          return getDownloadURL(storageRef)
-        } catch (error) {
-          lastError = error
-          if (__DEV__) console.warn('avatar-upload-bucket-failed', { bucket: candidate.bucket, path: uploadPath, error })
-          if (!isStorageNotFoundError(error)) throw error
-        }
-      }
-
-      throw lastError ?? new Error('profile-photo-upload-failed')
+      return getDownloadURL(storageRef)
     } finally {
       const close = (blob as Blob & { close?: () => void } | null)?.close
       if (typeof close === 'function') close.call(blob)
@@ -868,54 +839,42 @@ function EditProfileModal({ onClose, profile, userId, visible }: EditProfileModa
     }
   }
 
-  const takeProfilePhoto = async () => {
-    if (isPickingPhoto) return
-    setIsPhotoOptionsVisible(false)
-    setIsPickingPhoto(true)
-
-    try {
-      const hasPermission = await ensureCameraPermission()
-      if (!hasPermission) return
-
-      await waitForNativePicker()
-      const result = await ImagePicker.launchCameraAsync(photoPickerOptions)
-      applyPickedPhoto(result)
-    } catch (error) {
-      if (__DEV__) console.warn('profile-camera-error', error)
-      Alert.alert('No pudimos abrir la cámara', 'Revisá los permisos de cámara e intentá nuevamente.')
-    } finally {
-      setIsPickingPhoto(false)
-    }
-  }
-
   const openPhotoOptions = () => {
     if (!isSaving) setIsPhotoOptionsVisible(true)
   }
 
   const save = async () => {
-    if (!userId || isSaving) return
+    if (isSaving) return
 
     setIsSaving(true)
     try {
       const { auth, db } = getFirebaseServices()
-      if (!auth.currentUser?.uid) {
+      const authUid = auth.currentUser?.uid
+
+      if (!authUid) {
         Alert.alert('Sesión requerida', 'Iniciá sesión nuevamente para guardar tu foto de perfil.')
         return
       }
+      if (userId && authUid !== userId && __DEV__) {
+        console.warn('profile-save-auth-user-mismatch-ignored', { authUid, userId })
+      }
 
       let savedPhotoURL = draft.photoURL.trim()
+      let uploadFailed = false
 
       if (selectedPhotoAsset) {
         try {
           savedPhotoURL = await uploadProfilePhoto(selectedPhotoAsset)
           await updateProfile(auth.currentUser, { photoURL: savedPhotoURL })
         } catch (uploadError) {
+          uploadFailed = true
+          logAvatarUploadError(uploadError)
           if (__DEV__) console.warn('profile-photo-upload-fallback-local-uri', uploadError)
           savedPhotoURL = selectedPhotoAsset.uri || savedPhotoURL
         }
       }
 
-      await setDoc(doc(db, 'users', userId), {
+      await setDoc(doc(db, 'users', authUid), {
         avatarUrl: savedPhotoURL,
         bio: draft.bio.trim(),
         fullName: draft.fullName.trim(),
@@ -926,6 +885,9 @@ function EditProfileModal({ onClose, profile, userId, visible }: EditProfileModa
       }, { merge: true })
       setDraft((current) => ({ ...current, photoURL: savedPhotoURL }))
       setSelectedPhotoAsset(null)
+      if (uploadFailed) {
+        Alert.alert('Foto actualizada', 'La foto se actualizó en este dispositivo, pero no se pudo guardar online todavía.')
+      }
       onClose()
     } catch (error) {
       logAvatarUploadError(error)
@@ -980,6 +942,9 @@ function EditProfileModal({ onClose, profile, userId, visible }: EditProfileModa
                 <Camera color="#FFFFFF" size={20} strokeWidth={2.5} />
               </PressScale>
             </View>
+            <PressScale onPress={openPhotoOptions} scaleTo={0.96} style={styles.changePhotoButton}>
+              <Text style={styles.changePhotoButtonText}>📷 Cambiar foto</Text>
+            </PressScale>
             <Text numberOfLines={1} style={styles.editHeroName}>{draft.fullName}</Text>
             <View style={styles.editHeroLocation}>
               <MapPin color="#6A746F" size={16} strokeWidth={2.2} />
@@ -1011,17 +976,11 @@ function EditProfileModal({ onClose, profile, userId, visible }: EditProfileModa
             <Pressable accessibilityRole="menu" style={styles.photoSheet}>
               <View style={styles.photoSheetHandle} />
               <Text style={styles.photoSheetTitle}>Foto de perfil</Text>
-              <Pressable accessibilityRole="menuitem" onPress={takeProfilePhoto} style={styles.photoSheetOption}>
-                <View style={styles.photoSheetIcon}>
-                  <Camera color="#4B348A" size={22} strokeWidth={2.4} />
-                </View>
-                <Text style={styles.photoSheetOptionText}>Sacar foto</Text>
-              </Pressable>
               <Pressable accessibilityRole="menuitem" onPress={choosePhotoFromLibrary} style={styles.photoSheetOption}>
                 <View style={styles.photoSheetIcon}>
                   <ImageIcon color="#4B348A" size={22} strokeWidth={2.4} />
                 </View>
-                <Text style={styles.photoSheetOptionText}>Elegir de galeria</Text>
+                <Text style={styles.photoSheetOptionText}>Elegir de la galería</Text>
               </Pressable>
               <Pressable accessibilityRole="menuitem" onPress={() => setIsPhotoOptionsVisible(false)} style={styles.photoSheetCancel}>
                 <Text style={styles.photoSheetCancelText}>Cancelar</Text>
@@ -1163,6 +1122,24 @@ const styles = StyleSheet.create({
     color: '#4B348A',
     fontSize: 16,
     fontWeight: '900',
+  },
+  editPhotoChip: {
+    alignItems: 'center',
+    backgroundColor: '#F4EEF9',
+    borderColor: '#E6DDF7',
+    borderRadius: 999,
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: 4,
+    marginTop: 10,
+    minHeight: 26,
+    paddingHorizontal: 9,
+  },
+  editPhotoChipText: {
+    color: '#4B348A',
+    fontSize: 12,
+    fontWeight: '900',
+    letterSpacing: 0,
   },
   editAvatarButton: {
     alignItems: 'center',
@@ -1581,14 +1558,14 @@ const styles = StyleSheet.create({
   },
   editHero: {
     alignItems: 'center',
-    marginBottom: 26,
+    marginBottom: 24,
     paddingTop: 4,
   },
   editAvatarStage: {
     alignItems: 'center',
     height: 148,
     justifyContent: 'center',
-    marginBottom: 14,
+    marginBottom: 8,
     position: 'relative',
     width: 148,
   },
@@ -1647,7 +1624,7 @@ const styles = StyleSheet.create({
   },
   cameraBadge: {
     alignItems: 'center',
-    backgroundColor: '#6C3DE5',
+    backgroundColor: '#006A32',
     borderColor: '#FFFFFF',
     borderRadius: 999,
     borderWidth: 3,
@@ -1657,11 +1634,28 @@ const styles = StyleSheet.create({
     position: 'absolute',
     right: 8,
     width: 46,
-    shadowColor: '#4B348A',
+    shadowColor: '#07392D',
     shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.18,
+    shadowOpacity: 0.16,
     shadowRadius: 14,
     elevation: 5,
+  },
+  changePhotoButton: {
+    alignItems: 'center',
+    backgroundColor: '#EFF6E9',
+    borderColor: '#D7E8CC',
+    borderRadius: 999,
+    borderWidth: 1,
+    justifyContent: 'center',
+    marginBottom: 13,
+    minHeight: 34,
+    paddingHorizontal: 14,
+  },
+  changePhotoButtonText: {
+    color: '#006A32',
+    fontSize: 14,
+    fontWeight: '900',
+    letterSpacing: 0,
   },
   photoSheetBackdrop: {
     backgroundColor: 'rgba(7, 29, 25, 0.34)',

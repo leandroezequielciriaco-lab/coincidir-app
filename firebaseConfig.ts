@@ -63,27 +63,11 @@ export function getFirebaseServices(): { auth: Auth; db: Firestore; storage: Fir
     throw new Error('Firebase Storage no está configurado: falta EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET.')
   }
 
+  if (__DEV__) console.log('Firebase storage bucket config', firebaseConfig.storageBucket)
+
   return {
     auth: getConfiguredAuth(app),
     db: getFirestore(app),
-    storage: getStorage(app, `gs://${storageBucket}`),
+    storage: getStorage(app),
   }
-}
-
-export function getFirebaseStorageBucketCandidates(): Array<{ bucket: string; storage: FirebaseStorage }> {
-  assertFirebaseConfig()
-
-  const app = getApps().length ? getApp() : initializeApp(firebaseConfig)
-  const primaryBucket = normalizeStorageBucket(firebaseConfig.storageBucket)
-  const legacyBucket = firebaseConfig.projectId ? `${firebaseConfig.projectId}.appspot.com` : ''
-  const buckets = [primaryBucket, legacyBucket].filter((bucket, index, list): bucket is string => Boolean(bucket) && list.indexOf(bucket) === index)
-
-  if (buckets.length === 0) {
-    throw new Error('Firebase Storage no esta configurado: falta EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET.')
-  }
-
-  return buckets.map((bucket) => ({
-    bucket,
-    storage: getStorage(app, `gs://${bucket}`),
-  }))
 }
