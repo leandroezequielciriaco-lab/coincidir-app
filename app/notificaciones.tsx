@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { ActivityIndicator, Platform, ScrollView, StyleSheet, Text, View } from 'react-native'
+import { ActivityIndicator, Alert, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
 import type { Href } from 'expo-router'
 import { useRouter } from 'expo-router'
 import { SafeAreaView } from 'react-native-safe-area-context'
@@ -13,6 +13,7 @@ import {
   Compass,
   Mail,
   MessageCircle,
+  Trash2,
   UserRound,
 } from 'lucide-react-native'
 import type { LucideIcon } from 'lucide-react-native'
@@ -20,6 +21,7 @@ import type { LucideIcon } from 'lucide-react-native'
 import { PressScale } from '../components/home/PressScale'
 import { getFirebaseServices } from '../firebaseConfig'
 import {
+  deleteNotification,
   markNotificationAsRead,
   useNotifications,
   type AppNotification,
@@ -176,7 +178,9 @@ function getRelativeTime(date: Date | null) {
 export default function NotificacionesScreen() {
   const router = useRouter()
   const [userId, setUserId] = useState<string | null>(null)
+  const [deletedNotificationIds, setDeletedNotificationIds] = useState<string[]>([])
   const { error, isLoading, notifications } = useNotifications(userId)
+  const visibleNotifications = notifications.filter((notification) => !deletedNotificationIds.includes(notification.id))
 
   useEffect(() => {
     try {
@@ -200,6 +204,37 @@ export default function NotificacionesScreen() {
         pathname: '/activity/[activityId]',
         params: { activityId: notification.activityId },
       })
+    }
+  }
+
+  const confirmDeleteNotification = (notification: AppNotification) => {
+    Alert.alert(
+      'Eliminar notificación',
+      '¿Querés eliminar esta notificación?',
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        {
+          text: 'Eliminar',
+          style: 'destructive',
+          onPress: () => {
+            void removeNotification(notification)
+          },
+        },
+      ],
+    )
+  }
+
+  const removeNotification = async (notification: AppNotification) => {
+    setDeletedNotificationIds((current) => (
+      current.includes(notification.id) ? current : [...current, notification.id]
+    ))
+
+    try {
+      await deleteNotification(notification.id)
+    } catch (error) {
+      setDeletedNotificationIds((current) => current.filter((id) => id !== notification.id))
+      if (__DEV__) console.warn('notification-delete-error', error)
+      Alert.alert('No se pudo eliminar la notificación.')
     }
   }
 
@@ -233,12 +268,13 @@ export default function NotificacionesScreen() {
             <Text style={styles.emptyTitle}>No pudimos cargar tus notificaciones</Text>
             <Text style={styles.emptySubtitle}>{error}</Text>
           </View>
-        ) : notifications.length > 0 ? (
+        ) : visibleNotifications.length > 0 ? (
           <View style={styles.notificationList}>
-            {notifications.map((notification) => (
+            {visibleNotifications.map((notification) => (
               <NotificationCard
                 key={notification.id}
                 notification={notification}
+                onDelete={() => confirmDeleteNotification(notification)}
                 onPress={() => void openNotification(notification)}
               />
             ))}
@@ -271,9 +307,11 @@ export default function NotificacionesScreen() {
 
 function NotificationCard({
   notification,
+  onDelete,
   onPress,
 }: {
   notification: AppNotification
+  onDelete: () => void
   onPress: () => void
 }) {
   const tone = getNotificationTone(notification.type)
@@ -310,7 +348,21 @@ function NotificationCard({
               </Text>
             ) : null}
           </View>
-          <Text style={styles.notificationTime}>{getRelativeTime(notification.createdAt)}</Text>
+          <View style={styles.notificationRightActions}>
+            <Text style={styles.notificationTime}>{getRelativeTime(notification.createdAt)}</Text>
+            <Pressable
+              accessibilityLabel="Eliminar notificación"
+              accessibilityRole="button"
+              hitSlop={10}
+              onPress={(event) => {
+                event.stopPropagation()
+                onDelete()
+              }}
+              style={({ pressed }) => [styles.deleteButton, pressed && styles.deleteButtonPressed]}
+            >
+              <Trash2 color="#8A3A32" size={18} strokeWidth={2.3} />
+            </Pressable>
+          </View>
         </View>
         <Text numberOfLines={2} style={styles.notificationBody}>{body}</Text>
         {hasActivity ? (
@@ -537,6 +589,23 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     letterSpacing: 0,
     lineHeight: 18,
+  },
+  notificationRightActions: {
+    alignItems: 'flex-end',
+    gap: 8,
+  },
+  deleteButton: {
+    alignItems: 'center',
+    backgroundColor: '#FFF5F4',
+    borderColor: '#F4C7C2',
+    borderRadius: 999,
+    borderWidth: 1,
+    height: 34,
+    justifyContent: 'center',
+    width: 34,
+  },
+  deleteButtonPressed: {
+    opacity: 0.72,
   },
   viewActivityRow: {
     alignItems: 'center',

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import {
   addDoc,
   collection,
+  deleteDoc,
   doc,
   getDocs,
   limit,
@@ -351,6 +352,11 @@ export async function notifyActivityCancelled({
 export async function markNotificationAsRead(notificationId: string) {
   const { db } = getFirebaseServices()
   await updateDoc(doc(db, 'notifications', notificationId), { read: true })
+}
+
+export async function deleteNotification(notificationId: string) {
+  const { db } = getFirebaseServices()
+  await deleteDoc(doc(db, 'notifications', notificationId))
 }
 
 export function useNotifications(userId: string | null): NotificationsState {
