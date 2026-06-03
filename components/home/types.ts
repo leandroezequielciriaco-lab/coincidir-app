@@ -18,6 +18,7 @@ export type ActivityCardItem = {
   cta: string
   action: 'join' | 'interest'
   isCancelled?: boolean
+  isOrganizer?: boolean
   Icon: LucideIcon
 }
 

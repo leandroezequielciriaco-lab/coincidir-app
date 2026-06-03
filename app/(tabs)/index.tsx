@@ -200,7 +200,12 @@ function getUserDisplayName(data: Record<string, unknown>) {
 }
 
 function getOrganizerName(data: Record<string, unknown>, userNamesById: UserNamesById = {}) {
-  const creatorId = readString(data.createdBy) || readString(data.createdById) || readString(data.ownerId) || readString(data.userId)
+  const creatorId = readString(data.createdBy)
+    || readString(data.organizerId)
+    || readString(data.creatorId)
+    || readString(data.ownerId)
+    || readString(data.userId)
+    || readString(data.createdById)
 
   return readString(
     data.organizerName,
@@ -219,10 +224,22 @@ function getOrganizerName(data: Record<string, unknown>, userNamesById: UserName
 
 function getCreatorId(data: Record<string, unknown>) {
   return readString(data.createdBy)
-    || readString(data.createdById)
+    || readString(data.organizerId)
     || readString(data.creatorId)
     || readString(data.ownerId)
     || readString(data.userId)
+    || readString(data.createdById)
+}
+
+function isActivityOrganizer(data: Record<string, unknown>, userId: string | null) {
+  if (!userId) return false
+
+  return readString(data.createdBy) === userId
+    || readString(data.organizerId) === userId
+    || readString(data.creatorId) === userId
+    || readString(data.ownerId) === userId
+    || readString(data.userId) === userId
+    || readString(data.createdById) === userId
 }
 
 function getIcon(data: Record<string, unknown>): LucideIcon {
@@ -368,12 +385,14 @@ function mapActivityCard(
   joinState: JoinState,
   interestState: InterestState,
   userNamesById: UserNamesById,
+  currentUserId: string | null,
 ): ActivityCardItem {
   const { data } = record
   const category = readString(data.category, 'Encuentro')
   const maxParticipants = getMaxParticipants(data)
   const action = requiresInterestAction(data) ? 'interest' : 'join'
   const cancelled = isCancelled(data)
+  const isOrganizer = isActivityOrganizer(data, currentUserId)
 
   return {
     id: record.id,
@@ -387,9 +406,10 @@ function mapActivityCard(
     location: getRecordLocation(data),
     organizer: getOrganizerName(data, userNamesById),
     iconLabel: category,
-    cta: cancelled ? 'Cancelada' : action === 'interest' ? getInterestCta(interestState.interested) : getJoinCta(joinState.joined),
+    cta: cancelled ? 'Cancelada' : isOrganizer ? 'Tu actividad' : action === 'interest' ? getInterestCta(interestState.interested) : getJoinCta(joinState.joined),
     action,
     isCancelled: cancelled,
+    isOrganizer,
     Icon: getIcon(data),
   }
 }
@@ -651,6 +671,7 @@ export default function HomeScreen() {
   }
   const toggleJoin = async (record: CreatedRecord, collectionName: JoinableCollection) => {
     if (!currentUserId) return
+    if (isActivityOrganizer(record.data, currentUserId)) return
     if (isCancelled(record.data)) return
 
     const key = getJoinKey(collectionName, record.id)
@@ -670,6 +691,7 @@ export default function HomeScreen() {
         if (!snapshot.exists()) return
 
         const data = snapshot.data() as Record<string, unknown>
+        if (isActivityOrganizer(data, currentUserId)) return 'organizer'
         if (isCancelled(data)) return 'cancelled'
 
         const wasJoined = isUserJoined(data, currentUserId)
@@ -696,6 +718,7 @@ export default function HomeScreen() {
         return 'updated'
       })
 
+      if (result === 'organizer') throw new Error('activity-organizer')
       if (result === 'cancelled') throw new Error('activity-cancelled')
     } catch {
       setOptimisticJoins((current) => {
@@ -709,6 +732,7 @@ export default function HomeScreen() {
   }
   const toggleInterest = async (record: CreatedRecord) => {
     if (!currentUserId) return
+    if (isActivityOrganizer(record.data, currentUserId)) return
     if (isCancelled(record.data)) return
 
     const key = getInterestKey(record.id)
@@ -728,6 +752,7 @@ export default function HomeScreen() {
         if (!snapshot.exists()) return
 
         const data = snapshot.data() as Record<string, unknown>
+        if (isActivityOrganizer(data, currentUserId)) return 'organizer'
         if (isCancelled(data)) return 'cancelled'
 
         const wasInterested = isUserInterested(data, currentUserId)
@@ -753,6 +778,7 @@ export default function HomeScreen() {
         return 'updated'
       })
 
+      if (result === 'organizer') throw new Error('activity-organizer')
       if (result === 'cancelled') throw new Error('activity-cancelled')
 
       if (nextInterested) {
@@ -793,6 +819,7 @@ export default function HomeScreen() {
           getJoinState(item, 'activities', currentUserId, optimisticJoins),
           getInterestState(item, currentUserId, optimisticInterests),
           userNamesById,
+          currentUserId,
         )),
     [currentUserId, filteredActivities, optimisticInterests, optimisticJoins, userInterests, userNamesById],
   )
@@ -810,6 +837,7 @@ export default function HomeScreen() {
           getJoinState(item, 'activities', currentUserId, optimisticJoins),
           getInterestState(item, currentUserId, optimisticInterests),
           userNamesById,
+          currentUserId,
         )),
     [currentUserId, filteredActivities, optimisticInterests, optimisticJoins, userInterests, userNamesById],
   )
@@ -1022,7 +1050,7 @@ export default function HomeScreen() {
                   })}
                   onCtaPress={() => {
                     const record = activityRecordsById.get(item.recordId)
-                    if (!record || item.isCancelled) return
+                    if (!record || item.isCancelled || item.isOrganizer) return
                     if (item.action === 'interest') {
                       toggleInterest(record)
                     } else {
@@ -1049,7 +1077,7 @@ export default function HomeScreen() {
                   })}
                   onCtaPress={() => {
                     const record = activityRecordsById.get(item.recordId)
-                    if (!record || item.isCancelled) return
+                    if (!record || item.isCancelled || item.isOrganizer) return
                     if (item.action === 'interest') {
                       toggleInterest(record)
                     } else {

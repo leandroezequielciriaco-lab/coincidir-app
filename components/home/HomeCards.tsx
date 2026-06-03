@@ -25,6 +25,7 @@ type SuggestionCardProps = {
 
 export function ActivityCard({ item, onCtaPress, onPress, onSharePress }: ActivityCardProps) {
   const [imageSource, setImageSource] = useState(item.image || defaultActivityImage)
+  const isCtaDisabled = Boolean(item.isCancelled || item.isOrganizer)
 
   useEffect(() => {
     setImageSource(item.image || defaultActivityImage)
@@ -97,15 +98,20 @@ export function ActivityCard({ item, onCtaPress, onPress, onSharePress }: Activi
         <Pressable
           accessibilityLabel={item.cta}
           accessibilityRole="button"
-          disabled={item.isCancelled}
+          disabled={isCtaDisabled}
           onPress={onCtaPress}
           style={({ pressed }) => [
             styles.activityFooter,
             item.isCancelled && styles.activityFooterDisabled,
+            item.isOrganizer && styles.activityFooterOwn,
             pressed && styles.pressed,
           ]}
         >
-          <Text style={[styles.greenCtaText, item.isCancelled && styles.greenCtaTextDisabled]}>{item.cta}</Text>
+          <Text style={[
+            styles.greenCtaText,
+            item.isCancelled && styles.greenCtaTextDisabled,
+            item.isOrganizer && styles.greenCtaTextOwn,
+          ]}>{item.cta}</Text>
         </Pressable>
       </View>
     </View>
@@ -357,6 +363,11 @@ const styles = StyleSheet.create({
   activityFooterDisabled: {
     backgroundColor: '#ECEBE7',
   },
+  activityFooterOwn: {
+    backgroundColor: '#F4EEF9',
+    borderColor: '#E6DDF7',
+    borderWidth: 1,
+  },
   shareButton: {
     alignItems: 'center',
     backgroundColor: '#FFFFFF',
@@ -387,6 +398,9 @@ const styles = StyleSheet.create({
   },
   greenCtaTextDisabled: {
     color: '#7A817D',
+  },
+  greenCtaTextOwn: {
+    color: '#4B348A',
   },
   privateCard: {
     backgroundColor: '#FFFFFF',
