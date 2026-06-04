@@ -3,7 +3,6 @@ export type ActivityCategoryId =
   | 'groups'
   | 'hobbies'
   | 'outdoor'
-  | 'private'
   | 'sports'
   | 'training'
   | 'wellness'
@@ -149,22 +148,6 @@ export const activityCategories: ActivityCategory[] = [
       'Mascotas',
       'Jardinería',
       'Motos',
-    ],
-  },
-  {
-    id: 'private',
-    label: 'Espacios privados',
-    icon: 'EP',
-    color: '#543D78',
-    backgroundColor: '#F2ECF8',
-    subcategories: [
-      'Canchas privadas',
-      'Coworking',
-      'Sala de ensayo',
-      'Workshops',
-      'Escalada indoor',
-      'Gimnasio/estudio',
-      'Cocina/venue',
     ],
   },
 ]

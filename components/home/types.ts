@@ -14,6 +14,9 @@ export type ActivityCardItem = {
   dateTime: string
   location: string
   organizer: string
+  groupColor?: string
+  groupId?: string
+  groupName?: string
   iconLabel: string
   cta: string
   action: 'join' | 'interest'

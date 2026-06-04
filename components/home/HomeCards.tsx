@@ -4,6 +4,7 @@ import { CalendarDays, MapPin, Share2, UserRound, UsersRound } from 'lucide-reac
 
 import { PressScale } from './PressScale'
 import type { ActivityCardItem, PrivateCardItem, SuggestionCardItem } from './types'
+import { getGroupTheme } from '../../constants/groupTheme'
 import { defaultActivityImage } from '../../utils/categoryImages'
 
 type ActivityCardProps = {
@@ -26,13 +27,15 @@ type SuggestionCardProps = {
 export function ActivityCard({ item, onCtaPress, onPress, onSharePress }: ActivityCardProps) {
   const [imageSource, setImageSource] = useState(item.image || defaultActivityImage)
   const isCtaDisabled = Boolean(item.isCancelled || item.isOrganizer)
+  const isGroupActivity = Boolean(item.groupId || item.groupName)
+  const groupColors = getGroupTheme(item.groupColor)
 
   useEffect(() => {
     setImageSource(item.image || defaultActivityImage)
   }, [item.image])
 
   return (
-    <View style={styles.activityCard}>
+    <View style={[styles.activityCard, isGroupActivity && { borderColor: groupColors.borderColor }]}>
       <View style={styles.activityImageWrap}>
         <Image
           onError={() => setImageSource(defaultActivityImage)}
@@ -77,7 +80,13 @@ export function ActivityCard({ item, onCtaPress, onPress, onSharePress }: Activi
           onPress={onPress}
           style={({ pressed }) => [styles.activityContentPressArea, pressed && styles.pressed]}
         >
-          <Text numberOfLines={2} style={styles.activityTitle}>{item.title}</Text>
+          <Text numberOfLines={2} style={[styles.activityTitle, item.groupName && styles.activityTitleWithGroup]}>{item.title}</Text>
+          {item.groupName ? (
+            <View style={styles.groupIndicator}>
+              <UsersRound color={groupColors.color} size={11} strokeWidth={2.4} />
+              <Text numberOfLines={1} style={[styles.groupIndicatorText, { color: groupColors.chipTextColor }]}>{item.groupName}</Text>
+            </View>
+          ) : null}
           <View style={styles.activityMetaRow}>
             <CalendarDays color="#17803C" size={17} strokeWidth={2.2} />
             <Text numberOfLines={1} style={styles.activityMeta}>{item.dateTime}</Text>
@@ -338,6 +347,9 @@ const styles = StyleSheet.create({
     lineHeight: 21,
     marginBottom: 5,
   },
+  activityTitleWithGroup: {
+    marginBottom: 1,
+  },
   activityMetaRow: {
     alignItems: 'center',
     flexDirection: 'row',
@@ -350,6 +362,21 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '700',
     letterSpacing: 0,
+  },
+  groupIndicator: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 4,
+    marginBottom: 1,
+    marginTop: 0,
+    maxWidth: '100%',
+  },
+  groupIndicatorText: {
+    flexShrink: 1,
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 0,
+    lineHeight: 12,
   },
   activityFooter: {
     alignItems: 'center',

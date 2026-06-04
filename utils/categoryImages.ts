@@ -358,7 +358,6 @@ const jardineriaImages = [
 const jardineriaImage =
   jardineriaImages[Math.floor(Math.random() * jardineriaImages.length)]
 const grupalImage = require('../assets/images/categories/placeholder-grupal.jpg')
-const privadoImage = require('../assets/images/categories/placeholder-privado.jpg')
 
 export const categoryImages: Record<string, ImageSourcePropType> = {
   Yoga: yogaImage,
@@ -372,7 +371,6 @@ export const categoryImages: Record<string, ImageSourcePropType> = {
   Ciclismo: ciclismoImage,
   Entrenamiento: entrenamientoImage,
   Grupales: grupalImage,
-  'Espacios privados': privadoImage,
 }
 
 function readString(value: unknown) {
@@ -440,18 +438,17 @@ const imageRules: { image: ImageSourcePropType; terms: string[] }[] = [
   { image: motosImage, terms: ['motos', 'moto', 'motociclismo'] },
   { image: teatroImage, terms: ['teatro', 'actuacion'] },
   { image: astrologiaImage, terms: ['astrologia', 'carta natal', 'zodiaco'] },
+  { image: ciclismoImage, terms: ['ciclismo/mtb', 'ciclismo', 'bicicleta', 'bici', 'bike', 'mountain bike', 'mtb'] },
   { image: yogaImage, terms: ['yoga', 'supyoga', 'meditacion', 'mindfulness', 'respiracion', 'relax', 'stretching', 'tai chi', 'sound healing', 'bienestar', 'wellness'] },
   { image: runningImage, terms: ['running', 'correr', 'runner'] },
   { image: supImage, terms: ['sup', 'stand up paddle', 'kayak', 'paddleboard', 'natacion'] },
   { image: cafeImage, terms: ['cafe', 'cafeteria', 'cocina'] },
   { image: musicaImage, terms: ['musica', 'sala de ensayo', 'sound', 'concierto'] },
-  { image: senderismoImage, terms: ['senderismo', 'trekking/senderismo', 'sendero', 'caminata', 'caminatas', 'trekking', 'camping', 'outdoor', 'aire libre', 'aire libre y naturaleza', 'paseos', 'picnic', 'montana', 'escalada outdoor'] },
+  { image: senderismoImage, terms: ['senderismo', 'trekking/senderismo', 'sendero', 'caminata', 'caminatas', 'trekking', 'camping', 'paseos', 'picnic', 'montana', 'escalada outdoor'] },
   { image: gamingImage, terms: ['gaming', 'juegos', 'juegos de mesa', 'pool', 'bowling'] },
   { image: mateadaImage, terms: ['mate', 'mateada', 'mateadas', 'charlas', 'after office', 'salidas grupales', 'sociales', 'sociales y comunidad'] },
-  { image: ciclismoImage, terms: ['ciclismo/mtb', 'ciclismo', 'bicicleta', 'bici', 'bike', 'mountain bike', 'mtb'] },
   { image: entrenamientoImage, terms: ['entrenamiento', 'entrenamiento y movimiento', 'funcional', 'crossfit', 'calistenia', 'gimnasio', 'gimnasio/estudio', 'deportes', 'sports', 'futbol', 'padel', 'paddle', 'tenis', 'basquet', 'hockey', 'voley'] },
   { image: grupalImage, terms: ['grupo', 'grupos', 'grupal', 'grupales', 'clubes', 'networking', 'voluntariado', 'idiomas', 'intercambio cultural'] },
-  { image: privadoImage, terms: ['private', 'privado', 'privados', 'espacios privados', 'canchas privadas', 'coworking', 'workshops', 'arte', 'escalada indoor'] },
 ]
 
 export function getCategoryImage(data: Record<string, unknown> = {}, fallback = defaultActivityImage) {

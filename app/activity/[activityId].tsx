@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   ActivityIndicator,
   Alert,
@@ -11,8 +11,9 @@ import {
   Text,
   View,
 } from 'react-native'
+import AsyncStorage from '@react-native-async-storage/async-storage'
 import { SafeAreaView } from 'react-native-safe-area-context'
-import { useLocalSearchParams, useRouter } from 'expo-router'
+import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router'
 import { onAuthStateChanged } from 'firebase/auth'
 import {
   deleteField,
@@ -36,7 +37,6 @@ import {
   MapPin,
   Mountain,
   Pencil,
-  Spade,
   UsersRound,
   Waves,
 } from 'lucide-react-native'
@@ -44,12 +44,19 @@ import type { LucideIcon } from 'lucide-react-native'
 
 import { PressScale } from '../../components/home/PressScale'
 import { InviteFriendsSheet, type InviteShareTarget } from '../../components/InviteFriendsSheet'
+import { getGroupTheme, groupTheme } from '../../constants/groupTheme'
+import {
+  type LocalGroup,
+  LOCAL_GROUPS_STORAGE_KEY,
+  readStoredLocalGroups,
+} from '../../constants/localGroups'
 import { getFirebaseServices } from '../../firebaseConfig'
 import { notifyActivityCancelled, notifyActivityConfirmed, notifyActivityInterest, notifyActivityRejected } from '../../lib/notifications'
+import { getActivityGroupMeta } from '../../utils/activityGroups'
 import { getCategoryImage } from '../../utils/categoryImages'
 
 type ActivityData = Record<string, unknown>
-type CategoryId = 'outdoor' | 'sports' | 'wellness' | 'groups' | 'private'
+type CategoryId = 'outdoor' | 'sports' | 'wellness' | 'groups'
 type OrganizerProfile = {
   name: string
   photoURL: string
@@ -84,7 +91,7 @@ function normalize(value: unknown) {
 function getCategoryId(data: ActivityData): CategoryId | 'default' {
   const categoryId = readString(data.categoryId)
 
-  if (categoryId === 'outdoor' || categoryId === 'sports' || categoryId === 'wellness' || categoryId === 'groups' || categoryId === 'private') {
+  if (categoryId === 'outdoor' || categoryId === 'sports' || categoryId === 'wellness' || categoryId === 'groups') {
     return categoryId
   }
 
@@ -280,13 +287,14 @@ function getSmsUrl(phone: string, message: string) {
 }
 
 function requiresInterestAction(data: ActivityData) {
-  const categoryId = getCategoryId(data)
   const additionalSettings = getAdditionalSettings(data)
   const privacy = normalize(additionalSettings.privacy)
+  const visibility = normalize(readString(data.visibility, readString(additionalSettings.visibility)))
   const cost = normalize(additionalSettings.cost)
   const detail = `${normalize(data.category)} ${normalize(data.subcategory)} ${normalize(data.type)} ${normalize(data.description)}`
 
-  return categoryId === 'private'
+  return visibility === 'group'
+    || privacy.includes('grupo')
     || privacy.includes('privada')
     || privacy.includes('aprobacion')
     || cost === 'pago'
@@ -297,6 +305,19 @@ function requiresInterestAction(data: ActivityData) {
     || detail.includes('cerrad')
 }
 
+function getGroupMeta(data: ActivityData, localGroups: LocalGroup[] = []) {
+  const groupMeta = getActivityGroupMeta(data, localGroups)
+
+  if (__DEV__ && (groupMeta.groupId || groupMeta.groupName)) {
+    console.log('[DetalleActividad] nombre final de grupo', {
+      groupId: groupMeta.groupId,
+      groupName: groupMeta.groupName,
+    })
+  }
+
+  return groupMeta
+}
+
 function getIcon(data: ActivityData): LucideIcon {
   const categoryId = getCategoryId(data)
   const detail = `${normalize(data.subcategory)} ${normalize(data.name)}`
@@ -304,7 +325,6 @@ function getIcon(data: ActivityData): LucideIcon {
   if (detail.includes('kayak') || detail.includes('natacion') || detail.includes('paddle') || detail.includes('padel')) return Waves
   if (detail.includes('yoga') || detail.includes('meditacion') || categoryId === 'wellness') return Leaf
   if (detail.includes('escalada') || categoryId === 'outdoor') return Mountain
-  if (categoryId === 'private') return Spade
   if (categoryId === 'sports') return Dumbbell
 
   return UsersRound
@@ -398,6 +418,23 @@ export default function ActivityDetailScreen() {
   const [pendingInterestedActions, setPendingInterestedActions] = useState<string[]>([])
   const [isDeletingActivity, setIsDeletingActivity] = useState(false)
   const [isCancellingActivity, setIsCancellingActivity] = useState(false)
+  const [localGroups, setLocalGroups] = useState<LocalGroup[]>([])
+
+  const loadLocalGroups = useCallback(async () => {
+    try {
+      const storedValue = await AsyncStorage.getItem(LOCAL_GROUPS_STORAGE_KEY)
+      const storedGroups = readStoredLocalGroups(storedValue)
+      setLocalGroups(storedGroups)
+    } catch (error) {
+      if (__DEV__) console.warn('[DetalleActividad] error leyendo grupos locales', error)
+    }
+  }, [])
+
+  useFocusEffect(
+    useCallback(() => {
+      void loadLocalGroups()
+    }, [loadLocalGroups]),
+  )
 
   useEffect(() => {
     try {
@@ -481,6 +518,7 @@ export default function ActivityDetailScreen() {
     const status = readString(data.status)
     const isCancelled = status === 'cancelled'
     const locationDisplayName = getLocationDisplayName(data)
+    const groupMeta = getGroupMeta(data, localGroups)
     return {
       action,
       category: readString(data.category, 'Espacio privado'),
@@ -488,6 +526,9 @@ export default function ActivityDetailScreen() {
       description: readString(data.description, 'Sin descripción por ahora.'),
       Icon: getIcon(data),
       image: getCategoryImage(data),
+      groupColor: groupMeta.groupColor,
+      groupId: groupMeta.groupId,
+      groupName: groupMeta.groupName,
       interested,
       interestedCount: safeInterestedCount,
       interestedUsers: getInterestedUsers(data),
@@ -505,7 +546,7 @@ export default function ActivityDetailScreen() {
       time: readString(data.time, 'Horario a definir'),
       title: readString(data.name, 'Actividad sin título'),
     }
-  }, [activity, currentUserId, optimisticInterested, optimisticJoined, organizerProfile])
+  }, [activity, currentUserId, localGroups, optimisticInterested, optimisticJoined, organizerProfile])
 
   useEffect(() => {
     if (detail.isCancelled && isInviteVisible) setIsInviteVisible(false)
@@ -1046,6 +1087,7 @@ export default function ActivityDetailScreen() {
   }
 
   const availablePlaces = Math.max(0, detail.maxParticipants - detail.participantCount)
+  const groupColors = getGroupTheme(detail.groupColor)
   const shouldShowPrimaryAction = !isOrganizer
   const inviteTarget: InviteShareTarget = {
     dateTime: `${detail.date} ${detail.time}`,
@@ -1096,6 +1138,16 @@ export default function ActivityDetailScreen() {
           <InfoRow Icon={Clock3} label={detail.time} />
           <InfoRow Icon={MapPin} label={detail.location} secondary={detail.locationAddress} />
           <InfoRow Icon={UsersRound} label={`${detail.participantCount} de ${detail.maxParticipants} participantes`} />
+
+          {detail.groupName ? (
+            <View style={[styles.groupActivityCard, { backgroundColor: groupColors.backgroundColor, borderColor: groupColors.borderColor }]}>
+              <Text style={styles.groupActivityEyebrow}>Actividad de grupo</Text>
+              <View style={styles.groupActivityRow}>
+                <UsersRound color={groupColors.color} size={22} strokeWidth={2.3} />
+                <Text numberOfLines={1} style={[styles.groupActivityName, { color: groupColors.chipTextColor }]}>{detail.groupName}</Text>
+              </View>
+            </View>
+          ) : null}
 
           <View style={styles.capacityTrack}>
             <View style={[styles.capacityFill, { width: `${Math.min(100, (detail.participantCount / detail.maxParticipants) * 100)}%` }]} />
@@ -1488,6 +1540,36 @@ const styles = StyleSheet.create({
     letterSpacing: 0,
     lineHeight: 18,
     marginTop: 2,
+  },
+  groupActivityCard: {
+    backgroundColor: groupTheme.backgroundColor,
+    borderColor: groupTheme.borderColor,
+    borderRadius: 16,
+    borderWidth: 1,
+    marginBottom: 14,
+    paddingHorizontal: 14,
+    paddingVertical: 13,
+  },
+  groupActivityEyebrow: {
+    color: groupTheme.color,
+    fontSize: 11,
+    fontWeight: '900',
+    letterSpacing: 0,
+    marginBottom: 8,
+    textTransform: 'uppercase',
+  },
+  groupActivityRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 10,
+  },
+  groupActivityName: {
+    color: groupTheme.chipTextColor,
+    flex: 1,
+    fontSize: 17,
+    fontWeight: '900',
+    letterSpacing: 0,
+    lineHeight: 22,
   },
   capacityTrack: {
     backgroundColor: '#E6E2ED',

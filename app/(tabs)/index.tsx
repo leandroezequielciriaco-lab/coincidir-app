@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { ReactElement } from 'react'
 import type { Href } from 'expo-router'
 import {
@@ -15,12 +15,11 @@ import {
   useWindowDimensions,
 } from 'react-native'
 import AsyncStorage from '@react-native-async-storage/async-storage'
-import { useRouter } from 'expo-router'
+import { useFocusEffect, useRouter } from 'expo-router'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import {
   Bell,
   Bike,
-  CalendarDays,
   ChevronDown,
   ChevronRight,
   Dumbbell,
@@ -31,10 +30,11 @@ import {
   PersonStanding,
   Search,
   Settings,
-  Spade,
   Sprout,
+  Star,
   UsersRound,
   Waves,
+  Zap,
 } from 'lucide-react-native'
 import type { LucideIcon } from 'lucide-react-native'
 import { onAuthStateChanged } from 'firebase/auth'
@@ -57,12 +57,18 @@ import type {
   ActivityCardItem,
   ThemeTone,
 } from '../../components/home/types'
+import {
+  type LocalGroup,
+  LOCAL_GROUPS_STORAGE_KEY,
+  readStoredLocalGroups,
+} from '../../constants/localGroups'
 import { getFirebaseServices } from '../../firebaseConfig'
 import { notifyActivityInterest, useUnreadNotificationsCount } from '../../lib/notifications'
-import { getActivityRecommendationScore } from '../../lib/recommendations'
+import { getActivityGroupMeta } from '../../utils/activityGroups'
+import { isOwnActivity } from '../../utils/activityOwnership'
 import { getCategoryImage } from '../../utils/categoryImages'
 
-type CategoryId = 'outdoor' | 'sports' | 'wellness' | 'groups' | 'private'
+type CategoryId = 'culture' | 'groups' | 'hobbies' | 'outdoor' | 'sports' | 'training' | 'wellness'
 
 const DEFAULT_CITY = 'Tandil'
 const NOTIFICATIONS_ROUTE = '/notificaciones' as Href
@@ -72,11 +78,13 @@ const cityOptions = ['Tandil', 'Buenos Aires', 'Mar del Plata', 'Córdoba', 'Ros
 
 const categories: { label: string; tone?: ThemeTone; Icon: LucideIcon }[] = [
   { label: 'Todas', Icon: Sprout },
-  { label: 'Al aire libre', Icon: Mountain },
+  { label: 'Aire libre y naturaleza', Icon: Mountain },
   { label: 'Deportes', Icon: Dumbbell },
+  { label: 'Entrenamiento y movimiento', Icon: Bike },
   { label: 'Bienestar', Icon: Leaf },
-  { label: 'Grupales', Icon: UsersRound },
-  { label: 'Espacios privados', tone: 'violet', Icon: CalendarDays },
+  { label: 'Sociales y comunidad', Icon: UsersRound },
+  { label: 'Cultura, arte y aprendizaje', Icon: Star },
+  { label: 'Juegos y hobbies', Icon: Zap },
 ]
 
 type CreatedRecord = {
@@ -118,7 +126,15 @@ function normalize(value: unknown) {
 function getCategoryId(data: Record<string, unknown>): CategoryId | 'default' {
   const categoryId = readString(data.categoryId)
 
-  if (categoryId === 'outdoor' || categoryId === 'sports' || categoryId === 'wellness' || categoryId === 'groups' || categoryId === 'private') {
+  if (
+    categoryId === 'culture'
+    || categoryId === 'groups'
+    || categoryId === 'hobbies'
+    || categoryId === 'outdoor'
+    || categoryId === 'sports'
+    || categoryId === 'training'
+    || categoryId === 'wellness'
+  ) {
     return categoryId
   }
 
@@ -232,14 +248,7 @@ function getCreatorId(data: Record<string, unknown>) {
 }
 
 function isActivityOrganizer(data: Record<string, unknown>, userId: string | null) {
-  if (!userId) return false
-
-  return readString(data.createdBy) === userId
-    || readString(data.organizerId) === userId
-    || readString(data.creatorId) === userId
-    || readString(data.ownerId) === userId
-    || readString(data.userId) === userId
-    || readString(data.createdById) === userId
+  return isOwnActivity(data, userId)
 }
 
 function getIcon(data: Record<string, unknown>): LucideIcon {
@@ -250,8 +259,10 @@ function getIcon(data: Record<string, unknown>): LucideIcon {
   if (detail.includes('kayak') || detail.includes('natacion') || detail.includes('paddle')) return Waves
   if (detail.includes('yoga') || detail.includes('meditacion') || categoryId === 'wellness') return Leaf
   if (detail.includes('escalada') || categoryId === 'outdoor') return Mountain
+  if (categoryId === 'training') return Bike
   if (categoryId === 'groups') return UsersRound
-  if (categoryId === 'private') return Spade
+  if (categoryId === 'culture') return Star
+  if (categoryId === 'hobbies') return Zap
   if (categoryId === 'sports') return Dumbbell
 
   return PersonStanding
@@ -264,18 +275,54 @@ function getRecordTime(record: CreatedRecord) {
     : 0
 }
 
+function getTimeMinutes(data: Record<string, unknown>) {
+  const match = readString(data.time).match(/^(\d{1,2}):(\d{2})/)
+  if (!match) return 0
+
+  const hours = Number(match[1])
+  const minutes = Number(match[2])
+  return Number.isFinite(hours) && Number.isFinite(minutes) ? (hours * 60) + minutes : 0
+}
+
+function applyActivityTime(baseTime: number, data: Record<string, unknown>) {
+  if (!Number.isFinite(baseTime)) return Number.POSITIVE_INFINITY
+
+  const date = new Date(baseTime)
+  date.setHours(0, getTimeMinutes(data), 0, 0)
+  return date.getTime()
+}
+
 function getActivityTime(record: CreatedRecord) {
   const isoDate = readString(record.data.activityDateISO)
   const parsedIsoDate = isoDate ? Date.parse(isoDate) : Number.NaN
 
-  if (Number.isFinite(parsedIsoDate)) return parsedIsoDate
+  if (Number.isFinite(parsedIsoDate)) return applyActivityTime(parsedIsoDate, record.data)
 
   const activityDate = record.data.activityDate
   if (typeof activityDate === 'object' && activityDate && 'toMillis' in activityDate && typeof activityDate.toMillis === 'function') {
-    return activityDate.toMillis()
+    return applyActivityTime(activityDate.toMillis(), record.data)
   }
 
-  return getRecordTime(record)
+  const dateParts = readString(record.data.date).match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/)
+  if (dateParts) {
+    return applyActivityTime(new Date(Number(dateParts[3]), Number(dateParts[2]) - 1, Number(dateParts[1])).getTime(), record.data)
+  }
+
+  return Number.POSITIVE_INFINITY
+}
+
+function compareHomeActivities(left: CreatedRecord, right: CreatedRecord) {
+  const leftCancelled = isCancelled(left.data)
+  const rightCancelled = isCancelled(right.data)
+
+  if (leftCancelled !== rightCancelled) return leftCancelled ? 1 : -1
+
+  const leftTime = getActivityTime(left)
+  const rightTime = getActivityTime(right)
+
+  if (leftTime !== rightTime) return leftTime < rightTime ? -1 : 1
+
+  return getRecordTime(right) - getRecordTime(left)
 }
 
 function getJoinKey(collectionName: JoinableCollection, id: string) {
@@ -322,13 +369,14 @@ function isUserInterested(data: Record<string, unknown>, userId: string | null) 
 }
 
 function requiresInterestAction(data: Record<string, unknown>) {
-  const categoryId = getCategoryId(data)
   const additionalSettings = getAdditionalSettings(data)
   const privacy = normalize(additionalSettings.privacy)
+  const visibility = normalize(readString(data.visibility, readString(additionalSettings.visibility)))
   const cost = normalize(additionalSettings.cost)
   const detail = `${normalize(data.category)} ${normalize(data.subcategory)} ${normalize(data.type)} ${normalize(data.description)}`
 
-  return categoryId === 'private'
+  return visibility === 'group'
+    || privacy.includes('grupo')
     || privacy.includes('privada')
     || privacy.includes('aprobacion')
     || cost === 'pago'
@@ -337,6 +385,19 @@ function requiresInterestAction(data: Record<string, unknown>) {
     || detail.includes('coordinar')
     || detail.includes('coordinacion')
     || detail.includes('cerrad')
+}
+
+function getGroupMeta(data: Record<string, unknown>, localGroups: LocalGroup[] = []) {
+  const groupMeta = getActivityGroupMeta(data, localGroups)
+
+  if (__DEV__ && (groupMeta.groupId || groupMeta.groupName)) {
+    console.log('[Home] nombre final de grupo', {
+      groupId: groupMeta.groupId,
+      groupName: groupMeta.groupName,
+    })
+  }
+
+  return groupMeta
 }
 
 function getJoinState(
@@ -386,6 +447,7 @@ function mapActivityCard(
   interestState: InterestState,
   userNamesById: UserNamesById,
   currentUserId: string | null,
+  localGroups: LocalGroup[] = [],
 ): ActivityCardItem {
   const { data } = record
   const category = readString(data.category, 'Encuentro')
@@ -393,6 +455,7 @@ function mapActivityCard(
   const action = requiresInterestAction(data) ? 'interest' : 'join'
   const cancelled = isCancelled(data)
   const isOrganizer = isActivityOrganizer(data, currentUserId)
+  const groupMeta = getGroupMeta(data, localGroups)
 
   return {
     id: record.id,
@@ -405,6 +468,9 @@ function mapActivityCard(
     dateTime: formatSchedule(data),
     location: getRecordLocation(data),
     organizer: getOrganizerName(data, userNamesById),
+    groupColor: groupMeta.groupColor,
+    groupId: groupMeta.groupId,
+    groupName: groupMeta.groupName,
     iconLabel: category,
     cta: cancelled ? 'Cancelada' : isOrganizer ? 'Tu actividad' : action === 'interest' ? getInterestCta(interestState.interested) : getJoinCta(joinState.joined),
     action,
@@ -458,11 +524,13 @@ function getCategoryFilterText(record: CreatedRecord) {
   const { data } = record
   const categoryId = getCategoryId(data)
   const aliasesByCategory: Record<CategoryId | 'default', string[]> = {
-    outdoor: ['al aire libre', 'outdoor'],
+    culture: ['cultura', 'arte', 'aprendizaje', 'cultura arte y aprendizaje'],
+    groups: ['grupales', 'sociales', 'sociales y comunidad', 'groups', 'grupo'],
+    hobbies: ['juegos', 'hobbies', 'juegos y hobbies'],
+    outdoor: ['aire libre', 'aire libre y naturaleza', 'al aire libre', 'outdoor'],
     sports: ['deportes', 'sports'],
+    training: ['entrenamiento', 'entrenamiento y movimiento', 'movimiento'],
     wellness: ['bienestar', 'wellness'],
-    groups: ['grupales', 'sociales', 'groups', 'grupo'],
-    private: ['espacios privados', 'privados', 'private'],
     default: [],
   }
   const filterParts = [
@@ -490,7 +558,6 @@ export default function HomeScreen() {
   const [activeCategory, setActiveCategory] = useState('Todas')
   const [currentUserId, setCurrentUserId] = useState<string | null>(null)
   const [userName, setUserName] = useState<string | null>(null)
-  const [userInterests, setUserInterests] = useState<unknown[]>([])
   const [userNamesById, setUserNamesById] = useState<UserNamesById>({})
   const [createdActivities, setCreatedActivities] = useState<CreatedRecord[]>([])
   const [optimisticJoins, setOptimisticJoins] = useState<Record<string, boolean>>({})
@@ -505,9 +572,32 @@ export default function HomeScreen() {
   const [shareTarget, setShareTarget] = useState<InviteShareTarget>({ type: 'app' })
   const [searchQuery, setSearchQuery] = useState('')
   const [debouncedSearchQuery, setDebouncedSearchQuery] = useState('')
+  const [localGroups, setLocalGroups] = useState<LocalGroup[]>([])
   const { unreadCount } = useUnreadNotificationsCount(currentUserId)
   const { width } = useWindowDimensions()
   const horizontalInset = width >= 430 ? 28 : 20
+
+  const loadLocalGroups = useCallback(async () => {
+    try {
+      const storedValue = await AsyncStorage.getItem(LOCAL_GROUPS_STORAGE_KEY)
+      const storedGroups = readStoredLocalGroups(storedValue)
+      setLocalGroups(storedGroups)
+      if (__DEV__) {
+        console.log('[Home] grupos locales leidos', {
+          count: storedGroups.length,
+          groups: storedGroups,
+        })
+      }
+    } catch (error) {
+      if (__DEV__) console.warn('[Home] error leyendo grupos locales', error)
+    }
+  }, [])
+
+  useFocusEffect(
+    useCallback(() => {
+      void loadLocalGroups()
+    }, [loadLocalGroups]),
+  )
 
   useEffect(() => {
     let mounted = true
@@ -539,7 +629,6 @@ export default function HomeScreen() {
         if (!user) {
           setCurrentUserId(null)
           setUserName(null)
-          setUserInterests([])
           return
         }
 
@@ -564,12 +653,10 @@ export default function HomeScreen() {
           if (mounted) {
             const cleanName = profileName.trim()
             setUserName(cleanName ? cleanName.split(' ')[0] : authName ? authName.split(' ')[0] : null)
-            setUserInterests(Array.isArray(profile?.interests) ? profile.interests : [])
           }
         } catch {
           if (mounted) {
             setUserName(authName ? authName.split(' ')[0] : null)
-            setUserInterests([])
           }
         }
       })
@@ -596,6 +683,20 @@ export default function HomeScreen() {
           const records = snapshot.docs
             .map((item) => ({ id: item.id, data: item.data() as Record<string, unknown> }))
             .sort((left, right) => getRecordTime(right) - getRecordTime(left))
+
+          if (__DEV__) {
+            const groupActivities = records
+              .map((record) => ({
+                id: record.id,
+                ...getGroupMeta(record.data),
+              }))
+              .filter((record) => record.groupId || record.groupName)
+
+            console.log('[Home] actividades recibidas con grupo', {
+              count: groupActivities.length,
+              activities: groupActivities,
+            })
+          }
 
           setCreatedActivities(records)
         },
@@ -807,43 +908,21 @@ export default function HomeScreen() {
   }
   const nearbyMeetups = useMemo(
     () =>
-      filteredActivities
-        .filter((item) => getCategoryId(item.data) !== 'private')
-        .sort((left, right) => {
-          const scoreDiff = getActivityRecommendationScore(right.data, userInterests) - getActivityRecommendationScore(left.data, userInterests)
-          if (scoreDiff !== 0) return scoreDiff
-          return getActivityTime(left) - getActivityTime(right)
-        })
+      [...filteredActivities]
+        .sort(compareHomeActivities)
         .map((item) => mapActivityCard(
           item,
           getJoinState(item, 'activities', currentUserId, optimisticJoins),
           getInterestState(item, currentUserId, optimisticInterests),
           userNamesById,
           currentUserId,
+          localGroups,
         )),
-    [currentUserId, filteredActivities, optimisticInterests, optimisticJoins, userInterests, userNamesById],
-  )
-  const privateSpaces = useMemo(
-    () =>
-      filteredActivities
-        .filter((item) => getCategoryId(item.data) === 'private')
-        .sort((left, right) => {
-          const scoreDiff = getActivityRecommendationScore(right.data, userInterests) - getActivityRecommendationScore(left.data, userInterests)
-          if (scoreDiff !== 0) return scoreDiff
-          return getActivityTime(left) - getActivityTime(right)
-        })
-        .map((item) => mapActivityCard(
-          item,
-          getJoinState(item, 'activities', currentUserId, optimisticJoins),
-          getInterestState(item, currentUserId, optimisticInterests),
-          userNamesById,
-          currentUserId,
-        )),
-    [currentUserId, filteredActivities, optimisticInterests, optimisticJoins, userInterests, userNamesById],
+    [currentUserId, filteredActivities, localGroups, optimisticInterests, optimisticJoins, userNamesById],
   )
   const hasSearch = debouncedSearchQuery.trim().length > 0
   const hasCategoryFilter = activeCategory !== 'Todas'
-  const hasVisibleResults = nearbyMeetups.length + privateSpaces.length > 0
+  const hasVisibleResults = nearbyMeetups.length > 0
   const activityRecordsById = useMemo(
     () => new Map(filteredActivities.map((item) => [item.id, item])),
     [filteredActivities],
@@ -1061,32 +1140,6 @@ export default function HomeScreen() {
               )}
               subtitle={`En ${selectedCity} y actividades sin ciudad definida`}
               title="Encuentros cerca de vos"
-              variant="vertical"
-            />
-
-            <Section
-              accent="violet"
-              data={privateSpaces}
-              renderItem={({ item }) => (
-                <ActivityCard
-                  item={item}
-                  onSharePress={() => openActivityShare(item)}
-                  onPress={() => router.push({
-                    pathname: '/activity/[activityId]',
-                    params: { activityId: item.recordId },
-                  })}
-                  onCtaPress={() => {
-                    const record = activityRecordsById.get(item.recordId)
-                    if (!record || item.isCancelled || item.isOrganizer) return
-                    if (item.action === 'interest') {
-                      toggleInterest(record)
-                    } else {
-                      toggleJoin(record, 'activities')
-                    }
-                  }}
-                />
-              )}
-              title="Actividades en espacios privados"
               variant="vertical"
             />
           </>

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   ActivityIndicator,
   FlatList,
@@ -14,8 +14,9 @@ import {
   useWindowDimensions,
   View,
 } from 'react-native'
+import AsyncStorage from '@react-native-async-storage/async-storage'
 import { SafeAreaView } from 'react-native-safe-area-context'
-import { useRouter } from 'expo-router'
+import { useFocusEffect, useRouter } from 'expo-router'
 import { onAuthStateChanged } from 'firebase/auth'
 import { collection, doc, getDoc, onSnapshot } from 'firebase/firestore'
 import {
@@ -38,8 +39,15 @@ import type { LucideIcon } from 'lucide-react-native'
 
 import { PressScale } from '../../components/home/PressScale'
 import { activityCategories, type ActivityCategoryId } from '../../constants/activityCategories'
+import { getGroupTheme } from '../../constants/groupTheme'
+import {
+  type LocalGroup,
+  LOCAL_GROUPS_STORAGE_KEY,
+  readStoredLocalGroups,
+} from '../../constants/localGroups'
 import { getFirebaseServices } from '../../firebaseConfig'
 import { getActivityRecommendationScore, getActivityRecommendationTerms } from '../../lib/recommendations'
+import { getActivityGroupMeta } from '../../utils/activityGroups'
 import { defaultActivityImage, getCategoryImage } from '../../utils/categoryImages'
 
 type RecordItem = {
@@ -70,6 +78,9 @@ type ExploreCardItem = {
   capacity: string
   location: string
   schedule: string
+  groupColor?: string
+  groupId?: string
+  groupName?: string
   cta: string
   image: ImageSourcePropType
   isCancelled?: boolean
@@ -81,7 +92,6 @@ const quickCategoryLabels: Record<ActivityCategoryId, string> = {
   groups: 'Sociales',
   hobbies: 'Juegos',
   outdoor: 'Aire libre',
-  private: 'Privados',
   sports: 'Deportes',
   training: 'Entrenamiento',
   wellness: 'Bienestar',
@@ -92,7 +102,6 @@ const quickCategoryLegacyTerms: Record<ActivityCategoryId, string[]> = {
   groups: ['Sociales', 'Grupo', 'Grupales'],
   hobbies: ['Juegos', 'Hobbies'],
   outdoor: ['Aire libre', 'Al aire libre', 'Outdoor'],
-  private: ['Privados', 'Espacios privados', 'Private'],
   sports: ['Deportes', 'Sports'],
   training: ['Entrenamiento', 'Movimiento'],
   wellness: ['Bienestar', 'Wellness'],
@@ -105,7 +114,7 @@ const quickFilters: QuickFilterItem[] = [
     label: quickCategoryLabels[category.id],
   })),
 ]
-const categoryFilters = ['Todas', 'Aire libre', 'Deportes', 'Bienestar', 'Sociales', 'Espacios privados']
+const categoryFilters = ['Todas', 'Aire libre', 'Deportes', 'Entrenamiento', 'Bienestar', 'Sociales', 'Cultura', 'Juegos']
 const dateFilters = ['Todas', 'Hoy', 'Esta semana']
 const priceFilters = ['Todos', 'Gratis', 'Pago']
 const locationFilters = ['Todas', 'Tandil', 'Buenos Aires', 'Mar del Plata', 'Córdoba', 'Rosario']
@@ -159,6 +168,10 @@ function getParticipantCount(data: Record<string, unknown>) {
 
 function getMaxParticipants(data: Record<string, unknown>) {
   return Math.max(1, readNumber(getAdditionalSettings(data).maxParticipants, readNumber(data.maxParticipants, 10)))
+}
+
+function getGroupMeta(data: Record<string, unknown>, localGroups: LocalGroup[] = []) {
+  return getActivityGroupMeta(data, localGroups)
 }
 
 function getRecordTime(item: RecordItem) {
@@ -220,8 +233,10 @@ function matchesCategory(item: RecordItem, filter: string) {
     'aire libre': ['aire libre', 'outdoor', 'caminata', 'trekking'],
     bienestar: ['bienestar', 'yoga', 'meditacion'],
     deportes: ['deportes', 'running', 'paddle', 'futbol', 'tenis'],
+    entrenamiento: ['entrenamiento', 'movimiento', 'funcional', 'crossfit', 'pilates'],
     sociales: ['sociales', 'grupo', 'grupales', 'mate'],
-    'espacios privados': ['private', 'espacios privados', 'privados'],
+    cultura: ['cultura', 'arte', 'aprendizaje', 'musica', 'teatro', 'idiomas'],
+    juegos: ['juegos', 'hobbies', 'ajedrez', 'gaming'],
   }
   const normalizedFilter = normalize(filter)
   const terms = aliases[normalizedFilter] ?? [normalizedFilter]
@@ -302,16 +317,16 @@ function getQuickIcon(filter: QuickFilterItem): LucideIcon {
   if (filter.id === 'groups') return UsersRound
   if (filter.id === 'culture') return Star
   if (filter.id === 'hobbies') return DollarSign
-  if (filter.id === 'private') return CalendarDays
   return Leaf
 }
 
-function mapExploreCard(item: RecordItem): ExploreCardItem {
+function mapExploreCard(item: RecordItem, localGroups: LocalGroup[] = []): ExploreCardItem {
   const data = item.data
   const count = getParticipantCount(data)
   const max = getMaxParticipants(data)
   const isGroup = item.source === 'group'
   const cancelled = item.source === 'activity' && isCancelled(data)
+  const groupMeta = isGroup ? { groupColor: '', groupId: '', groupName: '' } : getGroupMeta(data, localGroups)
 
   return {
     id: `${item.source}-${item.id}`,
@@ -323,6 +338,9 @@ function mapExploreCard(item: RecordItem): ExploreCardItem {
     schedule: isGroup
       ? readString(data.schedule, 'Próximo encuentro a definir')
       : `${readString(data.date, 'Fecha a definir')}${readString(data.time) ? ` ${readString(data.time)}` : ''}`,
+    groupColor: groupMeta.groupColor,
+    groupId: groupMeta.groupId,
+    groupName: groupMeta.groupName,
     cta: cancelled ? 'Cancelada' : isGroup ? 'Ver grupo' : 'Ver encuentro',
     image: getCardImage(item),
     isCancelled: cancelled,
@@ -343,8 +361,24 @@ export default function ExplorarScreen() {
   const [isFilterVisible, setIsFilterVisible] = useState(false)
   const [activeCardIndex, setActiveCardIndex] = useState(0)
   const [userInterests, setUserInterests] = useState<unknown[]>([])
+  const [localGroups, setLocalGroups] = useState<LocalGroup[]>([])
   const carouselCardWidth = Math.min(300, Math.max(236, width - 104))
   const carouselSnapInterval = carouselCardWidth + 14
+
+  const loadLocalGroups = useCallback(async () => {
+    try {
+      const storedValue = await AsyncStorage.getItem(LOCAL_GROUPS_STORAGE_KEY)
+      setLocalGroups(readStoredLocalGroups(storedValue))
+    } catch (error) {
+      if (__DEV__) console.warn('[Explorar] error leyendo grupos locales', error)
+    }
+  }, [])
+
+  useFocusEffect(
+    useCallback(() => {
+      void loadLocalGroups()
+    }, [loadLocalGroups]),
+  )
 
   useEffect(() => {
     let mounted = true
@@ -425,7 +459,7 @@ export default function ExplorarScreen() {
     return sortRecords(filtered, filters.sort, userInterests)
   }, [debouncedQuery, filters, quickFilter, records, userInterests])
 
-  const cards = useMemo(() => filteredRecords.map(mapExploreCard), [filteredRecords])
+  const cards = useMemo(() => filteredRecords.map((item) => mapExploreCard(item, localGroups)), [filteredRecords, localGroups])
 
   const openFilters = () => {
     setDraftFilters(filters)
@@ -588,13 +622,24 @@ function ExploreBanner() {
 
 function ExploreCard({ cardWidth, item, onPress }: { cardWidth: number; item: ExploreCardItem; onPress: () => void }) {
   const [imageSource, setImageSource] = useState(item.image || defaultActivityImage)
+  const isGroupActivity = Boolean(item.groupId || item.groupName)
+  const groupColors = getGroupTheme(item.groupColor)
 
   useEffect(() => {
     setImageSource(item.image || defaultActivityImage)
   }, [item.image])
 
   return (
-    <Pressable accessibilityRole="button" onPress={onPress} style={({ pressed }) => [styles.exploreCard, { width: cardWidth }, pressed && styles.cardPressed]}>
+    <Pressable
+      accessibilityRole="button"
+      onPress={onPress}
+      style={({ pressed }) => [
+        styles.exploreCard,
+        { width: cardWidth },
+        isGroupActivity && { borderColor: groupColors.borderColor },
+        pressed && styles.cardPressed,
+      ]}
+    >
       <View style={styles.cardImageWrap}>
         <Image
           onError={() => setImageSource(defaultActivityImage)}
@@ -620,6 +665,12 @@ function ExploreCard({ cardWidth, item, onPress }: { cardWidth: number; item: Ex
           <CalendarCheck color="#0E5A44" size={16} strokeWidth={2.2} />
           <Text numberOfLines={1} style={styles.cardMeta}>{item.schedule}</Text>
         </View>
+        {item.groupName ? (
+          <View style={styles.groupIndicator}>
+            <UsersRound color={groupColors.color} size={11} strokeWidth={2.4} />
+            <Text numberOfLines={1} style={[styles.groupIndicatorText, { color: groupColors.chipTextColor }]}>{item.groupName}</Text>
+          </View>
+        ) : null}
         <View style={styles.cardFooter}>
           <View style={styles.capacityBadge}>
             <UsersRound color="#006A32" size={16} strokeWidth={2.3} />
@@ -984,6 +1035,20 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     letterSpacing: 0,
     lineHeight: 18,
+  },
+  groupIndicator: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 4,
+    marginTop: 4,
+    maxWidth: '100%',
+  },
+  groupIndicatorText: {
+    flexShrink: 1,
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 0,
+    lineHeight: 12,
   },
   cardFooter: {
     alignItems: 'center',

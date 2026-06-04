@@ -1,8 +1,10 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
+import AsyncStorage from '@react-native-async-storage/async-storage'
 import {
   ActivityIndicator,
   Alert,
+  KeyboardAvoidingView,
   type GestureResponderEvent,
   Modal,
   Platform,
@@ -14,7 +16,7 @@ import {
   View,
 } from 'react-native'
 import * as Location from 'expo-location'
-import { useLocalSearchParams, useRouter } from 'expo-router'
+import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router'
 import { addDoc, collection, doc, getDoc, serverTimestamp, updateDoc } from 'firebase/firestore'
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import {
@@ -56,10 +58,21 @@ import {
   type ActivityCategory as Category,
   type ActivityCategoryId as CategoryId,
 } from '../../constants/activityCategories'
+import {
+  type LocalGroup,
+  getLocalGroupId,
+  LOCAL_GROUPS_STORAGE_KEY,
+  mergeLocalGroups,
+  readDeletedLocalGroupIds,
+  readStoredLocalGroups,
+  serializeLocalGroups,
+  toLocalGroup,
+} from '../../constants/localGroups'
 import { getFirebaseServices } from '../../firebaseConfig'
 import { notifyActivityUpdated } from '../../lib/notifications'
 
 type PickerMode = 'category' | 'subcategory' | 'date' | 'time' | 'currency' | null
+type CreateStep = 1 | 2 | 3 | 4 | 5
 
 type LocationSelection = {
   address: string
@@ -87,8 +100,14 @@ type ActivityFormPayload = {
   locationLongitude: number
   locationPin: LocationSelection
   city: string
+  groupId: string
+  groupName: string
+  visibility: 'approval' | 'group' | 'public'
   additionalSettings: {
+    groupId: string
+    groupName: string
     privacy: string
+    visibility: 'approval' | 'group' | 'public'
     maxParticipants: number
     level: string
     environment: string
@@ -99,7 +118,7 @@ type ActivityFormPayload = {
   }
 }
 
-const hasGoogleMapsApiKey = Boolean(process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY)
+const hasGoogleMapsApiKey = Boolean(process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY?.trim())
 const shouldShowMapConfigNotice = Platform.OS === 'android' && !hasGoogleMapsApiKey
 const canUseNativeMap = !shouldShowMapConfigNotice
 const mapProvider = Platform.OS === 'android' && hasGoogleMapsApiKey ? PROVIDER_GOOGLE : undefined
@@ -140,10 +159,12 @@ const initialLocationRegion: Region = {
 }
 
 const privacyDetails = [
-  { label: 'Pública', description: 'Cualquiera puede ver y sumarse', Icon: Globe2 },
-  { label: 'Privada', description: 'Solo personas invitadas', Icon: LockKeyhole },
+  { label: 'Pública', description: 'Cualquiera puede verla y sumarse', Icon: Globe2 },
+  { label: 'Grupo', description: 'Solo miembros del grupo', Icon: UsersRound },
   { label: 'Con aprobación', description: 'Debo aprobar participantes', Icon: ShieldCheck },
 ]
+
+const mockGroups = ['Running Tandil', 'Yoga Integral', 'Caminatas Activas']
 
 const levelDetails = [
   { label: 'Principiante', description: 'Ideal para empezar', Icon: Star },
@@ -251,12 +272,47 @@ function readString(value: unknown, fallback = '') {
   return typeof value === 'string' && value.trim() ? value.trim() : fallback
 }
 
+function normalize(value: unknown) {
+  return readString(value)
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+}
+
 function readNumber(value: unknown, fallback = 0) {
   return typeof value === 'number' && Number.isFinite(value) ? value : fallback
 }
 
 function readRecord(value: unknown): ActivityData {
   return typeof value === 'object' && value !== null && !Array.isArray(value) ? value as ActivityData : {}
+}
+
+function getVisibilityFromPrivacy(value: string): 'approval' | 'group' | 'public' {
+  const normalized = normalize(value)
+  if (normalized.includes('grupo') || normalized === 'group') return 'group'
+  if (normalized.includes('aprobacion') || normalized === 'approval') return 'approval'
+  return 'public'
+}
+
+function mergeGroupNames(...groups: string[][]) {
+  return mergeLocalGroups(...groups.map((groupList) => groupList
+    .map((groupName) => toLocalGroup(groupName))
+    .filter((group): group is LocalGroup => Boolean(group))))
+    .map((group) => group.name)
+}
+
+function readStoredGroups(value: string | null) {
+  return readStoredLocalGroups(value).map((group) => group.name)
+}
+
+async function persistLocalGroups(groups: string[]) {
+  const storedValue = await AsyncStorage.getItem(LOCAL_GROUPS_STORAGE_KEY)
+  const deletedGroupIds = readDeletedLocalGroupIds(storedValue)
+  const localGroups = groups
+    .map((groupName) => toLocalGroup(groupName))
+    .filter((group): group is LocalGroup => Boolean(group))
+
+  await AsyncStorage.setItem(LOCAL_GROUPS_STORAGE_KEY, serializeLocalGroups(localGroups, deletedGroupIds))
 }
 
 function getCreatorId(data: ActivityData) {
@@ -331,11 +387,16 @@ export default function CrearScreen() {
   const [isLoadingEditActivity, setIsLoadingEditActivity] = useState(isEditMode)
   const [isSaving, setIsSaving] = useState(false)
   const [message, setMessage] = useState('')
+  const [currentStep, setCurrentStep] = useState<CreateStep>(1)
   const [isAdditionalVisible, setIsAdditionalVisible] = useState(false)
   const [isLocationPickerVisible, setIsLocationPickerVisible] = useState(false)
   const [isResolvingLocation, setIsResolvingLocation] = useState(false)
   const [fallbackMapSize, setFallbackMapSize] = useState({ width: 1, height: 1 })
   const [privacy, setPrivacy] = useState('Pública')
+  const [availableGroups, setAvailableGroups] = useState(mockGroups)
+  const [selectedGroup, setSelectedGroup] = useState(mockGroups[0])
+  const [isCreateGroupVisible, setIsCreateGroupVisible] = useState(false)
+  const [newGroupName, setNewGroupName] = useState('')
   const [maxParticipants, setMaxParticipants] = useState(10)
   const [level, setLevel] = useState('Principiante')
   const [environment, setEnvironment] = useState('Tranquilo')
@@ -361,6 +422,38 @@ export default function CrearScreen() {
   const calendarDays = useMemo(
     () => getCalendarDays(calendarMonth),
     [calendarMonth],
+  )
+
+  const loadLocalGroups = useCallback(async () => {
+    try {
+      const storedValue = await AsyncStorage.getItem(LOCAL_GROUPS_STORAGE_KEY)
+      const storedGroups = readStoredGroups(storedValue)
+      const nextGroups = mergeGroupNames(mockGroups, storedGroups)
+
+      setAvailableGroups(nextGroups)
+      setSelectedGroup((current) => nextGroups.includes(current) ? current : nextGroups[0] ?? '')
+
+      if (__DEV__) {
+        console.log('[CrearActividad] grupos leidos de AsyncStorage', {
+          groups: storedGroups,
+          key: LOCAL_GROUPS_STORAGE_KEY,
+          rawValue: storedValue,
+        })
+        console.log('[CrearActividad] grupos mock', { groups: mockGroups })
+        console.log('[CrearActividad] grupos combinados finales', {
+          count: nextGroups.length,
+          groups: nextGroups,
+        })
+      }
+    } catch (error) {
+      if (__DEV__) console.warn('[CrearActividad] error cargando grupos locales', error)
+    }
+  }, [])
+
+  useFocusEffect(
+    useCallback(() => {
+      void loadLocalGroups()
+    }, [loadLocalGroups]),
   )
 
   useEffect(() => {
@@ -458,6 +551,11 @@ export default function CrearScreen() {
           longitude: locationLongitude,
         })
         setPrivacy(readString(additionalSettings.privacy, readString(data.privacy, 'Pública')))
+        const existingGroupName = readString(additionalSettings.groupName, readString(data.groupName))
+        if (existingGroupName) {
+          setAvailableGroups((current) => mergeGroupNames(current, [existingGroupName]))
+          setSelectedGroup(existingGroupName)
+        }
         setMaxParticipants(readNumber(additionalSettings.maxParticipants, readNumber(data.maxParticipants, 10)))
         setLevel(readString(additionalSettings.level, readString(data.level, 'Principiante')))
         setEnvironment(readString(additionalSettings.environment, readString(data.environment, 'Tranquilo')))
@@ -584,8 +682,11 @@ export default function CrearScreen() {
 
   const buildActivityPayload = (): ActivityFormPayload | null => {
     if (!category || !selectedDate || !selectedLocation) return null
+    const visibility = getVisibilityFromPrivacy(privacy)
+    const groupName = visibility === 'group' ? selectedGroup : ''
+    const groupId = groupName ? getLocalGroupId(groupName) : ''
 
-    return {
+    const payload: ActivityFormPayload = {
       name: name.trim(),
       category: category.label,
       categoryId: category.id,
@@ -607,8 +708,14 @@ export default function CrearScreen() {
         longitude: selectedLocation.longitude,
       },
       city: getCityFromLocation(location),
+      groupId,
+      groupName,
+      visibility,
       additionalSettings: {
+        groupId,
+        groupName,
         privacy,
+        visibility,
         maxParticipants,
         level,
         environment,
@@ -618,6 +725,16 @@ export default function CrearScreen() {
         quickSettings,
       },
     }
+
+    if (__DEV__) {
+      console.log('[CrearActividad] payload grupo', {
+        groupId: payload.groupId,
+        groupName: payload.groupName,
+        visibility: payload.visibility,
+      })
+    }
+
+    return payload
   }
 
   const saveActivity = async () => {
@@ -678,6 +795,15 @@ export default function CrearScreen() {
           updatedAt: serverTimestamp(),
         })
 
+        if (__DEV__) {
+          console.log('[CrearActividad] actividad actualizada con grupo', {
+            activityId,
+            groupId: payload.groupId,
+            groupName: payload.groupName,
+            visibility: payload.visibility,
+          })
+        }
+
         notifyActivityUpdated({
           activity: latestActivity,
           activityId,
@@ -694,7 +820,7 @@ export default function CrearScreen() {
         return
       }
 
-      await addDoc(collection(db, 'activities'), {
+      const createdRef = await addDoc(collection(db, 'activities'), {
         ...payload,
         interestedUsers: {},
         interestedCount: 0,
@@ -702,6 +828,15 @@ export default function CrearScreen() {
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
       })
+
+      if (__DEV__) {
+        console.log('[CrearActividad] actividad creada con grupo', {
+          activityId: createdRef.id,
+          groupId: payload.groupId,
+          groupName: payload.groupName,
+          visibility: payload.visibility,
+        })
+      }
 
       router.replace('/home')
     } catch (error) {
@@ -747,6 +882,90 @@ export default function CrearScreen() {
       setPrice('')
       setCurrency('ARS')
     }
+  }
+
+  const openCreateGroup = () => {
+    setNewGroupName('')
+    setIsCreateGroupVisible(true)
+  }
+
+  const selectLocalGroup = (groupName: string) => {
+    setSelectedGroup(groupName)
+    if (__DEV__) {
+      console.log('[CrearActividad] grupo seleccionado', { groupName })
+    }
+  }
+
+  const closeCreateGroup = () => {
+    setNewGroupName('')
+    setIsCreateGroupVisible(false)
+  }
+
+  const createLocalGroup = async () => {
+    const cleanName = newGroupName.trim()
+    if (!cleanName) {
+      setMessage('Ingresá un nombre para el grupo.')
+      return
+    }
+
+    const createdGroupId = getLocalGroupId(cleanName)
+    const nextGroups = mergeGroupNames(availableGroups, [cleanName])
+    const nextSelectedGroup = nextGroups.find((group) => getLocalGroupId(group) === createdGroupId) ?? cleanName
+
+    setAvailableGroups(nextGroups)
+    setSelectedGroup(nextSelectedGroup)
+    setIsCreateGroupVisible(false)
+    setNewGroupName('')
+    setMessage('')
+
+    try {
+      await persistLocalGroups(nextGroups)
+      if (__DEV__) {
+        console.log('[CrearActividad] grupo creado', {
+          groupId: createdGroupId,
+          groupName: nextSelectedGroup,
+        })
+        console.log('[CrearActividad] grupos en state despues de crear', { groups: nextGroups })
+      }
+    } catch (error) {
+      if (__DEV__) console.warn('[CrearActividad] error persistiendo grupo local', error)
+    }
+  }
+
+  const validateCurrentStep = () => {
+    if (currentStep === 1 && (!name.trim() || !category || !subcategory)) {
+      setMessage('Ingresá nombre, categoría y subcategoría para continuar.')
+      return false
+    }
+
+    if (currentStep === 2 && privacy === 'Grupo' && !selectedGroup) {
+      setMessage('Seleccioná un grupo para continuar.')
+      return false
+    }
+
+    if (currentStep === 3 && !description.trim()) {
+      setMessage('Agregá una descripción para continuar.')
+      return false
+    }
+
+    if (currentStep === 4 && (!selectedDate || !time || !selectedLocation)) {
+      setMessage('Seleccioná fecha, hora y ubicación para continuar.')
+      return false
+    }
+
+    setMessage('')
+    return true
+  }
+
+  const goToNextStep = () => {
+    if (!validateCurrentStep()) return
+    setCurrentStep((step) => (Math.min(step + 1, 5) as CreateStep))
+  }
+
+  const goToPreviousStep = () => {
+    setPickerMode(null)
+    setMessage('')
+    setCurrentStep((step) => (Math.max(step - 1, 1) as CreateStep))
   }
 
   const returnToCreateActivity = () => {
@@ -796,6 +1015,89 @@ export default function CrearScreen() {
     paddingTop: Math.max(insets.top + 18, 28),
   }
 
+  const renderAdditionalSettings = () => (
+    <>
+      <AdditionalSection Icon={UsersRound} title="Cupos máximos">
+        <View style={styles.participantsCard}>
+          <Text style={styles.participantsLabel}>Cupos máximos (opcional)</Text>
+          <View style={styles.participantsRow}>
+            <View style={styles.participantsStepper}>
+              <Pressable accessibilityLabel="Restar cupo" accessibilityRole="button" onPress={() => setMaxParticipants((value) => Math.max(2, value - 1))} style={styles.stepperButton}>
+                <Minus color="#0E5A44" size={24} strokeWidth={2.5} />
+              </Pressable>
+              <Text style={styles.stepperValue}>{maxParticipants}</Text>
+              <Pressable accessibilityLabel="Sumar cupo" accessibilityRole="button" onPress={() => setMaxParticipants((value) => Math.min(99, value + 1))} style={styles.stepperButton}>
+                <Plus color="#0E5A44" size={24} strokeWidth={2.5} />
+              </Pressable>
+            </View>
+            <Text style={styles.participantsHelp}>Incluyéndote a vos</Text>
+          </View>
+          <Text style={styles.participantsNote}>Podés cambiarlo más adelante.</Text>
+        </View>
+      </AdditionalSection>
+
+      <AdditionalSection Icon={BarChart3} title="Nivel de la actividad">
+        <View style={styles.levelGrid}>
+          {levelDetails.map((item) => (
+            <AdditionalChoiceCard active={level === item.label} description={item.description} Icon={item.Icon} key={item.label} label={item.label} onPress={() => setLevel(item.label)} />
+          ))}
+        </View>
+      </AdditionalSection>
+
+      <AdditionalSection Icon={Leaf} title="Tipo de ambiente">
+        <View style={styles.environmentGrid}>
+          {environmentDetails.map((item) => (
+            <EnvironmentCard active={environment === item.label} backgroundColor={item.backgroundColor} color={item.color} description={item.description} Icon={item.Icon} key={item.label} label={item.label} onPress={() => setEnvironment(item.label)} />
+          ))}
+        </View>
+      </AdditionalSection>
+
+      <AdditionalSection Icon={Tag} title="Costo de la actividad">
+        <View style={styles.additionalGrid}>
+          {costDetails.map((item) => (
+            <AdditionalChoiceCard active={cost === item.label} description={item.description} Icon={item.Icon} key={item.label} label={item.label} onPress={() => setCostOption(item.label)} />
+          ))}
+        </View>
+
+        <View style={styles.priceRow}>
+          <View style={styles.priceField}>
+            <Text style={styles.priceLabel}>Precio (opcional)</Text>
+            <TextInput
+              editable={cost !== 'Gratis'}
+              keyboardType="numeric"
+              onChangeText={setPrice}
+              placeholder="Ej: $2500"
+              placeholderTextColor="#7A8790"
+              style={[styles.priceInput, cost === 'Gratis' && styles.additionalDisabledInput]}
+              underlineColorAndroid="transparent"
+              value={price}
+            />
+          </View>
+          <View style={styles.currencyField}>
+            <Text style={styles.priceLabel}>Moneda</Text>
+            <Pressable accessibilityLabel="Seleccionar moneda" accessibilityRole="button" disabled={cost === 'Gratis'} onPress={() => setPickerMode('currency')} style={[styles.currencyButton, cost === 'Gratis' && styles.additionalDisabledInput]}>
+              <Text style={styles.currencyButtonText}>{currency}</Text>
+              <ChevronDown color="#0E5A44" size={20} strokeWidth={2.4} />
+            </Pressable>
+          </View>
+        </View>
+      </AdditionalSection>
+
+      <AdditionalSection Icon={Zap} title="Mascotas, lluvia, lugar y punto de encuentro">
+        <View style={styles.quickGrid}>
+          {quickDetails.map((item) => (
+            <QuickCard active={quickSettings.includes(item.label)} description={item.description} Icon={item.Icon} key={item.label} label={item.shortLabel} onPress={() => toggleQuickSetting(item.label)} />
+          ))}
+        </View>
+      </AdditionalSection>
+
+      <View style={styles.additionalTip}>
+        <Lightbulb color="#0E5A44" size={22} strokeWidth={2.2} />
+        <Text style={styles.additionalTipText}>Podés agregar más detalles en la descripción de tu actividad.</Text>
+      </View>
+    </>
+  )
+
   if (isLoadingEditActivity) {
     return (
       <SafeAreaView edges={['top']} style={styles.screen}>
@@ -827,15 +1129,36 @@ export default function CrearScreen() {
 
         <View style={styles.createTitleRow}>
           <View style={styles.additionalTitleIcon}>
-            <Sparkles color="#0E5A44" size={25} strokeWidth={2.4} />
+            {currentStep === 2 ? <ShieldCheck color="#0E5A44" size={25} strokeWidth={2.4} /> : null}
+            {currentStep === 4 ? <MapPin color="#0E5A44" size={25} strokeWidth={2.4} /> : null}
+            {currentStep === 5 ? <SlidersHorizontal color="#0E5A44" size={25} strokeWidth={2.4} /> : null}
+            {currentStep !== 2 && currentStep !== 4 && currentStep !== 5 ? <Sparkles color="#0E5A44" size={25} strokeWidth={2.4} /> : null}
           </View>
-          <Text style={styles.createScreenTitle}>{isEditMode ? 'Editar actividad' : 'Crear actividad'}</Text>
+          <Text style={styles.createScreenTitle}>
+            {currentStep === 1 ? 'Información básica' : null}
+            {currentStep === 2 ? '¿Quién puede ver esta actividad?' : null}
+            {currentStep === 3 ? 'Descripción' : null}
+            {currentStep === 4 ? '¿Cuándo y dónde?' : null}
+            {currentStep === 5 ? 'Ajustes adicionales (opcionales)' : null}
+          </Text>
         </View>
         <Text style={styles.createSubtitle}>
-          {isEditMode ? 'Actualizá los datos principales de tu actividad.' : 'Completá los datos principales para que otros puedan sumarse.'}
+          {currentStep === 1 ? 'Completá los datos principales de tu actividad.' : null}
+          {currentStep === 2 ? 'Elegí el nivel de visibilidad de tu actividad.' : null}
+          {currentStep === 3 ? 'Contá más detalles sobre tu actividad.' : null}
+          {currentStep === 4 ? 'Elegí la fecha, hora y el lugar del encuentro.' : null}
+          {currentStep === 5 ? 'Completá los detalles opcionales para que otros sepan qué esperar.' : null}
         </Text>
 
-        <View style={styles.createCard}>
+        <View style={styles.createStepPills}>
+          {[1, 2, 3, 4, 5].map((step) => (
+            <View key={step} style={[styles.createStepPill, currentStep === step && styles.createStepPillActive, currentStep > step && styles.createStepPillDone]}>
+              <Text style={[styles.createStepPillText, currentStep === step && styles.createStepPillTextActive, currentStep > step && styles.createStepPillTextDone]}>{step}</Text>
+            </View>
+          ))}
+        </View>
+
+        {currentStep === 1 ? <View style={styles.createCard}>
           <Text style={styles.createFieldLabel}>Nombre de la actividad</Text>
           <TextInput
             maxLength={70}
@@ -881,24 +1204,55 @@ export default function CrearScreen() {
               </Pressable>
             </View>
           </View>
+        </View> : null}
 
-          <Text style={styles.createFieldLabel}>Descripción</Text>
-          <TextInput
-            maxLength={300}
-            multiline
-            onChangeText={setDescription}
-            placeholder="Contá qué van a hacer, qué llevar y cómo encontrarse."
-            placeholderTextColor="#7A8790"
-            style={[styles.createTextInput, styles.createDescriptionInput]}
-            textAlignVertical="top"
-            underlineColorAndroid="transparent"
-            value={description}
-          />
-          <Text style={styles.createCounterText}>{description.length}/300</Text>
-        </View>
+        {currentStep === 2 ? (
+          <View style={styles.createCard}>
+            <View style={styles.additionalGrid}>
+              {privacyDetails.map((item) => (
+                <AdditionalChoiceCard active={privacy === item.label} description={item.description} Icon={item.Icon} key={item.label} label={item.label} onPress={() => setPrivacy(item.label)} />
+              ))}
+            </View>
 
-        <View style={styles.createCard}>
-          <Text style={styles.createSectionTitle}>Fecha y hora</Text>
+            {privacy === 'Grupo' ? (
+              <View style={styles.groupPickerBlock}>
+                <Text style={styles.createFieldLabel}>Seleccionar grupo</Text>
+                {availableGroups.map((group) => (
+                  <Pressable accessibilityRole="button" key={group} onPress={() => selectLocalGroup(group)} style={[styles.groupOptionCard, selectedGroup === group && styles.groupOptionCardActive]}>
+                    <UsersRound color={selectedGroup === group ? '#0E5A44' : '#7A8790'} size={21} strokeWidth={2.2} />
+                    <Text style={[styles.groupOptionText, selectedGroup === group && styles.groupOptionTextActive]}>{group}</Text>
+                    {selectedGroup === group ? <View style={styles.additionalCheck}><Text style={styles.additionalCheckText}>✓</Text></View> : null}
+                  </Pressable>
+                ))}
+                <Pressable accessibilityRole="button" onPress={openCreateGroup} style={[styles.groupOptionCard, styles.groupCreateCard]}>
+                  <Plus color="#0E5A44" size={21} strokeWidth={2.5} />
+                  <Text style={[styles.groupOptionText, styles.groupCreateText]}>Crear nuevo grupo</Text>
+                </Pressable>
+              </View>
+            ) : null}
+          </View>
+        ) : null}
+
+        {currentStep === 3 ? (
+          <View style={styles.createCard}>
+            <Text style={styles.createFieldLabel}>Descripción de la actividad</Text>
+            <TextInput
+              maxLength={300}
+              multiline
+              onChangeText={setDescription}
+              placeholder="Contá qué van a hacer, qué llevar y cómo encontrarse."
+              placeholderTextColor="#7A8790"
+              style={[styles.createTextInput, styles.createDescriptionInput]}
+              textAlignVertical="top"
+              underlineColorAndroid="transparent"
+              value={description}
+            />
+            <Text style={styles.createCounterText}>{description.length}/300</Text>
+          </View>
+        ) : null}
+
+        {currentStep === 4 ? <View style={styles.createCard}>
+          <Text style={styles.createSectionTitle}>¿Cuándo y dónde?</Text>
           <View style={styles.createTwoColumnRow}>
             <View style={styles.createColumn}>
               <Text style={styles.createFieldLabel}>Fecha</Text>
@@ -915,9 +1269,9 @@ export default function CrearScreen() {
               </Pressable>
             </View>
           </View>
-        </View>
+        </View> : null}
 
-        <View style={styles.createCard}>
+        {currentStep === 4 ? <View style={styles.createCard}>
           <View style={styles.createSectionHeader}>
             <MapPin color="#0E5A44" size={25} strokeWidth={2.2} />
             <Text style={styles.createSectionTitle}>Ubicación</Text>
@@ -953,6 +1307,7 @@ export default function CrearScreen() {
               </MapView>
             ) : selectedLocation ? (
               <View style={styles.createMapFallbackPreview}>
+                <FallbackMapArtwork />
                 <MapPin color="#0E5A44" size={34} strokeWidth={2.1} />
                 <Text style={styles.createMapEmptyText}>{formatCoordinateAddress(selectedLocation.latitude, selectedLocation.longitude)}</Text>
               </View>
@@ -970,33 +1325,31 @@ export default function CrearScreen() {
             </Text>
             <MapPin color="#0E5A44" size={21} strokeWidth={2.2} />
           </Pressable>
-        </View>
+        </View> : null}
 
-        <Pressable accessibilityLabel="Abrir ajustes adicionales" accessibilityRole="button" onPress={() => setIsAdditionalVisible(true)} style={styles.createAdditionalCard}>
-          <View style={styles.createSectionHeader}>
-            <SlidersHorizontal color="#0E5A44" size={25} strokeWidth={2.4} />
-            <View style={styles.createAdditionalCopy}>
-              <Text style={styles.createSectionTitle}>Ajustes adicionales</Text>
-              <Text style={styles.createAdditionalSubtitle}>Privacidad, cupos, nivel, costo y ajustes rápidos.</Text>
-            </View>
-          </View>
-          <ArrowRight color="#0E5A44" size={28} strokeWidth={2.2} />
-        </Pressable>
+        {currentStep === 5 ? renderAdditionalSettings() : null}
 
         {message ? <Text style={styles.createMessageText}>{message}</Text> : null}
 
+        {currentStep > 1 ? (
+          <Pressable accessibilityLabel="Volver al paso anterior" accessibilityRole="button" onPress={goToPreviousStep} style={styles.createSecondaryButton}>
+            <ChevronLeft color="#0E5A44" size={24} strokeWidth={2.4} />
+            <Text style={styles.createSecondaryText}>Atrás</Text>
+          </Pressable>
+        ) : null}
+
         <Pressable
-          accessibilityLabel={isEditMode ? 'Guardar cambios' : 'Crear actividad'}
+          accessibilityLabel={currentStep === 5 ? (isEditMode ? 'Guardar cambios' : 'Crear actividad') : 'Continuar'}
           accessibilityRole="button"
           disabled={isSaving}
-          onPress={saveActivity}
+          onPress={currentStep === 5 ? saveActivity : goToNextStep}
           style={[styles.createSubmitButton, isSaving && styles.createSubmitButtonDisabled]}
         >
           {isSaving ? (
             <ActivityIndicator color="#FFFFFF" />
           ) : (
             <>
-              <Text style={styles.createSubmitText}>{isEditMode ? 'Guardar cambios' : 'Crear actividad'}</Text>
+              <Text style={styles.createSubmitText}>{currentStep === 5 ? (isEditMode ? 'Guardar cambios' : 'Crear actividad') : 'Continuar'}</Text>
               <ArrowRight color="#FFFFFF" size={32} strokeWidth={2.2} style={styles.createSubmitArrow} />
             </>
           )}
@@ -1056,6 +1409,7 @@ export default function CrearScreen() {
                   onPress={moveFallbackPin}
                   style={styles.locationFallbackMap}
                 >
+                  <FallbackMapArtwork />
                   <Text style={styles.mapFallbackText}>Tocá el área para ajustar el punto.</Text>
                 </Pressable>
               )}
@@ -1086,11 +1440,45 @@ export default function CrearScreen() {
           </View>
         </Modal>
 
+        <Modal animationType="fade" transparent visible={isCreateGroupVisible} onRequestClose={closeCreateGroup}>
+          <KeyboardAvoidingView
+            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+            keyboardVerticalOffset={Platform.OS === 'ios' ? 12 : 0}
+            style={styles.groupModalAvoidingView}
+          >
+            <Pressable style={styles.modalBackdrop} onPress={closeCreateGroup}>
+              <Pressable style={[styles.groupModalCard, { paddingBottom: Math.max(insets.bottom + 24, 36) }]}>
+                <Text style={styles.modalTitle}>Crear nuevo grupo</Text>
+                <TextInput
+                  autoCapitalize="words"
+                  autoFocus
+                  maxLength={60}
+                  onChangeText={setNewGroupName}
+                  onSubmitEditing={createLocalGroup}
+                  placeholder="Ej: Running Tandil"
+                  placeholderTextColor="#7A8790"
+                  returnKeyType="done"
+                  style={styles.createTextInput}
+                  underlineColorAndroid="transparent"
+                  value={newGroupName}
+                />
+                <Pressable accessibilityRole="button" onPress={createLocalGroup} style={styles.groupModalPrimaryButton}>
+                  <Text style={styles.groupModalPrimaryText}>Crear grupo</Text>
+                  <Plus color="#FFFFFF" size={22} strokeWidth={2.5} />
+                </Pressable>
+                <Pressable accessibilityRole="button" onPress={closeCreateGroup} style={styles.groupModalSecondaryButton}>
+                  <Text style={styles.groupModalSecondaryText}>Cancelar</Text>
+                </Pressable>
+              </Pressable>
+            </Pressable>
+          </KeyboardAvoidingView>
+        </Modal>
+
         <Modal animationType="fade" transparent visible={pickerMode !== null} onRequestClose={() => setPickerMode(null)}>
           <Pressable style={styles.modalBackdrop} onPress={() => setPickerMode(null)}>
-            <Pressable style={styles.modalCard}>
+            <Pressable style={[styles.modalCard, { paddingBottom: Math.max(insets.bottom + 18, 30) }]}>
               <Text style={styles.modalTitle}>{pickerTitle}</Text>
-              <ScrollView showsVerticalScrollIndicator={false}>
+              <ScrollView contentContainerStyle={styles.modalOptionsContent} showsVerticalScrollIndicator={false}>
                 {pickerMode === 'category'
                   ? categories.map((item) => (
                     <Pressable key={item.id} onPress={() => selectOption(item)} style={[styles.optionRow, { backgroundColor: item.backgroundColor }]}>
@@ -1483,6 +1871,20 @@ function QuickCard({ active, description, Icon, label, onPress }: QuickCardProps
   )
 }
 
+function FallbackMapArtwork() {
+  return (
+    <View pointerEvents="none" style={styles.fallbackMapArtwork}>
+      <View style={[styles.fallbackMapRoad, styles.fallbackMapRoadOne]} />
+      <View style={[styles.fallbackMapRoad, styles.fallbackMapRoadTwo]} />
+      <View style={[styles.fallbackMapRoad, styles.fallbackMapRoadThree]} />
+      <View style={[styles.fallbackMapRoad, styles.fallbackMapRoadFour]} />
+      <View style={styles.fallbackMapPark}>
+        <Text style={styles.fallbackMapParkText}>Zona del encuentro</Text>
+      </View>
+    </View>
+  )
+}
+
 type MapConfigNoticeProps = {
   compact?: boolean
 }
@@ -1495,8 +1897,8 @@ function MapConfigNotice({ compact = false }: MapConfigNoticeProps) {
       </Text>
       {!compact ? (
         <Text style={styles.mapFallbackText}>
-          Si ves el mapa beige, creá una Development Build con EXPO_PUBLIC_GOOGLE_MAPS_API_KEY.
-          Podés tocar el área para mover el punto.
+          Agregá EXPO_PUBLIC_GOOGLE_MAPS_API_KEY y reconstruí la Development Build.
+          Mientras tanto podés tocar el plano para mover el punto.
         </Text>
       ) : null}
     </View>
@@ -1554,6 +1956,42 @@ const styles = StyleSheet.create({
     marginTop: 8,
     textAlign: 'center',
   },
+  createStepPills: {
+    flexDirection: 'row',
+    gap: 8,
+    justifyContent: 'center',
+    marginBottom: 18,
+  },
+  createStepPill: {
+    width: 30,
+    height: 30,
+    borderRadius: 999,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#FFFFFF',
+    borderColor: '#D7DED9',
+    borderWidth: 1,
+  },
+  createStepPillActive: {
+    backgroundColor: '#0E5A44',
+    borderColor: '#0E5A44',
+  },
+  createStepPillDone: {
+    backgroundColor: '#E9F4D9',
+    borderColor: '#98C870',
+  },
+  createStepPillText: {
+    color: '#63706A',
+    fontSize: 13,
+    lineHeight: 16,
+    fontWeight: '900',
+  },
+  createStepPillTextActive: {
+    color: '#FFFFFF',
+  },
+  createStepPillTextDone: {
+    color: '#0E5A44',
+  },
   createCard: {
     borderRadius: 16,
     borderWidth: 1,
@@ -1603,6 +2041,44 @@ const styles = StyleSheet.create({
     lineHeight: 16,
     fontWeight: '700',
     marginTop: -8,
+  },
+  groupPickerBlock: {
+    marginTop: 18,
+  },
+  groupOptionCard: {
+    minHeight: 58,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#E2E6E3',
+    backgroundColor: '#FCFAF8',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginBottom: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+  },
+  groupOptionCardActive: {
+    borderColor: '#168A37',
+    backgroundColor: '#F2FAF3',
+  },
+  groupOptionText: {
+    flex: 1,
+    color: '#34445F',
+    fontSize: 15,
+    lineHeight: 20,
+    fontWeight: '800',
+  },
+  groupOptionTextActive: {
+    color: '#0E5A44',
+  },
+  groupCreateCard: {
+    borderStyle: 'dashed',
+    borderColor: '#98C870',
+    backgroundColor: '#F7FBF2',
+  },
+  groupCreateText: {
+    color: '#0E5A44',
   },
   createTwoColumnRow: {
     flexDirection: 'row',
@@ -1676,6 +2152,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: 8,
     paddingHorizontal: 16,
+    overflow: 'hidden',
   },
   createMapEmptyText: {
     color: '#0E5A44',
@@ -1721,6 +2198,68 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     textAlign: 'center',
     marginTop: 6,
+  },
+  fallbackMapArtwork: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: '#EEF4E7',
+    overflow: 'hidden',
+  },
+  fallbackMapRoad: {
+    position: 'absolute',
+    height: 18,
+    borderRadius: 999,
+    backgroundColor: 'rgba(255,255,255,0.92)',
+    borderColor: '#DDE4D8',
+    borderWidth: 1,
+  },
+  fallbackMapRoadOne: {
+    left: -36,
+    right: -20,
+    top: '24%',
+    transform: [{ rotate: '-18deg' }],
+  },
+  fallbackMapRoadTwo: {
+    left: -20,
+    right: -48,
+    top: '58%',
+    transform: [{ rotate: '16deg' }],
+  },
+  fallbackMapRoadThree: {
+    left: '22%',
+    width: 18,
+    top: -20,
+    bottom: -20,
+    height: '118%',
+    transform: [{ rotate: '10deg' }],
+  },
+  fallbackMapRoadFour: {
+    right: '18%',
+    width: 18,
+    top: -20,
+    bottom: -20,
+    height: '118%',
+    transform: [{ rotate: '-12deg' }],
+  },
+  fallbackMapPark: {
+    position: 'absolute',
+    left: 22,
+    top: 26,
+    minWidth: 118,
+    minHeight: 66,
+    borderRadius: 16,
+    backgroundColor: '#D9EDC5',
+    borderColor: '#B9D99A',
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 10,
+  },
+  fallbackMapParkText: {
+    color: '#2F6E3D',
+    fontSize: 12,
+    lineHeight: 16,
+    fontWeight: '900',
+    textAlign: 'center',
   },
   createLocationField: {
     minHeight: 56,
@@ -1779,6 +2318,23 @@ const styles = StyleSheet.create({
   },
   createSubmitButtonDisabled: {
     opacity: 0.72,
+  },
+  createSecondaryButton: {
+    minHeight: 52,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#B8C8BF',
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexDirection: 'row',
+    gap: 6,
+    marginBottom: 10,
+  },
+  createSecondaryText: {
+    color: '#0E5A44',
+    fontSize: 17,
+    lineHeight: 22,
+    fontWeight: '900',
   },
   createSubmitText: {
     color: '#FFFFFF',
@@ -2250,10 +2806,48 @@ const styles = StyleSheet.create({
   selectedFieldText: { color: '#0E5A44', fontSize: 15, lineHeight: 19, fontWeight: '900' },
   locationText: { color: '#0E5A44', fontSize: 18, lineHeight: 22, fontWeight: '900', backgroundColor: 'rgba(255,255,255,0.75)', borderRadius: 999, paddingHorizontal: 16, paddingVertical: 7 },
   modalBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.25)', justifyContent: 'flex-end' },
-  modalCard: { maxHeight: '78%', backgroundColor: '#FFFFFF', borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 20 },
+  modalCard: { maxHeight: '82%', backgroundColor: '#FFFFFF', borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingHorizontal: 20, paddingTop: 20 },
   modalTitle: { color: '#0E5A44', fontSize: 20, fontWeight: '900', marginBottom: 14, textAlign: 'center' },
+  modalOptionsContent: { paddingBottom: 18 },
   optionRow: { borderRadius: 16, marginBottom: 10, paddingHorizontal: 16, paddingVertical: 14 },
   optionText: { color: '#123F38', fontSize: 17, fontWeight: '800' },
+  groupModalCard: {
+    backgroundColor: '#FFFFFF',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    paddingHorizontal: 20,
+    paddingTop: 20,
+  },
+  groupModalAvoidingView: {
+    flex: 1,
+  },
+  groupModalPrimaryButton: {
+    minHeight: 56,
+    borderRadius: 16,
+    backgroundColor: '#00613F',
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexDirection: 'row',
+    gap: 8,
+  },
+  groupModalPrimaryText: {
+    color: '#FFFFFF',
+    fontSize: 17,
+    lineHeight: 22,
+    fontWeight: '900',
+  },
+  groupModalSecondaryButton: {
+    minHeight: 48,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 8,
+  },
+  groupModalSecondaryText: {
+    color: '#0E5A44',
+    fontSize: 16,
+    lineHeight: 21,
+    fontWeight: '900',
+  },
   categoryOptionRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -2384,7 +2978,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'flex-end',
     padding: 20,
-    backgroundColor: '#E7E2D8',
+    backgroundColor: '#EEF4E7',
+    overflow: 'hidden',
   },
   locationPickerFooter: {
     paddingHorizontal: 20,

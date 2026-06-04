@@ -10,7 +10,7 @@ export type FirestoreRecord = {
 
 export type ChatSummaryData = Record<string, unknown>
 
-type CategoryId = 'outdoor' | 'sports' | 'wellness' | 'groups' | 'private'
+type CategoryId = 'outdoor' | 'sports' | 'wellness' | 'groups'
 
 const image = (uri: string): ImageSourcePropType => ({ uri })
 
@@ -38,7 +38,7 @@ export function getTimestampMillis(value: unknown) {
 export function getCategoryId(data: Record<string, unknown>): CategoryId | 'default' {
   const categoryId = readString(data.categoryId)
 
-  if (categoryId === 'outdoor' || categoryId === 'sports' || categoryId === 'wellness' || categoryId === 'groups' || categoryId === 'private') {
+  if (categoryId === 'outdoor' || categoryId === 'sports' || categoryId === 'wellness' || categoryId === 'groups') {
     return categoryId
   }
 
