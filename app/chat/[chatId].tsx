@@ -305,7 +305,7 @@ export default function ChatScreen() {
 
   return (
     <SafeAreaView edges={['top']} style={styles.safeArea}>
-      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} keyboardVerticalOffset={Platform.OS === 'ios' ? 8 : 0} style={styles.keyboardView}>
+      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} keyboardVerticalOffset={Platform.OS === 'ios' ? 8 : 0} style={styles.keyboardView}>
         <View style={styles.topBar}>
           <PressScale accessibilityLabel="Volver" accessibilityRole="button" onPress={() => router.back()} scaleTo={0.94} style={styles.iconButton}>
             <ArrowLeft color="#8C4BD6" size={27} strokeWidth={2.5} />
@@ -319,8 +319,10 @@ export default function ChatScreen() {
 
         <FlatList
           ListEmptyComponent={<ConversationEmpty />}
-          contentContainerStyle={styles.messagesContent}
+          contentContainerStyle={[styles.messagesContent, { paddingBottom: Math.max(insets.bottom + 24, 32) }]}
           data={messages}
+          keyboardDismissMode="interactive"
+          keyboardShouldPersistTaps="handled"
           keyExtractor={(item) => item.id}
           ref={listRef}
           renderItem={({ item }) => (
@@ -340,7 +342,9 @@ export default function ChatScreen() {
             onChangeText={setText}
             placeholder="Escribe un mensaje..."
             placeholderTextColor="#718178"
+            selectionColor="#006A32"
             style={styles.input}
+            textAlignVertical="top"
             value={text}
           />
           <Pressable
@@ -558,30 +562,33 @@ const styles = StyleSheet.create({
   },
   composer: {
     alignItems: 'flex-end',
-    backgroundColor: '#FAFAF8',
+    backgroundColor: '#FFFFFF',
     borderTopColor: '#EFE9DF',
     borderTopWidth: 1,
     flexDirection: 'row',
-    gap: 12,
+    gap: 10,
     paddingBottom: Platform.OS === 'ios' ? 16 : 12,
     paddingLeft: 14,
     paddingRight: 18,
     paddingTop: 10,
   },
   input: {
-    backgroundColor: '#FFFFFF',
-    borderColor: '#E7E2DA',
+    backgroundColor: '#FDFDFC',
+    borderColor: '#BFD9C7',
     borderRadius: 23,
-    borderWidth: 1,
-    color: '#163B34',
+    borderWidth: 1.5,
+    color: '#071D19',
     flex: 1,
-    fontSize: 15,
-    fontWeight: '700',
+    fontSize: 16,
+    fontWeight: '800',
     letterSpacing: 0,
+    lineHeight: 21,
     maxHeight: 110,
     minHeight: 48,
+    minWidth: 0,
     paddingHorizontal: 16,
-    paddingVertical: 13,
+    paddingBottom: 12,
+    paddingTop: 13,
   },
   sendHitArea: {
     alignItems: 'center',

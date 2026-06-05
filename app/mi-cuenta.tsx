@@ -14,14 +14,19 @@ import {
 } from 'react-native'
 import { useRouter } from 'expo-router'
 import { SafeAreaView } from 'react-native-safe-area-context'
+import { GoogleSignin } from '@react-native-google-signin/google-signin'
 import {
   EmailAuthProvider,
+  GoogleAuthProvider,
+  deleteUser,
   onAuthStateChanged,
   reauthenticateWithCredential,
+  signOut,
   updatePassword,
 } from 'firebase/auth'
-import { doc, getDoc } from 'firebase/firestore'
+import { doc, getDoc, serverTimestamp, setDoc } from 'firebase/firestore'
 import {
+  AlertTriangle,
   ChevronLeft,
   ChevronRight,
   KeyRound,
@@ -34,6 +39,10 @@ import type { LucideIcon } from 'lucide-react-native'
 
 import { PressScale } from '../components/home/PressScale'
 import { getFirebaseServices } from '../firebaseConfig'
+
+const LOGIN_ROUTE = '/login'
+const googleWebClientId = process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID
+const googleIosClientId = process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID
 
 type AccountData = {
   city: string
@@ -61,6 +70,22 @@ const emptyPasswordDraft: PasswordDraft = {
   newPassword: '',
 }
 
+async function getGoogleIdTokenForReauth() {
+  GoogleSignin.configure({
+    iosClientId: googleIosClientId,
+    webClientId: googleWebClientId,
+  })
+
+  if (Platform.OS === 'android') {
+    await GoogleSignin.hasPlayServices({ showPlayServicesUpdateDialog: true })
+  }
+
+  await GoogleSignin.signOut().catch(() => {})
+  await GoogleSignin.signIn()
+  const tokens = await GoogleSignin.getTokens()
+  return tokens.idToken
+}
+
 function readString(value: unknown, fallback = '') {
   return typeof value === 'string' && value.trim() ? value.trim() : fallback
 }
@@ -69,6 +94,18 @@ function buildAccountData(
   profile: Record<string, unknown> | null,
   authUser: { displayName: string | null; email: string | null; photoURL: string | null } | null,
 ): AccountData {
+  if (profile?.photoRemoved === true) {
+    return {
+      city: readString(profile?.city, readString(profile?.location, fallbackAccount.city)),
+      email: readString(profile?.email, readString(authUser?.email, fallbackAccount.email)),
+      name: readString(
+        profile?.fullName,
+        readString(profile?.displayName, readString(profile?.name, readString(authUser?.displayName, fallbackAccount.name))),
+      ),
+      photoURL: '',
+    }
+  }
+
   return {
     city: readString(profile?.city, readString(profile?.location, fallbackAccount.city)),
     email: readString(profile?.email, readString(authUser?.email, fallbackAccount.email)),
@@ -95,8 +132,12 @@ export default function MiCuentaScreen() {
   const [isLoading, setIsLoading] = useState(true)
   const [isChangingPassword, setIsChangingPassword] = useState(false)
   const [isUpdatingPassword, setIsUpdatingPassword] = useState(false)
+  const [isDeletingAccount, setIsDeletingAccount] = useState(false)
+  const [isDeleteModalVisible, setIsDeleteModalVisible] = useState(false)
   const [passwordDraft, setPasswordDraft] = useState<PasswordDraft>(emptyPasswordDraft)
   const [passwordError, setPasswordError] = useState('')
+  const [deletePassword, setDeletePassword] = useState('')
+  const [deleteError, setDeleteError] = useState('')
 
   useEffect(() => {
     let mounted = true
@@ -150,6 +191,31 @@ export default function MiCuentaScreen() {
     setPasswordDraft(emptyPasswordDraft)
     setPasswordError('')
     setIsChangingPassword(false)
+  }
+
+  const openDeleteModal = () => {
+    setDeletePassword('')
+    setDeleteError('')
+    setIsDeleteModalVisible(true)
+  }
+
+  const cancelDeleteAccount = () => {
+    if (isDeletingAccount) return
+    setDeletePassword('')
+    setDeleteError('')
+    setIsDeleteModalVisible(false)
+  }
+
+  const getCurrentProviderId = () => {
+    try {
+      const { auth } = getFirebaseServices()
+      const providers = auth.currentUser?.providerData ?? []
+      return providers.find((provider) => provider.providerId === 'password' || provider.providerId === 'google.com')?.providerId
+        ?? providers[0]?.providerId
+        ?? ''
+    } catch {
+      return ''
+    }
   }
 
   const savePassword = async () => {
@@ -211,6 +277,94 @@ export default function MiCuentaScreen() {
     }
   }
 
+  const deleteAccount = async () => {
+    if (isDeletingAccount) return
+
+    setDeleteError('')
+    setIsDeletingAccount(true)
+
+    try {
+      const { auth, db } = getFirebaseServices()
+      const user = auth.currentUser
+      const providerId = getCurrentProviderId()
+
+      if (!user) {
+        setDeleteError('Necesitamos que vuelvas a iniciar sesión para eliminar la cuenta.')
+        return
+      }
+
+      if (providerId === 'password') {
+        if (!user.email || !deletePassword) {
+          setDeleteError('Ingresá tu contraseña actual para confirmar.')
+          return
+        }
+
+        await reauthenticateWithCredential(user, EmailAuthProvider.credential(user.email, deletePassword))
+      } else if (providerId === 'google.com') {
+        if (!googleWebClientId) {
+          setDeleteError('Falta configurar Google para confirmar la eliminación.')
+          return
+        }
+
+        const idToken = await getGoogleIdTokenForReauth()
+        if (!idToken) {
+          setDeleteError('Google no devolvió un token válido. No se eliminó nada.')
+          return
+        }
+
+        await reauthenticateWithCredential(user, GoogleAuthProvider.credential(idToken))
+      } else {
+        setDeleteError('No pudimos detectar el método de ingreso de esta cuenta.')
+        return
+      }
+
+      await setDoc(doc(db, 'users', user.uid), {
+        deletedAt: serverTimestamp(),
+        isDeleted: true,
+        status: 'deleted',
+        updatedAt: serverTimestamp(),
+      }, { merge: true })
+
+      await deleteUser(user)
+      await signOut(auth).catch(() => {})
+      router.replace(LOGIN_ROUTE)
+    } catch (error) {
+      const code = typeof error === 'object' && error && 'code' in error ? String(error.code) : ''
+
+      if (code === 'auth/wrong-password' || code === 'auth/invalid-credential' || code === 'auth/invalid-login-credentials') {
+        setDeleteError('La reautenticación falló. No se eliminó nada.')
+        return
+      }
+
+      if (code === 'auth/requires-recent-login') {
+        setDeleteError('Necesitamos confirmar tu identidad otra vez antes de eliminar la cuenta.')
+        return
+      }
+
+      if (code.includes('sign_in_cancelled') || code.includes('cancelled')) {
+        setDeleteError('Cancelaste la confirmación con Google. No se eliminó nada.')
+        return
+      }
+
+      setDeleteError('No pudimos eliminar la cuenta. Intentá nuevamente en unos segundos.')
+    } finally {
+      setIsDeletingAccount(false)
+    }
+  }
+
+  const confirmDeleteAccount = () => {
+    Alert.alert(
+      'Eliminar cuenta',
+      'Esta acción eliminará tu cuenta y no se puede deshacer.',
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        { text: 'Eliminar cuenta', style: 'destructive', onPress: deleteAccount },
+      ],
+    )
+  }
+
+  const deleteProviderId = getCurrentProviderId()
+
   return (
     <SafeAreaView edges={['top']} style={styles.safeArea}>
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
@@ -251,6 +405,11 @@ export default function MiCuentaScreen() {
               <ActionRow Icon={Pencil} label="Editar perfil social" onPress={openProfileEditor} />
               <ActionRow Icon={KeyRound} label="Cambiar contrasena" onPress={openPasswordModal} />
             </View>
+
+            <View style={styles.dangerCard}>
+              <Text style={styles.dangerTitle}>Zona sensible</Text>
+              <ActionRow Icon={AlertTriangle} destructive label="Eliminar cuenta" onPress={openDeleteModal} />
+            </View>
           </>
         )}
       </ScrollView>
@@ -263,6 +422,19 @@ export default function MiCuentaScreen() {
         onChange={updatePasswordDraft}
         onSave={savePassword}
         visible={isChangingPassword}
+      />
+      <DeleteAccountModal
+        error={deleteError}
+        isPasswordProvider={deleteProviderId === 'password'}
+        isSaving={isDeletingAccount}
+        onCancel={cancelDeleteAccount}
+        onChangePassword={(value) => {
+          setDeletePassword(value)
+          if (deleteError) setDeleteError('')
+        }}
+        onConfirm={confirmDeleteAccount}
+        password={deletePassword}
+        visible={isDeleteModalVisible}
       />
     </SafeAreaView>
   )
@@ -355,6 +527,83 @@ function ChangePasswordModal({
   )
 }
 
+function DeleteAccountModal({
+  error,
+  isPasswordProvider,
+  isSaving,
+  onCancel,
+  onChangePassword,
+  onConfirm,
+  password,
+  visible,
+}: {
+  error: string
+  isPasswordProvider: boolean
+  isSaving: boolean
+  onCancel: () => void
+  onChangePassword: (value: string) => void
+  onConfirm: () => void
+  password: string
+  visible: boolean
+}) {
+  return (
+    <Modal animationType="slide" onRequestClose={onCancel} visible={visible}>
+      <SafeAreaView edges={['top']} style={styles.safeArea}>
+        <ScrollView contentContainerStyle={styles.editContent} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+          <View style={styles.header}>
+            <PressScale
+              accessibilityLabel="Cancelar eliminación de cuenta"
+              accessibilityRole="button"
+              onPress={onCancel}
+              scaleTo={0.94}
+              style={styles.backButton}
+            >
+              <ChevronLeft color="#063C31" size={27} strokeWidth={2.5} />
+            </PressScale>
+            <Text style={styles.title}>Eliminar cuenta</Text>
+            <View style={styles.headerSpacer} />
+          </View>
+
+          <View style={styles.editCard}>
+            <View style={styles.dangerIcon}>
+              <AlertTriangle color="#B42318" size={34} strokeWidth={2.1} />
+            </View>
+            <Text style={styles.passwordTitle}>Esta acción eliminará tu cuenta y no se puede deshacer.</Text>
+            <Text style={styles.passwordSubtitle}>
+              Vamos a marcar tu perfil como eliminado y cerrar tu sesión. Confirmá tu identidad para continuar.
+            </Text>
+
+            {isPasswordProvider ? (
+              <EditField
+                label="Contraseña actual"
+                onChangeText={onChangePassword}
+                placeholder="Ingresá tu contraseña"
+                secureTextEntry
+                value={password}
+              />
+            ) : null}
+
+            {error ? <Text style={styles.errorText}>{error}</Text> : null}
+
+            <Pressable
+              accessibilityRole="button"
+              disabled={isSaving}
+              onPress={onConfirm}
+              style={({ pressed }) => [styles.deleteButton, pressed && styles.deleteButtonPressed, isSaving && styles.saveButtonDisabled]}
+            >
+              {isSaving ? <ActivityIndicator color="#FFFFFF" /> : <Text style={styles.saveButtonText}>Eliminar cuenta</Text>}
+            </Pressable>
+
+            <Pressable accessibilityRole="button" disabled={isSaving} onPress={onCancel} style={styles.cancelButton}>
+              <Text style={styles.cancelButtonText}>Cancelar</Text>
+            </Pressable>
+          </View>
+        </ScrollView>
+      </SafeAreaView>
+    </Modal>
+  )
+}
+
 function EditField({
   label,
   onChangeText,
@@ -398,7 +647,9 @@ function InfoRow({ Icon, label, value }: { Icon: LucideIcon; label: string; valu
   )
 }
 
-function ActionRow({ Icon, label, onPress }: { Icon: LucideIcon; label: string; onPress: () => void }) {
+function ActionRow({ destructive = false, Icon, label, onPress }: { destructive?: boolean; Icon: LucideIcon; label: string; onPress: () => void }) {
+  const color = destructive ? '#B42318' : '#063C31'
+
   return (
     <Pressable
       accessibilityRole="button"
@@ -406,10 +657,10 @@ function ActionRow({ Icon, label, onPress }: { Icon: LucideIcon; label: string; 
       style={({ pressed }) => [styles.actionRow, pressed && styles.rowPressed]}
     >
       <View style={styles.actionContent}>
-        <View style={styles.rowIcon}>
-          <Icon color="#063C31" size={20} strokeWidth={2.2} />
+        <View style={[styles.rowIcon, destructive && styles.rowIconDestructive]}>
+          <Icon color={color} size={20} strokeWidth={2.2} />
         </View>
-        <Text numberOfLines={1} style={styles.actionLabel}>{label}</Text>
+        <Text numberOfLines={1} style={[styles.actionLabel, destructive && styles.actionLabelDestructive]}>{label}</Text>
         <ChevronRight color="#8A9691" size={20} strokeWidth={2.2} />
       </View>
     </Pressable>
@@ -539,6 +790,9 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     width: 42,
   },
+  rowIconDestructive: {
+    backgroundColor: '#FFF2F0',
+  },
   infoCopy: {
     flex: 1,
     minWidth: 0,
@@ -567,6 +821,25 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     ...shadow,
   },
+  dangerCard: {
+    backgroundColor: '#FFFFFF',
+    borderColor: '#F6C8C2',
+    borderRadius: 20,
+    borderWidth: 1,
+    marginTop: 18,
+    overflow: 'hidden',
+    paddingTop: 14,
+    ...shadow,
+  },
+  dangerTitle: {
+    color: '#8F1D14',
+    fontSize: 13,
+    fontWeight: '900',
+    letterSpacing: 0,
+    marginBottom: 4,
+    paddingHorizontal: 16,
+    textTransform: 'uppercase',
+  },
   actionRow: {
     borderBottomColor: '#EFEEE9',
     borderBottomWidth: 1,
@@ -590,6 +863,9 @@ const styles = StyleSheet.create({
     fontWeight: '900',
     letterSpacing: 0,
   },
+  actionLabelDestructive: {
+    color: '#B42318',
+  },
   editCard: {
     alignItems: 'center',
     backgroundColor: '#FFFFFF',
@@ -603,6 +879,17 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     backgroundColor: '#F0F8EC',
     borderColor: '#B7DC9D',
+    borderRadius: 999,
+    borderWidth: 1,
+    height: 76,
+    justifyContent: 'center',
+    marginBottom: 14,
+    width: 76,
+  },
+  dangerIcon: {
+    alignItems: 'center',
+    backgroundColor: '#FFF2F0',
+    borderColor: '#F6C8C2',
     borderRadius: 999,
     borderWidth: 1,
     height: 76,
@@ -668,6 +955,18 @@ const styles = StyleSheet.create({
     height: 50,
     justifyContent: 'center',
     marginTop: 4,
+  },
+  deleteButton: {
+    alignItems: 'center',
+    alignSelf: 'stretch',
+    backgroundColor: '#B42318',
+    borderRadius: 999,
+    height: 50,
+    justifyContent: 'center',
+    marginTop: 4,
+  },
+  deleteButtonPressed: {
+    backgroundColor: '#8F1D14',
   },
   saveButtonDisabled: {
     opacity: 0.72,

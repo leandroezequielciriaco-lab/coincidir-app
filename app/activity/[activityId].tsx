@@ -5,6 +5,7 @@ import {
   Image,
   Linking,
   Platform,
+  Pressable,
   ScrollView,
   Share,
   StyleSheet,
@@ -71,7 +72,7 @@ type ConfirmedParticipant = {
   name: string
   uid: string
 }
-type InterestedAction = 'confirm' | 'invite' | 'reject' | 'write'
+type InterestedAction = 'confirm' | 'reject' | 'write'
 
 function readString(value: unknown, fallback = '') {
   return typeof value === 'string' && value.trim() ? value.trim() : fallback
@@ -250,26 +251,6 @@ function getInterestedUsers(data: ActivityData): InterestedUser[] {
     })
 }
 
-function getInviteMessage(user: InterestedUser, detail: {
-  date: string
-  location: string
-  maxParticipants: number
-  participantCount: number
-  price: string
-  time: string
-  title: string
-}) {
-  const availablePlaces = Math.max(0, detail.maxParticipants - detail.participantCount)
-
-  return [
-    `Hola ${user.name}! Te invito a sumarte a ${detail.title} en COINCIDIR.`,
-    `📅 ${detail.date} ${detail.time}`,
-    `📍 ${detail.location}`,
-    detail.price ? `💰 ${detail.price}` : '',
-    `Quedan ${availablePlaces} lugares.`,
-  ].filter(Boolean).join('\n')
-}
-
 function getWhatsappMessage(user: InterestedUser, title: string) {
   return `Hola ${user.name}, vi que te interesa la actividad ${title} en COINCIDIR. ¿Querés que coordinemos?`
 }
@@ -371,6 +352,47 @@ function getLocationAddress(data: ActivityData, displayName: string) {
   )
 
   return address && normalize(address) !== normalize(displayName) ? address : ''
+}
+
+function shortenAddress(value: string) {
+  const cleanValue = value.trim().replace(/\s+/g, ' ')
+  if (!cleanValue) return 'Ubicación a definir'
+
+  const parts = cleanValue
+    .split(',')
+    .map((part) => part.trim())
+    .filter(Boolean)
+
+  if (parts.length <= 2) return cleanValue
+
+  const provinceIndex = parts.findIndex((part) => normalize(part).includes('buenos aires'))
+  const cityIndex = parts.findIndex((part) => normalize(part) === 'tandil')
+
+  if (cityIndex > 0) return `${parts[0]}, ${parts[cityIndex]}`
+  if (cityIndex >= 0 && provinceIndex >= 0 && cityIndex !== provinceIndex) return `${parts[cityIndex]}, Buenos Aires`
+  if (provinceIndex > 0) return `${parts[provinceIndex - 1]}, Buenos Aires`
+
+  return `${parts[0]}, ${parts[parts.length - 1]}`
+}
+
+function getLocationSummary(data: ActivityData) {
+  const displayName = getLocationDisplayName(data)
+  const address = getLocationAddress(data, displayName)
+  return shortenAddress(address || displayName)
+}
+
+function getLocationCoordinate(data: ActivityData, field: 'latitude' | 'longitude') {
+  const directField = field === 'latitude' ? data.locationLatitude : data.locationLongitude
+  const directValue = readNumber(directField, Number.NaN)
+  if (Number.isFinite(directValue)) return directValue
+
+  const pin = data.locationPin
+  if (typeof pin === 'object' && pin) {
+    const value = readNumber((pin as Record<string, unknown>)[field], Number.NaN)
+    if (Number.isFinite(value)) return value
+  }
+
+  return null
 }
 
 function getInterestedCountLabel(count: number) {
@@ -518,6 +540,9 @@ export default function ActivityDetailScreen() {
     const status = readString(data.status)
     const isCancelled = status === 'cancelled'
     const locationDisplayName = getLocationDisplayName(data)
+    const locationAddress = getLocationAddress(data, locationDisplayName)
+    const locationLatitude = getLocationCoordinate(data, 'latitude')
+    const locationLongitude = getLocationCoordinate(data, 'longitude')
     const groupMeta = getGroupMeta(data, localGroups)
     return {
       action,
@@ -535,8 +560,10 @@ export default function ActivityDetailScreen() {
       isCancelled,
       isFull,
       joined,
-      location: locationDisplayName,
-      locationAddress: getLocationAddress(data, locationDisplayName),
+      location: getLocationSummary(data),
+      locationAddress,
+      locationLatitude,
+      locationLongitude,
       maxParticipants,
       organizer: getOrganizerProfile(activity, organizerProfile),
       participantCount: safeCount,
@@ -729,20 +756,6 @@ export default function ActivityDetailScreen() {
       Alert.alert('No pudimos abrir el mensaje', 'Intentá nuevamente en unos segundos.')
     } finally {
       setInterestedActionPending(user.uid, 'write', false)
-    }
-  }
-
-  const inviteInterestedUser = async (user: InterestedUser) => {
-    if (detail.isCancelled || isInterestedActionPending(user.uid, 'invite')) return
-
-    setInterestedActionPending(user.uid, 'invite', true)
-    try {
-      const message = getInviteMessage(user, detail)
-      await Share.share({ message })
-    } catch {
-      Alert.alert('No pudimos compartir la invitación', 'Intentá nuevamente en unos segundos.')
-    } finally {
-      setInterestedActionPending(user.uid, 'invite', false)
     }
   }
 
@@ -1097,6 +1110,27 @@ export default function ActivityDetailScreen() {
     type: 'activity',
   }
 
+  const openActivityLocation = async () => {
+    const hasCoordinates = typeof detail.locationLatitude === 'number'
+      && Number.isFinite(detail.locationLatitude)
+      && typeof detail.locationLongitude === 'number'
+      && Number.isFinite(detail.locationLongitude)
+    const query = hasCoordinates
+      ? `${detail.locationLatitude},${detail.locationLongitude}`
+      : detail.locationAddress || detail.location
+
+    if (!query || query === 'Ubicación a definir') {
+      Alert.alert('Ubicación no disponible', 'Esta actividad todavía no tiene una ubicación para abrir en Maps.')
+      return
+    }
+
+    try {
+      await Linking.openURL(`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`)
+    } catch {
+      Alert.alert('No pudimos abrir Maps', 'Intentá nuevamente en unos segundos.')
+    }
+  }
+
   return (
     <SafeAreaView edges={['top']} style={styles.safeArea}>
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
@@ -1127,16 +1161,12 @@ export default function ActivityDetailScreen() {
                 </View>
               ) : null}
               <Text style={styles.title}>{detail.title}</Text>
-              <Text style={styles.subtitle}>{detail.location}</Text>
-              {detail.locationAddress ? (
-                <Text numberOfLines={2} style={styles.locationAddress}>{detail.locationAddress}</Text>
-              ) : null}
             </View>
           </View>
 
           <InfoRow Icon={CalendarDays} label={detail.date} />
           <InfoRow Icon={Clock3} label={detail.time} />
-          <InfoRow Icon={MapPin} label={detail.location} secondary={detail.locationAddress} />
+          <InfoRow Icon={MapPin} label={detail.location} onPress={openActivityLocation} secondary="Tocar para abrir en Maps" />
           <InfoRow Icon={UsersRound} label={`${detail.participantCount} de ${detail.maxParticipants} participantes`} />
 
           {detail.groupName ? (
@@ -1252,60 +1282,48 @@ export default function ActivityDetailScreen() {
                   <View key={user.uid} style={styles.interestedItem}>
                     <Text numberOfLines={1} style={styles.interestedName}>{user.name}</Text>
                     <View style={styles.interestedActions}>
+                      <View style={styles.interestedPrimaryActions}>
+                        <PressScale
+                          accessibilityLabel={`Confirmar a ${user.name}`}
+                          accessibilityRole="button"
+                          disabled={detail.isCancelled || isInterestedActionPending(user.uid, 'confirm')}
+                          onPress={() => confirmInterestedUser(user)}
+                          scaleTo={0.97}
+                          style={[styles.confirmAction, detail.isCancelled && styles.interestedActionDisabled]}
+                        >
+                          {isInterestedActionPending(user.uid, 'confirm') ? (
+                            <ActivityIndicator color="#FFFFFF" size="small" />
+                          ) : (
+                            <Text style={styles.confirmActionText}>Confirmar</Text>
+                          )}
+                        </PressScale>
+                        <PressScale
+                          accessibilityLabel={`Rechazar a ${user.name}`}
+                          accessibilityRole="button"
+                          disabled={detail.isCancelled || isInterestedActionPending(user.uid, 'reject')}
+                          onPress={() => rejectInterestedUser(user)}
+                          scaleTo={0.97}
+                          style={[styles.rejectAction, detail.isCancelled && styles.interestedActionDisabled]}
+                        >
+                          {isInterestedActionPending(user.uid, 'reject') ? (
+                            <ActivityIndicator color="#B42318" size="small" />
+                          ) : (
+                            <Text style={styles.rejectActionText}>Rechazar</Text>
+                          )}
+                        </PressScale>
+                      </View>
                       <PressScale
                         accessibilityLabel={`Escribir a ${user.name}`}
                         accessibilityRole="button"
                         disabled={detail.isCancelled || isInterestedActionPending(user.uid, 'write')}
                         onPress={() => void writeInterestedUser(user)}
                         scaleTo={0.97}
-                        style={[styles.futureAction, detail.isCancelled && styles.futureActionDisabled]}
+                        style={[styles.writeAction, detail.isCancelled && styles.interestedActionDisabled]}
                       >
                         {isInterestedActionPending(user.uid, 'write') ? (
-                          <ActivityIndicator color="#006A32" size="small" />
+                          <ActivityIndicator color="#5B38C4" size="small" />
                         ) : (
-                          <Text style={styles.futureActionText}>Escribir</Text>
-                        )}
-                      </PressScale>
-                      <PressScale
-                        accessibilityLabel={`Invitar a ${user.name}`}
-                        accessibilityRole="button"
-                        disabled={detail.isCancelled || isInterestedActionPending(user.uid, 'invite')}
-                        onPress={() => void inviteInterestedUser(user)}
-                        scaleTo={0.97}
-                        style={[styles.futureAction, detail.isCancelled && styles.futureActionDisabled]}
-                      >
-                        {isInterestedActionPending(user.uid, 'invite') ? (
-                          <ActivityIndicator color="#006A32" size="small" />
-                        ) : (
-                          <Text style={styles.futureActionText}>Invitar</Text>
-                        )}
-                      </PressScale>
-                      <PressScale
-                        accessibilityLabel={`Confirmar a ${user.name}`}
-                        accessibilityRole="button"
-                        disabled={detail.isCancelled || isInterestedActionPending(user.uid, 'confirm')}
-                        onPress={() => confirmInterestedUser(user)}
-                        scaleTo={0.97}
-                        style={[styles.futureAction, detail.isCancelled && styles.futureActionDisabled]}
-                      >
-                        {isInterestedActionPending(user.uid, 'confirm') ? (
-                          <ActivityIndicator color="#006A32" size="small" />
-                        ) : (
-                          <Text style={styles.futureActionText}>Confirmar</Text>
-                        )}
-                      </PressScale>
-                      <PressScale
-                        accessibilityLabel={`Rechazar a ${user.name}`}
-                        accessibilityRole="button"
-                        disabled={detail.isCancelled || isInterestedActionPending(user.uid, 'reject')}
-                        onPress={() => rejectInterestedUser(user)}
-                        scaleTo={0.97}
-                        style={[styles.futureAction, styles.rejectAction, detail.isCancelled && styles.futureActionDisabled]}
-                      >
-                        {isInterestedActionPending(user.uid, 'reject') ? (
-                          <ActivityIndicator color="#B42318" size="small" />
-                        ) : (
-                          <Text style={styles.rejectActionText}>Rechazar</Text>
+                          <Text style={styles.writeActionText}>Escribir</Text>
                         )}
                       </PressScale>
                     </View>
@@ -1374,17 +1392,37 @@ export default function ActivityDetailScreen() {
 type InfoRowProps = {
   Icon: LucideIcon
   label: string
+  onPress?: () => void
   secondary?: string
 }
 
-function InfoRow({ Icon, label, secondary }: InfoRowProps) {
-  return (
-    <View style={styles.infoRow}>
+function InfoRow({ Icon, label, onPress, secondary }: InfoRowProps) {
+  const content = (
+    <>
       <Icon color="#4B348A" size={20} strokeWidth={2.2} />
       <View style={styles.infoCopy}>
         <Text style={styles.infoText}>{label}</Text>
-        {secondary ? <Text numberOfLines={2} style={styles.infoSecondary}>{secondary}</Text> : null}
+        {secondary ? <Text numberOfLines={1} style={styles.infoSecondary}>{secondary}</Text> : null}
       </View>
+    </>
+  )
+
+  if (onPress) {
+    return (
+      <Pressable
+        accessibilityHint={secondary}
+        accessibilityRole="button"
+        onPress={onPress}
+        style={({ pressed }) => [styles.infoRow, styles.infoRowPressable, pressed && styles.infoRowPressed]}
+      >
+        {content}
+      </Pressable>
+    )
+  }
+
+  return (
+    <View style={styles.infoRow}>
+      {content}
     </View>
   )
 }
@@ -1521,6 +1559,18 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: 12,
     marginBottom: 14,
+  },
+  infoRowPressable: {
+    backgroundColor: '#F6F2FE',
+    borderColor: '#E7DDF8',
+    borderRadius: 14,
+    borderWidth: 1,
+    marginBottom: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  infoRowPressed: {
+    opacity: 0.76,
   },
   infoCopy: {
     flex: 1,
@@ -1728,14 +1778,14 @@ const styles = StyleSheet.create({
     borderColor: '#DDEAD7',
     borderRadius: 14,
     borderWidth: 1,
-    gap: 10,
-    padding: 12,
+    padding: 14,
   },
   interestedName: {
     color: '#163B34',
-    fontSize: 14,
-    fontWeight: '800',
+    fontSize: 15,
+    fontWeight: '900',
     letterSpacing: 0,
+    lineHeight: 20,
   },
   interestedEmpty: {
     color: '#596A65',
@@ -1744,37 +1794,67 @@ const styles = StyleSheet.create({
     letterSpacing: 0,
   },
   interestedActions: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
+    borderColor: '#EDF3EA',
+    borderTopWidth: 1,
+    gap: 10,
     marginTop: 12,
+    paddingTop: 12,
   },
-  futureAction: {
+  interestedPrimaryActions: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  confirmAction: {
     alignItems: 'center',
-    backgroundColor: '#ECF8EA',
-    borderColor: '#BFE0B8',
+    backgroundColor: '#6C3DE5',
+    borderColor: '#6C3DE5',
     borderRadius: 999,
     borderWidth: 1.2,
-    minHeight: 36,
-    minWidth: 86,
-    paddingHorizontal: 12,
+    flex: 1,
     justifyContent: 'center',
+    minHeight: 40,
+    paddingHorizontal: 14,
   },
-  futureActionDisabled: {
-    opacity: 0.5,
-  },
-  futureActionText: {
-    color: '#006A32',
+  confirmActionText: {
+    color: '#FFFFFF',
     fontSize: 13,
     fontWeight: '900',
     letterSpacing: 0,
   },
   rejectAction: {
+    alignItems: 'center',
     backgroundColor: '#FFF5F4',
     borderColor: '#F4C7C2',
+    borderRadius: 999,
+    borderWidth: 1.2,
+    flex: 1,
+    justifyContent: 'center',
+    minHeight: 40,
+    paddingHorizontal: 14,
+  },
+  interestedActionDisabled: {
+    opacity: 0.5,
   },
   rejectActionText: {
     color: '#B42318',
+    fontSize: 13,
+    fontWeight: '900',
+    letterSpacing: 0,
+  },
+  writeAction: {
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    backgroundColor: '#F7F3FF',
+    borderColor: '#D9CCFF',
+    borderRadius: 999,
+    borderWidth: 1.2,
+    justifyContent: 'center',
+    minHeight: 36,
+    minWidth: 96,
+    paddingHorizontal: 14,
+  },
+  writeActionText: {
+    color: '#5B38C4',
     fontSize: 13,
     fontWeight: '900',
     letterSpacing: 0,

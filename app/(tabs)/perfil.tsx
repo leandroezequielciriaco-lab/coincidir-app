@@ -246,6 +246,16 @@ function isJoined(record: FirestoreRecord, userId: string | null) {
 }
 
 function buildProfile(data: Record<string, unknown> | null, authName?: string | null, authPhotoURL?: string | null): UserProfile {
+  if (data?.photoRemoved === true) {
+    return {
+      bio: readString(data?.bio, DEFAULT_BIO),
+      fullName: readString(data?.fullName, readString(data?.displayName, readString(data?.name, authName ?? 'Mi perfil'))),
+      interests: readList(data?.interests),
+      location: readString(data?.location, readString(data?.city, DEFAULT_LOCATION)),
+      photoURL: '',
+    }
+  }
+
   return {
     bio: readString(data?.bio, DEFAULT_BIO),
     fullName: readString(data?.fullName, readString(data?.displayName, readString(data?.name, authName ?? 'Mi perfil'))),
@@ -1066,6 +1076,12 @@ function EditProfileModal({ onClose, profile, userId, visible }: EditProfileModa
     setDraft((current) => ({ ...current, photoURL: asset.uri }))
   }
 
+  const removePhoto = () => {
+    setIsPhotoOptionsVisible(false)
+    setSelectedPhotoAsset(null)
+    setDraft((current) => ({ ...current, photoURL: '' }))
+  }
+
   const getBlobFromUri = async (uri: string, timeoutMs = 20000) => {
     const controller = new AbortController()
     const timeoutId = setTimeout(() => controller.abort(), timeoutMs)
@@ -1190,14 +1206,18 @@ function EditProfileModal({ onClose, profile, userId, visible }: EditProfileModa
           if (__DEV__) console.warn('profile-photo-upload-fallback-local-uri', uploadError)
           savedPhotoURL = selectedPhotoAsset.uri || savedPhotoURL
         }
+      } else if (!savedPhotoURL && auth.currentUser.photoURL) {
+        await updateProfile(auth.currentUser, { photoURL: null })
       }
 
       await setDoc(doc(db, 'users', authUid), {
         avatarUrl: savedPhotoURL,
         bio: draft.bio.trim(),
         fullName: draft.fullName.trim(),
+        googlePhotoURL: savedPhotoURL,
         imageUrl: savedPhotoURL,
         location: draft.location.trim(),
+        photoRemoved: !savedPhotoURL,
         photoURL: savedPhotoURL,
         updatedAt: serverTimestamp(),
       }, { merge: true })
@@ -1299,6 +1319,12 @@ function EditProfileModal({ onClose, profile, userId, visible }: EditProfileModa
                   <ImageIcon color="#4B348A" size={22} strokeWidth={2.4} />
                 </View>
                 <Text style={styles.photoSheetOptionText}>Elegir de la galería</Text>
+              </Pressable>
+              <Pressable accessibilityRole="menuitem" onPress={removePhoto} style={styles.photoSheetOption}>
+                <View style={[styles.photoSheetIcon, styles.photoSheetIconDanger]}>
+                  <UserRound color="#B42318" size={22} strokeWidth={2.4} />
+                </View>
+                <Text style={[styles.photoSheetOptionText, styles.photoSheetOptionTextDanger]}>Eliminar foto actual</Text>
               </Pressable>
               <Pressable accessibilityRole="menuitem" onPress={() => setIsPhotoOptionsVisible(false)} style={styles.photoSheetCancel}>
                 <Text style={styles.photoSheetCancelText}>Cancelar</Text>
@@ -2106,12 +2132,18 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     width: 42,
   },
+  photoSheetIconDanger: {
+    backgroundColor: '#FFF2F0',
+  },
   photoSheetOptionText: {
     color: '#071D19',
     flex: 1,
     fontSize: 16,
     fontWeight: '900',
     letterSpacing: 0,
+  },
+  photoSheetOptionTextDanger: {
+    color: '#B42318',
   },
   photoSheetCancel: {
     alignItems: 'center',

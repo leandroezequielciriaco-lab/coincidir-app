@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import {
   ActivityIndicator,
+  Alert,
   Image,
   Platform,
   ScrollView,
@@ -10,7 +11,8 @@ import {
 } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { useLocalSearchParams, useRouter } from 'expo-router'
-import { doc, onSnapshot } from 'firebase/firestore'
+import { onAuthStateChanged } from 'firebase/auth'
+import { doc, increment, onSnapshot, serverTimestamp, updateDoc } from 'firebase/firestore'
 import {
   ArrowLeft,
   CalendarDays,
@@ -43,11 +45,47 @@ function getMemberCount(data: GroupData) {
   return Array.isArray(members) ? members.length : 0
 }
 
+function hasUserInValue(value: unknown, userId: string | null) {
+  if (!userId) return false
+  if (typeof value === 'object' && value) return userId in value
+  return Array.isArray(value) ? value.includes(userId) : false
+}
+
+function isGroupOwner(data: GroupData, userId: string | null) {
+  if (!userId) return false
+  return readString(data.createdBy) === userId
+    || readString(data.ownerId) === userId
+    || readString(data.organizerId) === userId
+}
+
+function isGroupMember(data: GroupData, userId: string | null) {
+  if (isGroupOwner(data, userId)) return true
+  return hasUserInValue(data.members, userId)
+    || hasUserInValue(data.joinedUsers, userId)
+    || hasUserInValue(data.participants, userId)
+}
+
 export default function GroupDetailScreen() {
   const router = useRouter()
   const { groupId } = useLocalSearchParams<{ groupId?: string }>()
   const [group, setGroup] = useState<GroupData | null>(null)
+  const [userId, setUserId] = useState<string | null>(null)
+  const [userName, setUserName] = useState('Participante')
   const [isLoading, setIsLoading] = useState(true)
+  const [isJoining, setIsJoining] = useState(false)
+
+  useEffect(() => {
+    try {
+      const { auth } = getFirebaseServices()
+      return onAuthStateChanged(auth, (user) => {
+        setUserId(user?.uid ?? null)
+        setUserName(user?.displayName?.trim() || user?.email?.split('@')[0]?.trim() || 'Participante')
+      })
+    } catch {
+      setUserId(null)
+      return undefined
+    }
+  }, [])
 
   useEffect(() => {
     if (!groupId) {
@@ -88,6 +126,32 @@ export default function GroupDetailScreen() {
       title: readString(data.name, readString(data.title, 'Grupo sin título')),
     }
   }, [group])
+
+  const isOwner = useMemo(() => isGroupOwner(group ?? {}, userId), [group, userId])
+  const isMember = useMemo(() => isGroupMember(group ?? {}, userId), [group, userId])
+
+  const joinGroup = async () => {
+    if (!groupId || !userId || !group || isOwner || isMember || isJoining) return
+
+    setIsJoining(true)
+    try {
+      const { db } = getFirebaseServices()
+      await updateDoc(doc(db, 'groups', groupId), {
+        [`joinedUsers.${userId}`]: true,
+        [`members.${userId}`]: {
+          joinedAt: serverTimestamp(),
+          name: userName,
+          role: 'member',
+        },
+        membersCount: increment(1),
+        updatedAt: serverTimestamp(),
+      })
+    } catch {
+      Alert.alert('No pudimos sumarte', 'Intentá unirte al grupo nuevamente en unos segundos.')
+    } finally {
+      setIsJoining(false)
+    }
+  }
 
   if (isLoading) {
     return (
@@ -143,9 +207,21 @@ export default function GroupDetailScreen() {
 
           <Text style={styles.description}>{detail.description}</Text>
 
-          <PressScale style={styles.primaryButton} scaleTo={0.97}>
-            <Sprout color="#FFFFFF" size={20} strokeWidth={2.3} />
-            <Text style={styles.primaryButtonText}>Ver grupo</Text>
+          <View style={[styles.memberStatus, isOwner ? styles.memberStatusOwner : isMember ? styles.memberStatusJoined : styles.memberStatusOpen]}>
+            <UsersRound color={isOwner || isMember ? '#006A32' : '#4B348A'} size={17} strokeWidth={2.3} />
+            <Text style={[styles.memberStatusText, isOwner || isMember ? styles.memberStatusTextJoined : styles.memberStatusTextOpen]}>
+              {isOwner ? 'Tu grupo' : isMember ? 'Ya pertenecés a este grupo' : 'Podés sumarte a este grupo'}
+            </Text>
+          </View>
+
+          <PressScale
+            disabled={!userId || isOwner || isMember || isJoining}
+            onPress={joinGroup}
+            style={[styles.primaryButton, (!userId || isOwner || isMember) && styles.primaryButtonDisabled]}
+            scaleTo={0.97}
+          >
+            {isJoining ? <ActivityIndicator color="#FFFFFF" /> : <Sprout color="#FFFFFF" size={20} strokeWidth={2.3} />}
+            <Text style={styles.primaryButtonText}>{isOwner ? 'Tu grupo' : isMember ? 'Ya sos miembro' : 'Sumarme al grupo'}</Text>
           </PressScale>
         </View>
       </ScrollView>
@@ -272,6 +348,42 @@ const styles = StyleSheet.create({
     lineHeight: 22,
     marginTop: 4,
   },
+  memberStatus: {
+    alignItems: 'center',
+    borderRadius: 14,
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: 8,
+    marginTop: 18,
+    minHeight: 44,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+  },
+  memberStatusJoined: {
+    backgroundColor: '#EFF8F0',
+    borderColor: '#B7DC9D',
+  },
+  memberStatusOpen: {
+    backgroundColor: '#F5F0FF',
+    borderColor: '#D9CBF6',
+  },
+  memberStatusOwner: {
+    backgroundColor: '#EFF8F0',
+    borderColor: '#B7DC9D',
+  },
+  memberStatusText: {
+    flex: 1,
+    fontSize: 13,
+    fontWeight: '900',
+    letterSpacing: 0,
+    lineHeight: 18,
+  },
+  memberStatusTextJoined: {
+    color: '#006A32',
+  },
+  memberStatusTextOpen: {
+    color: '#4B348A',
+  },
   primaryButton: {
     alignItems: 'center',
     backgroundColor: '#006A32',
@@ -281,6 +393,9 @@ const styles = StyleSheet.create({
     height: 52,
     justifyContent: 'center',
     marginTop: 22,
+  },
+  primaryButtonDisabled: {
+    backgroundColor: '#7CA68B',
   },
   primaryButtonText: {
     color: '#FFFFFF',

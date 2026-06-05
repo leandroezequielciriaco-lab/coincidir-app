@@ -155,7 +155,7 @@ function getAdditionalSettings(data: Record<string, unknown>) {
 }
 
 function getParticipantCount(data: Record<string, unknown>) {
-  const participantsCount = readNumber(data.participantsCount, -1)
+  const participantsCount = readNumber(data.participantsCount, readNumber(data.membersCount, -1))
   if (participantsCount >= 0) return participantsCount
 
   const joinedUsers = data.joinedUsers

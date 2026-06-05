@@ -115,7 +115,7 @@ export default function TabsLayout() {
       <Tabs.Screen
         name="perfil"
         options={{
-          title: 'Perfil',
+          title: 'Mi Perfil',
           tabBarIcon: ({ color, size }) => (
             <UserRound color={color} size={size} strokeWidth={2.5} />
           ),

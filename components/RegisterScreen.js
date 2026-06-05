@@ -190,6 +190,7 @@ async function saveGoogleProfile(user) {
   const userRef = doc(db, 'users', user.uid)
   const userSnap = await getDoc(userRef)
   const existingProfile = userSnap.exists() ? userSnap.data() : null
+  const photoRemoved = existingProfile?.photoRemoved === true
   const googlePhotoURL = user.photoURL || ''
   const existingPhotoURL = readProfileString(existingProfile, 'photoURL')
   const existingAvatarURL =
@@ -198,13 +199,13 @@ async function saveGoogleProfile(user) {
     readProfileString(existingProfile, 'imageUrl') ||
     readProfileString(existingProfile, 'photoUrl') ||
     readProfileString(existingProfile, 'avatar')
-  const shouldUseGooglePhoto = Boolean(googlePhotoURL && !existingPhotoURL && !existingAvatarURL)
+  const shouldUseGooglePhoto = Boolean(googlePhotoURL && !photoRemoved && !existingPhotoURL && !existingAvatarURL)
   const profile = {
     uid: user.uid,
     fullName: user.displayName || '',
     displayName: user.displayName || '',
     email: user.email || '',
-    ...(googlePhotoURL ? { avatarUrl: googlePhotoURL, googlePhotoURL, photoURL: googlePhotoURL } : {}),
+    ...(googlePhotoURL && !photoRemoved ? { avatarUrl: googlePhotoURL, googlePhotoURL, photoURL: googlePhotoURL } : {}),
     provider: 'google',
     updatedAt: serverTimestamp(),
     lastLoginAt: serverTimestamp(),
@@ -221,7 +222,7 @@ async function saveGoogleProfile(user) {
   await setDoc(
     userRef,
     {
-      ...(googlePhotoURL ? { googlePhotoURL } : {}),
+      ...(googlePhotoURL && !photoRemoved ? { googlePhotoURL } : {}),
       ...(shouldUseGooglePhoto ? { avatarUrl: googlePhotoURL, photoURL: googlePhotoURL } : {}),
       provider: 'google',
       updatedAt: serverTimestamp(),

@@ -1355,7 +1355,7 @@ export default function CrearScreen() {
           )}
         </Pressable>
         <Modal animationType="slide" visible={isLocationPickerVisible} onRequestClose={() => setIsLocationPickerVisible(false)}>
-          <View style={styles.locationPickerScreen}>
+          <SafeAreaView edges={['top', 'bottom']} style={styles.locationPickerScreen}>
             <View style={styles.locationPickerHeader}>
               <Pressable
                 accessibilityLabel="Cerrar selector de ubicación"
@@ -1419,7 +1419,7 @@ export default function CrearScreen() {
               {shouldShowMapConfigNotice ? <MapConfigNotice /> : null}
             </View>
 
-            <View style={styles.locationPickerFooter}>
+            <View style={[styles.locationPickerFooter, { paddingBottom: Math.max(insets.bottom + 16, 24) }]}>
               <Text numberOfLines={2} style={styles.locationPickerHint}>
                 Pin: {formatCoordinateAddress(draftPin.latitude, draftPin.longitude)}
               </Text>
@@ -1437,7 +1437,7 @@ export default function CrearScreen() {
                 )}
               </Pressable>
             </View>
-          </View>
+          </SafeAreaView>
         </Modal>
 
         <Modal animationType="fade" transparent visible={isCreateGroupVisible} onRequestClose={closeCreateGroup}>
@@ -2915,17 +2915,17 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
   },
   locationPickerScreen: {
-    flex: 1,
     backgroundColor: '#FCFAF3',
+    flex: 1,
   },
   locationPickerHeader: {
-    minHeight: 112,
-    paddingHorizontal: 20,
-    paddingTop: 48,
-    paddingBottom: 18,
-    flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#FCFAF3',
+    flexDirection: 'row',
+    minHeight: 76,
+    paddingBottom: 12,
+    paddingHorizontal: 18,
+    paddingTop: 10,
   },
   locationPickerBack: {
     width: 44,
@@ -2962,9 +2962,10 @@ const styles = StyleSheet.create({
     height: '100%',
   },
   locationPickerMapFrame: {
-    flex: 1,
-    minHeight: 320,
     backgroundColor: '#E7E2D8',
+    flex: 1,
+    minHeight: 260,
+    overflow: 'hidden',
   },
   locationCenterPin: {
     position: 'absolute',
@@ -2974,18 +2975,20 @@ const styles = StyleSheet.create({
     marginTop: -38,
   },
   locationFallbackMap: {
-    flex: 1,
     alignItems: 'center',
-    justifyContent: 'flex-end',
-    padding: 20,
     backgroundColor: '#EEF4E7',
+    flex: 1,
+    justifyContent: 'flex-end',
     overflow: 'hidden',
+    padding: 20,
+    width: '100%',
   },
   locationPickerFooter: {
-    paddingHorizontal: 20,
-    paddingTop: 14,
-    paddingBottom: 28,
     backgroundColor: '#FCFAF3',
+    borderTopColor: '#E6E0D6',
+    borderTopWidth: 1,
+    paddingHorizontal: 20,
+    paddingTop: 12,
   },
   locationPickerHint: {
     color: '#34445F',
