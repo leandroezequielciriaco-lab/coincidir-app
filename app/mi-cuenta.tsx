@@ -14,7 +14,6 @@ import {
 } from 'react-native'
 import { useRouter } from 'expo-router'
 import { SafeAreaView } from 'react-native-safe-area-context'
-import { GoogleSignin } from '@react-native-google-signin/google-signin'
 import {
   EmailAuthProvider,
   GoogleAuthProvider,
@@ -44,6 +43,18 @@ const LOGIN_ROUTE = '/login'
 const googleWebClientId = process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID
 const googleIosClientId = process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID
 
+type GoogleSigninApi = {
+  configure: (config: { iosClientId?: string; webClientId?: string }) => void
+  getTokens: () => Promise<{ idToken?: string }>
+  hasPlayServices: (options: { showPlayServicesUpdateDialog: boolean }) => Promise<boolean>
+  signIn: () => Promise<unknown>
+  signOut: () => Promise<unknown>
+}
+
+type GoogleSigninModule = {
+  GoogleSignin?: GoogleSigninApi
+}
+
 type AccountData = {
   city: string
   email: string
@@ -70,7 +81,25 @@ const emptyPasswordDraft: PasswordDraft = {
   newPassword: '',
 }
 
+function getGoogleSignInModule() {
+  try {
+    // Loaded lazily so Expo Go can evaluate this route without RNGoogleSignin.
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    return require('@react-native-google-signin/google-signin') as GoogleSigninModule
+  } catch (error) {
+    if (__DEV__) console.warn('Google Sign-In native module no disponible en Mi cuenta', error)
+    return null
+  }
+}
+
 async function getGoogleIdTokenForReauth() {
+  const googleSignInModule = getGoogleSignInModule()
+  const GoogleSignin = googleSignInModule?.GoogleSignin
+
+  if (!GoogleSignin) {
+    throw new Error('google-signin-development-build-required')
+  }
+
   GoogleSignin.configure({
     iosClientId: googleIosClientId,
     webClientId: googleWebClientId,
@@ -343,6 +372,12 @@ export default function MiCuentaScreen() {
 
       if (code.includes('sign_in_cancelled') || code.includes('cancelled')) {
         setDeleteError('Cancelaste la confirmación con Google. No se eliminó nada.')
+        return
+      }
+
+      const message = error instanceof Error ? error.message : ''
+      if (message === 'google-signin-development-build-required' || message.includes('RNGoogleSignin')) {
+        setDeleteError('Google Sign-In requiere development build.')
         return
       }
 

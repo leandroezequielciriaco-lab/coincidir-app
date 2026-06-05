@@ -2,7 +2,7 @@ import * as ImagePicker from 'expo-image-picker'
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router'
 import { onAuthStateChanged, updateProfile } from 'firebase/auth'
-import { collection, doc, onSnapshot, serverTimestamp, setDoc } from 'firebase/firestore'
+import { collection, deleteField, doc, onSnapshot, serverTimestamp, setDoc } from 'firebase/firestore'
 import { getDownloadURL, ref, uploadBytes } from 'firebase/storage'
 import type { LucideIcon } from 'lucide-react-native'
 import {
@@ -63,7 +63,7 @@ import {
   TextInput,
   View,
 } from 'react-native'
-import { SafeAreaView } from 'react-native-safe-area-context'
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 
 import { PressScale } from '../../components/home/PressScale'
 import { getGroupTheme } from '../../constants/groupTheme'
@@ -91,10 +91,19 @@ type FirestoreRecord = {
 type UserProfile = {
   bio: string
   fullName: string
+  googlePhotoURL: string
   interests: string[]
   location: string
   photoURL: string
 }
+
+type AuthPhotoSource = {
+  photoURL?: string | null
+  providerData?: {
+    photoURL?: string | null
+    providerId?: string | null
+  }[]
+} | null
 
 type FirebaseStorageLikeError = {
   code?: string
@@ -168,8 +177,29 @@ function readString(value: unknown, fallback = '') {
   return typeof value === 'string' && value.trim() ? value.trim() : fallback
 }
 
+function cleanPhotoValue(value?: string | null) {
+  return typeof value === 'string' && value.trim().length > 0 ? value.trim() : null
+}
+
+function resolveProfilePhoto(userData: Record<string, unknown> | null, authUser: AuthPhotoSource) {
+  const firestorePhoto =
+    cleanPhotoValue(typeof userData?.avatarUrl === 'string' ? userData.avatarUrl : null) ||
+    cleanPhotoValue(typeof userData?.photoURL === 'string' ? userData.photoURL : null)
+  const googlePhoto =
+    cleanPhotoValue(authUser?.photoURL) ||
+    cleanPhotoValue(authUser?.providerData?.find((provider) => provider.providerId === 'google.com')?.photoURL)
+
+  return {
+    finalAvatarUri: firestorePhoto || googlePhoto || null,
+    firestorePhoto,
+    googlePhoto,
+  }
+}
+
 type ProfileGroup = LocalGroup & {
   activityCount: number
+  description?: string
+  memberCount?: number
   source: 'activity' | 'local'
 }
 
@@ -227,6 +257,15 @@ function getParticipantCount(data: Record<string, unknown>) {
   return Array.isArray(participants) ? participants.length : 0
 }
 
+function getGroupMemberCount(data: Record<string, unknown>) {
+  const membersCount = typeof data.membersCount === 'number' ? data.membersCount : -1
+  if (membersCount >= 0) return membersCount
+
+  const members = data.members ?? data.joinedUsers ?? data.participants
+  if (typeof members === 'object' && members) return Object.keys(members).length
+  return Array.isArray(members) ? members.length : 0
+}
+
 function getRecordTime(record: FirestoreRecord) {
   const value = record.data.createdAt ?? record.data.updatedAt
   return typeof value === 'object' && value && 'toMillis' in value && typeof value.toMillis === 'function'
@@ -245,32 +284,16 @@ function isJoined(record: FirestoreRecord, userId: string | null) {
   return false
 }
 
-function buildProfile(data: Record<string, unknown> | null, authName?: string | null, authPhotoURL?: string | null): UserProfile {
-  if (data?.photoRemoved === true) {
-    return {
-      bio: readString(data?.bio, DEFAULT_BIO),
-      fullName: readString(data?.fullName, readString(data?.displayName, readString(data?.name, authName ?? 'Mi perfil'))),
-      interests: readList(data?.interests),
-      location: readString(data?.location, readString(data?.city, DEFAULT_LOCATION)),
-      photoURL: '',
-    }
-  }
+function buildProfile(data: Record<string, unknown> | null, authName?: string | null, authUser: AuthPhotoSource = null): UserProfile {
+  const { finalAvatarUri, googlePhoto } = resolveProfilePhoto(data, authUser)
 
   return {
     bio: readString(data?.bio, DEFAULT_BIO),
     fullName: readString(data?.fullName, readString(data?.displayName, readString(data?.name, authName ?? 'Mi perfil'))),
+    googlePhotoURL: googlePhoto ?? '',
     interests: readList(data?.interests),
     location: readString(data?.location, readString(data?.city, DEFAULT_LOCATION)),
-    photoURL: readString(
-      data?.photoURL,
-      readString(
-        data?.avatarUrl,
-        readString(
-          data?.avatarURL,
-          readString(data?.imageUrl, readString(data?.photoUrl, readString(data?.googlePhotoURL, authPhotoURL ?? ''))),
-        ),
-      ),
-    ),
+    photoURL: finalAvatarUri ?? '',
   }
 }
 
@@ -318,11 +341,23 @@ export default function PerfilScreen() {
     if (!userId) return undefined
 
     try {
-      const { db } = getFirebaseServices()
+      const { auth, db } = getFirebaseServices()
       return onSnapshot(
         doc(db, 'users', userId),
         (snapshot) => {
-          setProfile(buildProfile(snapshot.exists() ? snapshot.data() : null, authName, authPhotoURL))
+          const userData = snapshot.exists() ? snapshot.data() : null
+          const authUser = auth.currentUser
+          const { finalAvatarUri } = resolveProfilePhoto(userData, authUser)
+
+          console.log('[PROFILE PHOTO DEBUG]', {
+            firestoreAvatarUrl: userData?.avatarUrl,
+            firestorePhotoURL: userData?.photoURL,
+            authPhotoURL: auth.currentUser?.photoURL,
+            providerData: auth.currentUser?.providerData,
+            finalAvatarUri,
+          })
+
+          setProfile(buildProfile(userData, authName, authUser))
           setOptimisticInterests(null)
           setIsLoading(false)
         },
@@ -431,8 +466,9 @@ export default function PerfilScreen() {
     const merged = mergeLocalGroups(localGroups, activityDerivedGroups, firestoreProfileGroups)
       .filter((group) => !deletedIds.has(group.id))
     const groupsWithCounts = merged.map((group) => {
+      const firestoreGroup = groups.find((item) => item.id === group.id)
       const activityCount = activities.filter((activity) => {
-        if (!isOwnActivity(activity.data, userId)) return false
+        if (isCancelled(activity.data)) return false
         const groupMeta = getActivityGroupMeta(activity.data, localGroups)
         const activityGroupId = groupMeta.groupId || getLocalGroupId(groupMeta.groupName)
         return activityGroupId === group.id
@@ -440,6 +476,10 @@ export default function PerfilScreen() {
 
       return {
         ...group,
+        description: firestoreGroup
+          ? readString(firestoreGroup.data.description, readString(firestoreGroup.data.summary))
+          : '',
+        memberCount: firestoreGroup ? getGroupMemberCount(firestoreGroup.data) : undefined,
         activityCount,
         source: localGroups.some((localGroup) => localGroup.id === group.id) ? 'local' as const : 'activity' as const,
       }
@@ -454,7 +494,7 @@ export default function PerfilScreen() {
     }
 
     return groupsWithCounts
-  }, [activities, activityDerivedGroups, deletedLocalGroupIds, firestoreProfileGroups, localGroups, userId])
+  }, [activities, activityDerivedGroups, deletedLocalGroupIds, firestoreProfileGroups, groups, localGroups])
   const stats = useMemo(() => [
     { label: 'Actividades', value: String(createdActivities.length + joinedActivities.length), Icon: CalendarDays, color: '#5A35D6' },
     { label: 'Grupos', value: String(myGroups.length), Icon: UsersRound, color: '#17803C' },
@@ -690,10 +730,12 @@ export default function PerfilScreen() {
           groups={myGroups}
           onDelete={deleteProfileGroup}
           onEdit={setEditingGroup}
+          onOpen={(group) => router.push({ pathname: '/group/[groupId]', params: { groupId: group.id, groupName: group.name } })}
         />
       </ScrollView>
 
       <EditProfileModal
+        authPhotoURL={authPhotoURL}
         onClose={() => setIsEditing(false)}
         profile={profile}
         userId={userId}
@@ -807,9 +849,22 @@ type ProfileGroupsSectionProps = {
   groups: ProfileGroup[]
   onDelete: (group: ProfileGroup) => void
   onEdit: (group: ProfileGroup) => void
+  onOpen: (group: ProfileGroup) => void
 }
 
-function ProfileGroupsSection({ groups, onDelete, onEdit }: ProfileGroupsSectionProps) {
+function getProfileGroupMetaText(group: ProfileGroup) {
+  const activityLabel = group.activityCount === 1 ? '1 actividad' : `${group.activityCount} actividades`
+  const memberLabel = typeof group.memberCount === 'number'
+    ? group.memberCount === 1 ? '1 miembro' : `${group.memberCount} miembros`
+    : ''
+
+  if (memberLabel && group.activityCount > 0) return `${memberLabel} · ${activityLabel}`
+  if (group.activityCount > 0) return `${activityLabel} activas`
+  if (group.description) return group.description
+  return 'Comunidad para organizar actividades'
+}
+
+function ProfileGroupsSection({ groups, onDelete, onEdit, onOpen }: ProfileGroupsSectionProps) {
   const groupColors = getGroupTheme()
 
   return (
@@ -819,14 +874,14 @@ function ProfileGroupsSection({ groups, onDelete, onEdit }: ProfileGroupsSection
       ) : (
         <View style={styles.list}>
           {groups.map((group) => (
-            <View key={group.id} style={[styles.profileGroupRow, { borderColor: groupColors.borderColor }]}>
+            <PressScale accessibilityRole="button" key={group.id} onPress={() => onOpen(group)} scaleTo={0.985} style={[styles.profileGroupRow, { borderColor: groupColors.borderColor }]}>
               <View style={[styles.profileGroupIcon, { backgroundColor: groupColors.backgroundColor, borderColor: groupColors.borderColor }]}>
                 <UsersRound color={groupColors.color} size={18} strokeWidth={2.3} />
               </View>
               <View style={styles.profileGroupCopy}>
                 <Text ellipsizeMode="tail" numberOfLines={1} style={[styles.profileGroupName, { color: groupColors.chipTextColor }]}>{group.name}</Text>
                 <Text style={styles.profileGroupMeta}>
-                  {group.activityCount === 1 ? '1 actividad asociada' : `${group.activityCount} actividades asociadas`}
+                  {getProfileGroupMetaText(group)}
                 </Text>
               </View>
               <View style={styles.profileGroupActions}>
@@ -838,7 +893,7 @@ function ProfileGroupsSection({ groups, onDelete, onEdit }: ProfileGroupsSection
                   <Text style={styles.profileGroupDeleteText}>Eliminar</Text>
                 </Pressable>
               </View>
-            </View>
+            </PressScale>
           ))}
         </View>
       )}
@@ -980,22 +1035,27 @@ function ProfileRow({ currentUserId, item, localGroups = [], onPress, variant }:
 }
 
 type EditProfileModalProps = {
+  authPhotoURL: string | null
   onClose: () => void
   profile: UserProfile
   userId: string | null
   visible: boolean
 }
 
-function EditProfileModal({ onClose, profile, userId, visible }: EditProfileModalProps) {
+function EditProfileModal({ authPhotoURL, onClose, profile, userId, visible }: EditProfileModalProps) {
+  const insets = useSafeAreaInsets()
   const [draft, setDraft] = useState(profile)
   const [isSaving, setIsSaving] = useState(false)
   const [isPickingPhoto, setIsPickingPhoto] = useState(false)
   const [isPhotoOptionsVisible, setIsPhotoOptionsVisible] = useState(false)
+  const [isRemovingPhoto, setIsRemovingPhoto] = useState(false)
   const [selectedPhotoAsset, setSelectedPhotoAsset] = useState<ImagePicker.ImagePickerAsset | null>(null)
+  const previewPhotoURL = selectedPhotoAsset?.uri ?? (isRemovingPhoto ? '' : draft.photoURL)
 
   useEffect(() => {
     if (visible) {
       setDraft(profile)
+      setIsRemovingPhoto(false)
       setSelectedPhotoAsset(null)
       setIsPhotoOptionsVisible(false)
     }
@@ -1011,6 +1071,7 @@ function EditProfileModal({ onClose, profile, userId, visible }: EditProfileModa
         if (!mounted || !pendingResult || 'code' in pendingResult || pendingResult.canceled || !pendingResult.assets?.[0]) return
 
         const asset = pendingResult.assets[0]
+        setIsRemovingPhoto(false)
         setSelectedPhotoAsset(asset)
         setDraft((current) => ({ ...current, photoURL: asset.uri }))
       })
@@ -1073,12 +1134,14 @@ function EditProfileModal({ onClose, profile, userId, visible }: EditProfileModa
     }
 
     setSelectedPhotoAsset(asset)
+    setIsRemovingPhoto(false)
     setDraft((current) => ({ ...current, photoURL: asset.uri }))
   }
 
   const removePhoto = () => {
     setIsPhotoOptionsVisible(false)
     setSelectedPhotoAsset(null)
+    setIsRemovingPhoto(true)
     setDraft((current) => ({ ...current, photoURL: '' }))
   }
 
@@ -1195,6 +1258,13 @@ function EditProfileModal({ onClose, profile, userId, visible }: EditProfileModa
 
       let savedPhotoURL = draft.photoURL.trim()
       let uploadFailed = false
+      const profilePayload: Record<string, unknown> = {
+        bio: draft.bio.trim(),
+        fullName: draft.fullName.trim(),
+        location: draft.location.trim(),
+        photoRemoved: deleteField(),
+        updatedAt: serverTimestamp(),
+      }
 
       if (selectedPhotoAsset) {
         try {
@@ -1206,22 +1276,34 @@ function EditProfileModal({ onClose, profile, userId, visible }: EditProfileModa
           if (__DEV__) console.warn('profile-photo-upload-fallback-local-uri', uploadError)
           savedPhotoURL = selectedPhotoAsset.uri || savedPhotoURL
         }
-      } else if (!savedPhotoURL && auth.currentUser.photoURL) {
-        await updateProfile(auth.currentUser, { photoURL: null })
+
+        profilePayload.avatarUrl = savedPhotoURL
+        profilePayload.imageUrl = savedPhotoURL
+        profilePayload.photoURL = savedPhotoURL
+      } else if (isRemovingPhoto) {
+        const { googlePhoto } = resolveProfilePhoto(null, auth.currentUser)
+        const fallbackPhotoURL = googlePhoto ?? cleanPhotoValue(authPhotoURL) ?? cleanPhotoValue(profile.googlePhotoURL) ?? ''
+        savedPhotoURL = fallbackPhotoURL
+
+        profilePayload.avatar = deleteField()
+        profilePayload.avatarURL = deleteField()
+        profilePayload.avatarUrl = deleteField()
+        profilePayload.imageUrl = deleteField()
+        profilePayload.photoUrl = deleteField()
+        profilePayload.photoURL = deleteField()
+
+        if (fallbackPhotoURL) {
+          profilePayload.googlePhotoURL = fallbackPhotoURL
+          await updateProfile(auth.currentUser, { photoURL: fallbackPhotoURL })
+        } else {
+          profilePayload.googlePhotoURL = deleteField()
+          await updateProfile(auth.currentUser, { photoURL: null })
+        }
       }
 
-      await setDoc(doc(db, 'users', authUid), {
-        avatarUrl: savedPhotoURL,
-        bio: draft.bio.trim(),
-        fullName: draft.fullName.trim(),
-        googlePhotoURL: savedPhotoURL,
-        imageUrl: savedPhotoURL,
-        location: draft.location.trim(),
-        photoRemoved: !savedPhotoURL,
-        photoURL: savedPhotoURL,
-        updatedAt: serverTimestamp(),
-      }, { merge: true })
+      await setDoc(doc(db, 'users', authUid), profilePayload, { merge: true })
       setDraft((current) => ({ ...current, photoURL: savedPhotoURL }))
+      setIsRemovingPhoto(false)
       setSelectedPhotoAsset(null)
       if (uploadFailed) {
         Alert.alert('Foto actualizada', 'La foto se actualizó en este dispositivo, pero no se pudo guardar online todavía.')
@@ -1259,8 +1341,8 @@ function EditProfileModal({ onClose, profile, userId, visible }: EditProfileModa
                 scaleTo={0.96}
                 style={styles.editAvatar}
               >
-                {draft.photoURL ? (
-                  <Image resizeMode="cover" source={{ uri: draft.photoURL }} style={styles.editAvatarImage} />
+                {previewPhotoURL ? (
+                  <Image key={previewPhotoURL} resizeMode="cover" source={{ uri: previewPhotoURL }} style={styles.editAvatarImage} />
                 ) : (
                   <UserRound color="#4B348A" size={58} strokeWidth={2.1} />
                 )}
@@ -1311,7 +1393,7 @@ function EditProfileModal({ onClose, profile, userId, visible }: EditProfileModa
           visible={isPhotoOptionsVisible}
         >
           <Pressable style={styles.photoSheetBackdrop} onPress={() => setIsPhotoOptionsVisible(false)}>
-            <Pressable accessibilityRole="menu" style={styles.photoSheet}>
+            <Pressable accessibilityRole="menu" style={[styles.photoSheet, { paddingBottom: Math.max(insets.bottom + 16, 20) }]}>
               <View style={styles.photoSheetHandle} />
               <Text style={styles.photoSheetTitle}>Foto de perfil</Text>
               <Pressable accessibilityRole="menuitem" onPress={choosePhotoFromLibrary} style={styles.photoSheetOption}>

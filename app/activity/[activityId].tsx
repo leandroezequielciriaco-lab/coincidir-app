@@ -7,7 +7,6 @@ import {
   Platform,
   Pressable,
   ScrollView,
-  Share,
   StyleSheet,
   Text,
   View,
@@ -37,7 +36,9 @@ import {
   Lock,
   MapPin,
   Mountain,
+  PauseCircle,
   Pencil,
+  Trash2,
   UsersRound,
   Waves,
 } from 'lucide-react-native'
@@ -72,7 +73,7 @@ type ConfirmedParticipant = {
   name: string
   uid: string
 }
-type InterestedAction = 'confirm' | 'reject' | 'write'
+type InterestedAction = 'confirm' | 'reject'
 
 function readString(value: unknown, fallback = '') {
   return typeof value === 'string' && value.trim() ? value.trim() : fallback
@@ -249,22 +250,6 @@ function getInterestedUsers(data: ActivityData): InterestedUser[] {
         uid,
       }
     })
-}
-
-function getWhatsappMessage(user: InterestedUser, title: string) {
-  return `Hola ${user.name}, vi que te interesa la actividad ${title} en COINCIDIR. ¿Querés que coordinemos?`
-}
-
-function normalizePhoneForUrl(phone: string) {
-  const trimmed = phone.trim()
-  const prefix = trimmed.startsWith('+') ? '+' : ''
-  const digits = trimmed.replace(/\D/g, '')
-  return digits ? `${prefix}${digits}` : ''
-}
-
-function getSmsUrl(phone: string, message: string) {
-  const separator = Platform.OS === 'ios' ? '&' : '?'
-  return `sms:${encodeURIComponent(phone)}${separator}body=${encodeURIComponent(message)}`
 }
 
 function requiresInterestAction(data: ActivityData) {
@@ -697,65 +682,6 @@ export default function ActivityDetailScreen() {
       setOptimisticInterested(null)
     } finally {
       setIsMarkingInterest(false)
-    }
-  }
-
-  const getInterestedUserWithProfile = async (user: InterestedUser) => {
-    if (user.phone) return user
-
-    try {
-      const { db } = getFirebaseServices()
-      const snapshot = await getDoc(doc(db, 'users', user.uid))
-      if (!snapshot.exists()) return user
-
-      const profile = snapshot.data() as ActivityData
-      return {
-        ...user,
-        name: readString(profile.fullName, readString(profile.displayName, readString(profile.name, user.name))),
-        phone: getPhone(profile),
-      }
-    } catch {
-      return user
-    }
-  }
-
-  const writeInterestedUser = async (user: InterestedUser) => {
-    if (detail.isCancelled || isInterestedActionPending(user.uid, 'write')) return
-
-    setInterestedActionPending(user.uid, 'write', true)
-    try {
-      const targetUser = await getInterestedUserWithProfile(user)
-      const phone = normalizePhoneForUrl(targetUser.phone)
-
-      if (!phone) {
-        Alert.alert(
-          'Teléfono no disponible',
-          'Todavía no hay teléfono disponible. Vas a poder contactar desde la app cuando exista mensajería interna.',
-        )
-        return
-      }
-
-      const message = getWhatsappMessage(targetUser, detail.title)
-      const whatsappUrl = `whatsapp://send?phone=${encodeURIComponent(phone)}&text=${encodeURIComponent(message)}`
-      const canOpenWhatsApp = await Linking.canOpenURL(whatsappUrl)
-
-      if (canOpenWhatsApp) {
-        await Linking.openURL(whatsappUrl)
-        return
-      }
-
-      const smsUrl = getSmsUrl(phone, message)
-      const canOpenSms = await Linking.canOpenURL(smsUrl)
-      if (canOpenSms) {
-        await Linking.openURL(smsUrl)
-        return
-      }
-
-      await Share.share({ message })
-    } catch {
-      Alert.alert('No pudimos abrir el mensaje', 'Intentá nuevamente en unos segundos.')
-    } finally {
-      setInterestedActionPending(user.uid, 'write', false)
     }
   }
 
@@ -1236,9 +1162,12 @@ export default function ActivityDetailScreen() {
                   {isCancellingActivity ? (
                     <ActivityIndicator color="#8A4B00" size="small" />
                   ) : (
-                    <Text style={styles.cancelActivityText}>
-                      {detail.isCancelled ? 'Actividad cancelada' : 'Cancelar actividad'}
-                    </Text>
+                    <>
+                      <PauseCircle color="#8A4B00" size={18} strokeWidth={2.8} />
+                      <Text style={styles.cancelActivityText}>
+                        {detail.isCancelled ? 'Actividad cancelada' : 'Cancelar actividad'}
+                      </Text>
+                    </>
                   )}
                 </PressScale>
                 <PressScale
@@ -1252,7 +1181,10 @@ export default function ActivityDetailScreen() {
                   {isDeletingActivity ? (
                     <ActivityIndicator color="#B42318" size="small" />
                   ) : (
-                    <Text style={styles.deleteActivityText}>Eliminar actividad</Text>
+                    <>
+                      <Trash2 color="#B42318" size={18} strokeWidth={2.8} />
+                      <Text style={styles.deleteActivityText}>Eliminar actividad</Text>
+                    </>
                   )}
                 </PressScale>
               </View>
@@ -1281,22 +1213,9 @@ export default function ActivityDetailScreen() {
                 {detail.interestedUsers.length > 0 ? detail.interestedUsers.slice(0, 5).map((user) => (
                   <View key={user.uid} style={styles.interestedItem}>
                     <Text numberOfLines={1} style={styles.interestedName}>{user.name}</Text>
+                    <Text style={styles.interestedSubtitle}>Quiere participar en esta actividad</Text>
                     <View style={styles.interestedActions}>
                       <View style={styles.interestedPrimaryActions}>
-                        <PressScale
-                          accessibilityLabel={`Confirmar a ${user.name}`}
-                          accessibilityRole="button"
-                          disabled={detail.isCancelled || isInterestedActionPending(user.uid, 'confirm')}
-                          onPress={() => confirmInterestedUser(user)}
-                          scaleTo={0.97}
-                          style={[styles.confirmAction, detail.isCancelled && styles.interestedActionDisabled]}
-                        >
-                          {isInterestedActionPending(user.uid, 'confirm') ? (
-                            <ActivityIndicator color="#FFFFFF" size="small" />
-                          ) : (
-                            <Text style={styles.confirmActionText}>Confirmar</Text>
-                          )}
-                        </PressScale>
                         <PressScale
                           accessibilityLabel={`Rechazar a ${user.name}`}
                           accessibilityRole="button"
@@ -1311,21 +1230,21 @@ export default function ActivityDetailScreen() {
                             <Text style={styles.rejectActionText}>Rechazar</Text>
                           )}
                         </PressScale>
+                        <PressScale
+                          accessibilityLabel={`Aceptar a ${user.name}`}
+                          accessibilityRole="button"
+                          disabled={detail.isCancelled || isInterestedActionPending(user.uid, 'confirm')}
+                          onPress={() => confirmInterestedUser(user)}
+                          scaleTo={0.97}
+                          style={[styles.confirmAction, detail.isCancelled && styles.interestedActionDisabled]}
+                        >
+                          {isInterestedActionPending(user.uid, 'confirm') ? (
+                            <ActivityIndicator color="#FFFFFF" size="small" />
+                          ) : (
+                            <Text style={styles.confirmActionText}>Aceptar</Text>
+                          )}
+                        </PressScale>
                       </View>
-                      <PressScale
-                        accessibilityLabel={`Escribir a ${user.name}`}
-                        accessibilityRole="button"
-                        disabled={detail.isCancelled || isInterestedActionPending(user.uid, 'write')}
-                        onPress={() => void writeInterestedUser(user)}
-                        scaleTo={0.97}
-                        style={[styles.writeAction, detail.isCancelled && styles.interestedActionDisabled]}
-                      >
-                        {isInterestedActionPending(user.uid, 'write') ? (
-                          <ActivityIndicator color="#5B38C4" size="small" />
-                        ) : (
-                          <Text style={styles.writeActionText}>Escribir</Text>
-                        )}
-                      </PressScale>
                     </View>
                   </View>
                 )) : (
@@ -1787,6 +1706,14 @@ const styles = StyleSheet.create({
     letterSpacing: 0,
     lineHeight: 20,
   },
+  interestedSubtitle: {
+    color: '#5F6E68',
+    fontSize: 13,
+    fontWeight: '700',
+    letterSpacing: 0,
+    lineHeight: 18,
+    marginTop: 3,
+  },
   interestedEmpty: {
     color: '#596A65',
     fontSize: 14,
@@ -1796,7 +1723,6 @@ const styles = StyleSheet.create({
   interestedActions: {
     borderColor: '#EDF3EA',
     borderTopWidth: 1,
-    gap: 10,
     marginTop: 12,
     paddingTop: 12,
   },
@@ -1837,24 +1763,6 @@ const styles = StyleSheet.create({
   },
   rejectActionText: {
     color: '#B42318',
-    fontSize: 13,
-    fontWeight: '900',
-    letterSpacing: 0,
-  },
-  writeAction: {
-    alignItems: 'center',
-    alignSelf: 'flex-start',
-    backgroundColor: '#F7F3FF',
-    borderColor: '#D9CCFF',
-    borderRadius: 999,
-    borderWidth: 1.2,
-    justifyContent: 'center',
-    minHeight: 36,
-    minWidth: 96,
-    paddingHorizontal: 14,
-  },
-  writeActionText: {
-    color: '#5B38C4',
     fontSize: 13,
     fontWeight: '900',
     letterSpacing: 0,
@@ -1914,6 +1822,8 @@ const styles = StyleSheet.create({
     borderColor: '#F4C7C2',
     borderRadius: 14,
     borderWidth: 1.5,
+    flexDirection: 'row',
+    gap: 8,
     minHeight: 48,
     justifyContent: 'center',
     paddingHorizontal: 18,
@@ -1936,6 +1846,8 @@ const styles = StyleSheet.create({
     borderColor: '#F5C84B',
     borderRadius: 14,
     borderWidth: 1.5,
+    flexDirection: 'row',
+    gap: 8,
     justifyContent: 'center',
     minHeight: 48,
     paddingHorizontal: 18,

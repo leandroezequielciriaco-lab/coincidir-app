@@ -12,7 +12,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { useLocalSearchParams, useRouter } from 'expo-router'
 import { onAuthStateChanged } from 'firebase/auth'
-import { doc, increment, onSnapshot, serverTimestamp, updateDoc } from 'firebase/firestore'
+import { collection, doc, increment, onSnapshot, serverTimestamp, updateDoc } from 'firebase/firestore'
 import {
   ArrowLeft,
   CalendarDays,
@@ -23,10 +23,16 @@ import {
 } from 'lucide-react-native'
 
 import { PressScale } from '../../components/home/PressScale'
+import { getLocalGroupId } from '../../constants/localGroups'
 import { getFirebaseServices } from '../../firebaseConfig'
+import { getActivityGroupMeta } from '../../utils/activityGroups'
 import { getCategoryImage } from '../../utils/categoryImages'
 
 type GroupData = Record<string, unknown>
+type ActivityRecord = {
+  id: string
+  data: Record<string, unknown>
+}
 
 function readString(value: unknown, fallback = '') {
   return typeof value === 'string' && value.trim() ? value.trim() : fallback
@@ -34,6 +40,13 @@ function readString(value: unknown, fallback = '') {
 
 function readNumber(value: unknown, fallback = 0) {
   return typeof value === 'number' && Number.isFinite(value) ? value : fallback
+}
+
+function getRecordTime(record: ActivityRecord) {
+  const value = record.data.createdAt ?? record.data.updatedAt
+  return typeof value === 'object' && value && 'toMillis' in value && typeof value.toMillis === 'function'
+    ? value.toMillis()
+    : 0
 }
 
 function getMemberCount(data: GroupData) {
@@ -67,8 +80,9 @@ function isGroupMember(data: GroupData, userId: string | null) {
 
 export default function GroupDetailScreen() {
   const router = useRouter()
-  const { groupId } = useLocalSearchParams<{ groupId?: string }>()
+  const { groupId, groupName } = useLocalSearchParams<{ groupId?: string; groupName?: string }>()
   const [group, setGroup] = useState<GroupData | null>(null)
+  const [activities, setActivities] = useState<ActivityRecord[]>([])
   const [userId, setUserId] = useState<string | null>(null)
   const [userName, setUserName] = useState('Participante')
   const [isLoading, setIsLoading] = useState(true)
@@ -113,22 +127,54 @@ export default function GroupDetailScreen() {
     }
   }, [groupId])
 
+  useEffect(() => {
+    try {
+      const { db } = getFirebaseServices()
+      return onSnapshot(collection(db, 'activities'), (snapshot) => {
+        setActivities(snapshot.docs
+          .map((item) => ({ id: item.id, data: item.data() as Record<string, unknown> }))
+          .sort((left, right) => getRecordTime(right) - getRecordTime(left)))
+      }, () => setActivities([]))
+    } catch {
+      setActivities([])
+      return undefined
+    }
+  }, [])
+
   const detail = useMemo(() => {
     const data = group ?? {}
+    const fallbackTitle = readString(groupName, 'Grupo sin título')
 
     return {
       category: readString(data.category, 'Grupo'),
-      description: readString(data.description, readString(data.summary, 'Sin descripción por ahora.')),
+      description: readString(data.description, readString(data.summary, 'Comunidad para organizar actividades compartidas.')),
       location: readString(data.location, 'Ubicación a definir'),
       members: getMemberCount(data),
       nextDate: readString(data.date, readString(data.schedule, 'Próximo encuentro a definir')),
       organizer: readString(data.organizerName, readString(data.createdByName, 'Organizador de Coincidir')),
-      title: readString(data.name, readString(data.title, 'Grupo sin título')),
+      title: readString(data.name, readString(data.title, fallbackTitle)),
     }
-  }, [group])
+  }, [group, groupName])
 
   const isOwner = useMemo(() => isGroupOwner(group ?? {}, userId), [group, userId])
   const isMember = useMemo(() => isGroupMember(group ?? {}, userId), [group, userId])
+  const groupActivities = useMemo(() => {
+    const targetId = readString(groupId)
+    const targetName = detail.title
+    const targetSlug = getLocalGroupId(targetName)
+
+    return activities.filter((activity) => {
+      const meta = getActivityGroupMeta(activity.data)
+      const activityGroupId = meta.groupId || getLocalGroupId(meta.groupName)
+      const activityGroupName = meta.groupName
+
+      return Boolean(
+        (targetId && activityGroupId === targetId)
+        || (targetSlug && activityGroupId === targetSlug)
+        || (targetName && activityGroupName === targetName),
+      )
+    })
+  }, [activities, detail.title, groupId])
 
   const joinGroup = async () => {
     if (!groupId || !userId || !group || isOwner || isMember || isJoining) return
@@ -163,7 +209,7 @@ export default function GroupDetailScreen() {
     )
   }
 
-  if (!group) {
+  if (!group && !readString(groupName)) {
     return (
       <SafeAreaView style={styles.safeArea}>
         <View style={styles.centerState}>
@@ -187,7 +233,7 @@ export default function GroupDetailScreen() {
           <View style={styles.iconButton} />
         </View>
 
-        <Image source={getCategoryImage({ category: 'Grupales', ...group })} style={styles.heroImage} />
+        <Image source={getCategoryImage({ category: 'Grupales', ...(group ?? {}) })} style={styles.heroImage} />
 
         <View style={styles.content}>
           <View style={styles.titleRow}>
@@ -203,6 +249,7 @@ export default function GroupDetailScreen() {
           <InfoRow Icon={MapPin} label={detail.location} />
           <InfoRow Icon={CalendarDays} label={detail.nextDate} />
           <InfoRow Icon={UsersRound} label={`${detail.members} miembros`} />
+          <InfoRow Icon={CalendarDays} label={`${groupActivities.length} actividades asociadas`} />
           <InfoRow Icon={UserRound} label={detail.organizer} />
 
           <Text style={styles.description}>{detail.description}</Text>
@@ -223,6 +270,32 @@ export default function GroupDetailScreen() {
             {isJoining ? <ActivityIndicator color="#FFFFFF" /> : <Sprout color="#FFFFFF" size={20} strokeWidth={2.3} />}
             <Text style={styles.primaryButtonText}>{isOwner ? 'Tu grupo' : isMember ? 'Ya sos miembro' : 'Sumarme al grupo'}</Text>
           </PressScale>
+
+          <View style={styles.groupActivitiesBlock}>
+            <Text style={styles.groupActivitiesTitle}>Actividades del grupo</Text>
+            {groupActivities.length > 0 ? (
+              <View style={styles.groupActivitiesList}>
+                {groupActivities.map((activity) => (
+                  <PressScale
+                    accessibilityRole="button"
+                    key={activity.id}
+                    onPress={() => router.push({ pathname: '/activity/[activityId]', params: { activityId: activity.id } })}
+                    scaleTo={0.985}
+                    style={styles.groupActivityItem}
+                  >
+                    <Text numberOfLines={1} style={styles.groupActivityTitle}>
+                      {readString(activity.data.name, readString(activity.data.title, 'Actividad sin título'))}
+                    </Text>
+                    <Text numberOfLines={1} style={styles.groupActivityMeta}>
+                      {readString(activity.data.date, 'Fecha a definir')}
+                    </Text>
+                  </PressScale>
+                ))}
+              </View>
+            ) : (
+              <Text style={styles.groupActivitiesEmpty}>Este grupo todavía no tiene actividades asociadas.</Text>
+            )}
+          </View>
         </View>
       </ScrollView>
     </SafeAreaView>
@@ -402,6 +475,57 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '900',
     letterSpacing: 0,
+  },
+  groupActivitiesBlock: {
+    backgroundColor: '#FFFFFF',
+    borderColor: '#E7E7E1',
+    borderRadius: 18,
+    borderWidth: 1,
+    marginTop: 20,
+    padding: 16,
+    ...shadow,
+  },
+  groupActivitiesTitle: {
+    color: '#063C31',
+    fontSize: 16,
+    fontWeight: '900',
+    letterSpacing: 0,
+    marginBottom: 12,
+    textTransform: 'uppercase',
+  },
+  groupActivitiesList: {
+    gap: 10,
+  },
+  groupActivityItem: {
+    backgroundColor: '#F8FAF6',
+    borderColor: '#DDEAD7',
+    borderRadius: 14,
+    borderWidth: 1,
+    minHeight: 56,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+  },
+  groupActivityTitle: {
+    color: '#071D19',
+    fontSize: 15,
+    fontWeight: '900',
+    letterSpacing: 0,
+    lineHeight: 20,
+  },
+  groupActivityMeta: {
+    color: '#596A65',
+    fontSize: 12,
+    fontWeight: '700',
+    letterSpacing: 0,
+    lineHeight: 17,
+    marginTop: 2,
+  },
+  groupActivitiesEmpty: {
+    color: '#596A65',
+    fontSize: 14,
+    fontWeight: '700',
+    letterSpacing: 0,
+    lineHeight: 20,
   },
   centerState: {
     alignItems: 'center',
