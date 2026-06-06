@@ -10,6 +10,7 @@ import {
   TextInput,
   View,
 } from 'react-native'
+import * as ImagePicker from 'expo-image-picker'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { useLocalSearchParams, useRouter } from 'expo-router'
 import { onAuthStateChanged } from 'firebase/auth'
@@ -17,6 +18,7 @@ import { arrayUnion, collection, deleteDoc, deleteField, doc, getDoc, increment,
 import {
   ArrowLeft,
   CalendarDays,
+  Image as ImageIcon,
   MapPin,
   Sprout,
   Trash2,
@@ -27,6 +29,7 @@ import {
 import { PressScale } from '../../components/home/PressScale'
 import { getLocalGroupId } from '../../constants/localGroups'
 import { getFirebaseServices } from '../../firebaseConfig'
+import { readRemoteGroupPhotoUrl, uploadGroupPhoto } from '../../lib/groupPhotos'
 import { createNotification } from '../../lib/notifications'
 import { getActivityGroupMeta } from '../../utils/activityGroups'
 import { getCategoryImage } from '../../utils/categoryImages'
@@ -39,6 +42,13 @@ type ActivityRecord = {
 type PendingRequest = {
   id: string
   name: string
+}
+
+const groupPhotoPickerOptions: ImagePicker.ImagePickerOptions = {
+  allowsEditing: true,
+  aspect: [16, 9],
+  mediaTypes: ['images'],
+  quality: 0.85,
 }
 
 function readString(value: unknown, fallback = '') {
@@ -188,6 +198,10 @@ export default function GroupDetailScreen() {
   const [draftGroupName, setDraftGroupName] = useState('')
   const [draftDescription, setDraftDescription] = useState('')
   const [draftLocation, setDraftLocation] = useState('')
+  const [draftGroupPhotoAsset, setDraftGroupPhotoAsset] = useState<ImagePicker.ImagePickerAsset | null>(null)
+  const [draftGroupPhotoPreviewUri, setDraftGroupPhotoPreviewUri] = useState('')
+  const [isRemovingGroupPhoto, setIsRemovingGroupPhoto] = useState(false)
+  const [isSavingGroupEdits, setIsSavingGroupEdits] = useState(false)
 
   useEffect(() => {
     try {
@@ -255,6 +269,7 @@ export default function GroupDetailScreen() {
       ownerId: getOwnerId(data),
       nextDate: readString(data.date, readString(data.schedule, 'Próximo encuentro a definir')),
       organizer: readString(data.ownerName, readString(data.organizerName, readString(data.createdByName, 'Organizador de Coincidir'))),
+      photoUrl: readRemoteGroupPhotoUrl(data),
       title: readString(data.name, readString(data.title, fallbackTitle)),
     }
   }, [group, groupName])
@@ -301,10 +316,13 @@ export default function GroupDetailScreen() {
     setDraftGroupName(detail.title)
     setDraftDescription(detail.description)
     setDraftLocation(detail.baseLocation === 'Ubicación a definir' ? '' : detail.baseLocation)
-  }, [detail.baseLocation, detail.description, detail.title, isEditingGroup])
+    setDraftGroupPhotoAsset(null)
+    setDraftGroupPhotoPreviewUri(detail.photoUrl)
+    setIsRemovingGroupPhoto(false)
+  }, [detail.baseLocation, detail.description, detail.photoUrl, detail.title, isEditingGroup])
 
   const isLegacyLocalGroup = !group && Boolean(readString(groupName))
-  const isOwner = useMemo(() => isLegacyLocalGroup || isGroupOwner(group ?? {}, userId), [group, groupName, isLegacyLocalGroup, userId])
+  const isOwner = useMemo(() => isLegacyLocalGroup || isGroupOwner(group ?? {}, userId), [group, isLegacyLocalGroup, userId])
   const isMember = useMemo(() => isOwner || isGroupMember(group ?? {}, userId), [group, isOwner, userId])
 
   useEffect(() => {
@@ -444,8 +462,42 @@ export default function GroupDetailScreen() {
     }
   }
 
+  const chooseGroupPhotoFromLibrary = async () => {
+    if (!isOwner || isSavingGroupEdits) return
+
+    try {
+      const permission = await ImagePicker.requestMediaLibraryPermissionsAsync(false)
+      if (!permission.granted) {
+        Alert.alert('Permiso requerido', 'Necesitamos acceso a tus fotos para elegir una imagen del grupo.')
+        return
+      }
+
+      const result = await ImagePicker.launchImageLibraryAsync(groupPhotoPickerOptions)
+      if (result.canceled) return
+
+      const asset = result.assets?.[0]
+      if (!asset?.uri) {
+        Alert.alert('No pudimos cargar la foto', 'La imagen seleccionada no tiene un archivo válido.')
+        return
+      }
+
+      setDraftGroupPhotoAsset(asset)
+      setDraftGroupPhotoPreviewUri(asset.uri)
+      setIsRemovingGroupPhoto(false)
+    } catch (error) {
+      if (__DEV__) console.warn('[GroupDetail] group photo picker error', error)
+      Alert.alert('No pudimos abrir la galería', 'Revisá los permisos de fotos e intentá nuevamente.')
+    }
+  }
+
+  const removeDraftGroupPhoto = () => {
+    setDraftGroupPhotoAsset(null)
+    setDraftGroupPhotoPreviewUri('')
+    setIsRemovingGroupPhoto(Boolean(detail.photoUrl))
+  }
+
   const saveGroupEdits = async () => {
-    if (!groupId || !isOwner) return
+    if (!groupId || !isOwner || isSavingGroupEdits) return
 
     const cleanName = draftGroupName.trim()
     if (!cleanName) {
@@ -453,17 +505,38 @@ export default function GroupDetailScreen() {
       return
     }
 
+    setIsSavingGroupEdits(true)
     try {
       const { db } = getFirebaseServices()
-      await updateDoc(doc(db, 'groups', groupId), {
+      const payload: Record<string, unknown> = {
         description: draftDescription.trim(),
         locationName: draftLocation.trim(),
         name: cleanName,
         updatedAt: serverTimestamp(),
-      })
+      }
+
+      if (draftGroupPhotoAsset) {
+        const remotePhotoUrl = await uploadGroupPhoto(groupId, draftGroupPhotoAsset)
+        payload.imageUrl = remotePhotoUrl
+        payload.photoURL = remotePhotoUrl
+      } else if (isRemovingGroupPhoto) {
+        payload.imageUrl = deleteField()
+        payload.photoURL = deleteField()
+        payload.photoUrl = deleteField()
+        payload.coverUrl = deleteField()
+        payload.coverURL = deleteField()
+        payload.coverImage = deleteField()
+      }
+
+      await updateDoc(doc(db, 'groups', groupId), payload)
+      setDraftGroupPhotoAsset(null)
+      setIsRemovingGroupPhoto(false)
       setIsEditingGroup(false)
-    } catch {
+    } catch (error) {
+      if (__DEV__) console.warn('[GroupDetail] error saving group edits', error)
       Alert.alert('No pudimos guardar', 'Intentá editar el grupo nuevamente.')
+    } finally {
+      setIsSavingGroupEdits(false)
     }
   }
 
@@ -505,6 +578,9 @@ export default function GroupDetailScreen() {
   const displayedMemberCount = isOwner ? Math.max(detail.members, 1) : detail.members
   const displayHostName = isLegacyLocalGroup ? userName : hostName
   const roleText = isOwner ? 'Organizador' : isMember ? 'Sos miembro' : 'No sos miembro'
+  const heroSource = detail.photoUrl
+    ? { uri: detail.photoUrl }
+    : getCategoryImage({ category: 'Grupales', ...(group ?? {}) })
   const createGroupActivity = () => {
     router.push({
       pathname: '/(tabs)/crear',
@@ -589,7 +665,7 @@ export default function GroupDetailScreen() {
           <View style={styles.iconButton} />
         </View>
 
-        <Image source={getCategoryImage({ category: 'Grupales', ...(group ?? {}) })} style={styles.heroImage} />
+        <Image source={heroSource} style={styles.heroImage} />
 
         <View style={styles.content}>
           <View style={styles.titleRow}>
@@ -663,8 +739,38 @@ export default function GroupDetailScreen() {
                 style={styles.editGroupInput}
                 value={draftLocation}
               />
-              <PressScale onPress={saveGroupEdits} style={styles.editGroupSaveButton} scaleTo={0.97}>
-                <Text style={styles.editGroupSaveText}>Guardar cambios</Text>
+              <PressScale
+                accessibilityRole="button"
+                disabled={isSavingGroupEdits}
+                onPress={chooseGroupPhotoFromLibrary}
+                style={styles.groupPhotoPicker}
+                scaleTo={0.985}
+              >
+                {draftGroupPhotoPreviewUri ? (
+                  <Image resizeMode="cover" source={{ uri: draftGroupPhotoPreviewUri }} style={styles.groupPhotoPreview} />
+                ) : null}
+                <View style={[styles.groupPhotoPickerContent, draftGroupPhotoPreviewUri && styles.groupPhotoPickerContentOverlay]}>
+                  <View style={styles.groupPhotoIcon}>
+                    <ImageIcon color="#4B348A" size={23} strokeWidth={2.4} />
+                  </View>
+                  <Text style={styles.groupPhotoTitle}>Foto del grupo</Text>
+                  <Text style={styles.groupPhotoActionText}>{draftGroupPhotoPreviewUri ? 'Cambiar foto' : 'Elegir de la galería'}</Text>
+                </View>
+              </PressScale>
+              {draftGroupPhotoPreviewUri ? (
+                <PressScale
+                  accessibilityRole="button"
+                  disabled={isSavingGroupEdits}
+                  onPress={removeDraftGroupPhoto}
+                  style={styles.groupPhotoRemoveButton}
+                  scaleTo={0.97}
+                >
+                  <Trash2 color="#B42318" size={17} strokeWidth={2.4} />
+                  <Text style={styles.groupPhotoRemoveText}>Eliminar foto</Text>
+                </PressScale>
+              ) : null}
+              <PressScale disabled={isSavingGroupEdits} onPress={saveGroupEdits} style={styles.editGroupSaveButton} scaleTo={0.97}>
+                {isSavingGroupEdits ? <ActivityIndicator color="#FFFFFF" /> : <Text style={styles.editGroupSaveText}>Guardar cambios</Text>}
               </PressScale>
             </View>
           ) : null}
@@ -936,6 +1042,73 @@ const styles = StyleSheet.create({
     minHeight: 86,
     paddingTop: 12,
     textAlignVertical: 'top',
+  },
+  groupPhotoPicker: {
+    alignItems: 'center',
+    backgroundColor: '#F7F3FF',
+    borderColor: '#E2D4FA',
+    borderRadius: 14,
+    borderWidth: 1,
+    justifyContent: 'center',
+    minHeight: 150,
+    overflow: 'hidden',
+  },
+  groupPhotoPreview: {
+    ...StyleSheet.absoluteFillObject,
+    height: '100%',
+    width: '100%',
+  },
+  groupPhotoPickerContent: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 18,
+    paddingVertical: 16,
+  },
+  groupPhotoPickerContentOverlay: {
+    backgroundColor: 'rgba(255,255,255,0.84)',
+    borderRadius: 14,
+    margin: 12,
+  },
+  groupPhotoIcon: {
+    alignItems: 'center',
+    backgroundColor: '#EFE7FA',
+    borderColor: '#D9C8F4',
+    borderRadius: 999,
+    borderWidth: 1,
+    height: 50,
+    justifyContent: 'center',
+    width: 50,
+  },
+  groupPhotoTitle: {
+    color: '#193F37',
+    fontSize: 14,
+    fontWeight: '900',
+    letterSpacing: 0,
+    lineHeight: 18,
+    marginTop: 8,
+  },
+  groupPhotoActionText: {
+    color: '#4B348A',
+    fontSize: 13,
+    fontWeight: '900',
+    letterSpacing: 0,
+    lineHeight: 17,
+    marginTop: 3,
+  },
+  groupPhotoRemoveButton: {
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    flexDirection: 'row',
+    gap: 7,
+    minHeight: 38,
+    paddingHorizontal: 2,
+  },
+  groupPhotoRemoveText: {
+    color: '#B42318',
+    fontSize: 13,
+    fontWeight: '900',
+    letterSpacing: 0,
+    lineHeight: 17,
   },
   editGroupSaveButton: {
     alignItems: 'center',

@@ -4,6 +4,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage'
 import {
   ActivityIndicator,
   Alert,
+  Image,
   KeyboardAvoidingView,
   type GestureResponderEvent,
   Modal,
@@ -15,6 +16,7 @@ import {
   TextInput,
   View,
 } from 'react-native'
+import * as ImagePicker from 'expo-image-picker'
 import * as Location from 'expo-location'
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router'
 import { addDoc, collection, doc, getDoc, serverTimestamp, setDoc, updateDoc } from 'firebase/firestore'
@@ -32,6 +34,7 @@ import {
   Dumbbell,
   Globe2,
   Heart,
+  Image as ImageIcon,
   Leaf,
   Lightbulb,
   LockKeyhole,
@@ -44,6 +47,7 @@ import {
   Sparkles,
   Star,
   Tag,
+  Trash2,
   UsersRound,
   WalletCards,
   Zap,
@@ -69,6 +73,7 @@ import {
   toLocalGroup,
 } from '../../constants/localGroups'
 import { getFirebaseServices } from '../../firebaseConfig'
+import { uploadGroupPhoto } from '../../lib/groupPhotos'
 import { notifyActivityUpdated } from '../../lib/notifications'
 
 type PickerMode = 'category' | 'subcategory' | 'date' | 'time' | 'currency' | null
@@ -288,6 +293,13 @@ function readString(value: unknown, fallback = '') {
   return typeof value === 'string' && value.trim() ? value.trim() : fallback
 }
 
+const groupPhotoPickerOptions: ImagePicker.ImagePickerOptions = {
+  allowsEditing: true,
+  aspect: [16, 9],
+  mediaTypes: ['images'],
+  quality: 0.85,
+}
+
 function normalize(value: unknown) {
   return readString(value)
     .normalize('NFD')
@@ -396,6 +408,8 @@ export default function CrearScreen() {
   const [groupDraftName, setGroupDraftName] = useState('')
   const [groupDraftDescription, setGroupDraftDescription] = useState('')
   const [groupDraftLocation, setGroupDraftLocation] = useState('')
+  const [groupPhotoAsset, setGroupPhotoAsset] = useState<ImagePicker.ImagePickerAsset | null>(null)
+  const [groupPhotoPreviewUri, setGroupPhotoPreviewUri] = useState('')
   const [createdGroupId, setCreatedGroupId] = useState('')
   const [createdGroupName, setCreatedGroupName] = useState('')
   const [name, setName] = useState('')
@@ -986,10 +1000,42 @@ export default function CrearScreen() {
     setGroupDraftName('')
     setGroupDraftDescription('')
     setGroupDraftLocation('')
+    setGroupPhotoAsset(null)
+    setGroupPhotoPreviewUri('')
     setCreatedGroupId('')
     setCreatedGroupName('')
     setMessage('')
     setFlowMode('group')
+  }
+
+  const chooseGroupPhotoFromLibrary = async () => {
+    try {
+      const permission = await ImagePicker.requestMediaLibraryPermissionsAsync(false)
+      if (!permission.granted) {
+        Alert.alert('Permiso requerido', 'Necesitamos acceso a tus fotos para elegir una imagen del grupo.')
+        return
+      }
+
+      const result = await ImagePicker.launchImageLibraryAsync(groupPhotoPickerOptions)
+      if (result.canceled) return
+
+      const asset = result.assets?.[0]
+      if (!asset?.uri) {
+        Alert.alert('No pudimos cargar la foto', 'La imagen seleccionada no tiene un archivo válido.')
+        return
+      }
+
+      setGroupPhotoAsset(asset)
+      setGroupPhotoPreviewUri(asset.uri)
+    } catch (error) {
+      if (__DEV__) console.warn('[CrearActividad] group photo picker error', error)
+      Alert.alert('No pudimos abrir la galería', 'Revisá los permisos de fotos e intentá nuevamente.')
+    }
+  }
+
+  const removeGroupPhoto = () => {
+    setGroupPhotoAsset(null)
+    setGroupPhotoPreviewUri('')
   }
 
   const createStandaloneGroup = async () => {
@@ -1008,6 +1054,20 @@ export default function CrearScreen() {
 
     const cleanLocation = groupDraftLocation.trim()
     const createdGroupId = getLocalGroupId(cleanName)
+    let remoteGroupPhotoUrl = ''
+
+    if (groupPhotoAsset) {
+      try {
+        remoteGroupPhotoUrl = await uploadGroupPhoto(createdGroupId, groupPhotoAsset)
+      } catch (error) {
+        if (__DEV__) console.warn('[CrearActividad] error subiendo foto de grupo', error)
+        Alert.alert(
+          'No pudimos subir la foto',
+          'El grupo se va a crear sin foto guardada por ahora. La vista previa queda solo en esta sesión.',
+        )
+      }
+    }
+
     const nextGroups = mergeGroupNames(availableGroups, [cleanName])
     setAvailableGroups(nextGroups)
     setSelectedGroup(cleanName)
@@ -1022,7 +1082,8 @@ export default function CrearScreen() {
         category: 'Grupo',
         createdAt: serverTimestamp(),
         description: groupDraftDescription.trim(),
-        imageUrl: '',
+        imageUrl: remoteGroupPhotoUrl,
+        photoURL: remoteGroupPhotoUrl,
         locationName: cleanLocation,
         memberIds: [user.uid],
         memberCount: 1,
@@ -1438,10 +1499,24 @@ export default function CrearScreen() {
             />
 
             <Text style={styles.createFieldLabel}>Foto</Text>
-            <View style={styles.createMapEmpty}>
-              <UsersRound color="#0E5A44" size={34} strokeWidth={2.1} />
-              <Text style={styles.createMapEmptyText}>Foto del grupo</Text>
-            </View>
+            <Pressable accessibilityRole="button" onPress={chooseGroupPhotoFromLibrary} style={styles.groupPhotoPicker}>
+              {groupPhotoPreviewUri ? (
+                <Image resizeMode="cover" source={{ uri: groupPhotoPreviewUri }} style={styles.groupPhotoPreview} />
+              ) : null}
+              <View style={[styles.groupPhotoPickerContent, groupPhotoPreviewUri && styles.groupPhotoPickerContentOverlay]}>
+                <View style={styles.groupPhotoIcon}>
+                  <ImageIcon color="#4B348A" size={24} strokeWidth={2.4} />
+                </View>
+                <Text style={styles.createMapEmptyText}>Foto del grupo</Text>
+                <Text style={styles.groupPhotoActionText}>{groupPhotoPreviewUri ? 'Cambiar foto' : 'Elegir de la galería'}</Text>
+              </View>
+            </Pressable>
+            {groupPhotoPreviewUri ? (
+              <Pressable accessibilityRole="button" onPress={removeGroupPhoto} style={styles.groupPhotoRemoveButton}>
+                <Trash2 color="#B42318" size={17} strokeWidth={2.4} />
+                <Text style={styles.groupPhotoRemoveText}>Eliminar foto</Text>
+              </Pressable>
+            ) : null}
           </View>
 
           {message ? <Text style={styles.createMessageText}>{message}</Text> : null}
@@ -2646,6 +2721,65 @@ const styles = StyleSheet.create({
     lineHeight: 21,
     fontWeight: '900',
     marginTop: 8,
+  },
+  groupPhotoPicker: {
+    alignItems: 'center',
+    backgroundColor: '#F7F3FF',
+    borderColor: '#E2D4FA',
+    borderRadius: 16,
+    borderWidth: 1,
+    justifyContent: 'center',
+    minHeight: 168,
+    overflow: 'hidden',
+  },
+  groupPhotoPreview: {
+    ...StyleSheet.absoluteFillObject,
+    height: '100%',
+    width: '100%',
+  },
+  groupPhotoPickerContent: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 18,
+    paddingVertical: 18,
+  },
+  groupPhotoPickerContentOverlay: {
+    backgroundColor: 'rgba(255,255,255,0.82)',
+    borderRadius: 16,
+    margin: 14,
+  },
+  groupPhotoIcon: {
+    alignItems: 'center',
+    backgroundColor: '#EFE7FA',
+    borderColor: '#D9C8F4',
+    borderRadius: 999,
+    borderWidth: 1,
+    height: 54,
+    justifyContent: 'center',
+    width: 54,
+  },
+  groupPhotoActionText: {
+    color: '#4B348A',
+    fontSize: 13,
+    fontWeight: '900',
+    letterSpacing: 0,
+    lineHeight: 17,
+    marginTop: 4,
+  },
+  groupPhotoRemoveButton: {
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    flexDirection: 'row',
+    gap: 7,
+    minHeight: 40,
+    paddingTop: 8,
+  },
+  groupPhotoRemoveText: {
+    color: '#B42318',
+    fontSize: 13,
+    fontWeight: '900',
+    letterSpacing: 0,
+    lineHeight: 17,
   },
   mapConfigNotice: {
     position: 'absolute',
