@@ -5,358 +5,366 @@ declare const require: (path: string) => ImageSourcePropType
 export const defaultActivityImage = require('../assets/images/categories/default-activity.jpg')
 
 const yogaImages = [
-  require('../assets/images/activities/yoga/yoga-1.png'),
-  require('../assets/images/activities/yoga/yoga-2.png'),
-  require('../assets/images/activities/yoga/yoga-3.png'),
+  require('../assets/images/activities/yoga/yoga-1.jpg'),
+  require('../assets/images/activities/yoga/yoga-2.jpg'),
+  require('../assets/images/activities/yoga/yoga-3.jpg'),
 ]
 
 const yogaImage =
   yogaImages[Math.floor(Math.random() * yogaImages.length)]
 const runningImages = [
-  require('../assets/images/activities/running/running-1.png'),
-  require('../assets/images/activities/running/running-2.png'),
-  require('../assets/images/activities/running/running-3.png'),
+  require('../assets/images/activities/running/running-1.jpg'),
+  require('../assets/images/activities/running/running-2.jpg'),
+  require('../assets/images/activities/running/running-3.jpg'),
 ]
 
 const runningImage =
   runningImages[Math.floor(Math.random() * runningImages.length)]
 const supImages = [
-  require('../assets/images/activities/sup/sup-1.png'),
-  require('../assets/images/activities/sup/sup-2.png'),
-  require('../assets/images/activities/sup/sup-3.png'),
+  require('../assets/images/activities/sup/sup-1.jpg'),
+  require('../assets/images/activities/sup/sup-2.jpg'),
+  require('../assets/images/activities/sup/sup-3.jpg'),
 ]
 
 const supImage =
   supImages[Math.floor(Math.random() * supImages.length)]
 const cafeImages = [
-  require('../assets/images/activities/cafe/cafe-1.png'),
-  require('../assets/images/activities/cafe/cafe-2.png'),
-  require('../assets/images/activities/cafe/cafe-3.png'),
+  require('../assets/images/activities/cafe/cafe-1.jpg'),
+  require('../assets/images/activities/cafe/cafe-2.jpg'),
+  require('../assets/images/activities/cafe/cafe-3.jpg'),
 ]
 
 const cafeImage =
   cafeImages[Math.floor(Math.random() * cafeImages.length)]
 const musicaImages = [
-  require('../assets/images/activities/musica/musica-1.png'),
-  require('../assets/images/activities/musica/musica-2.png'),
-  require('../assets/images/activities/musica/musica-3.png'),
+  require('../assets/images/activities/musica/musica-1.jpg'),
+  require('../assets/images/activities/musica/musica-2.jpg'),
+  require('../assets/images/activities/musica/musica-3.jpg'),
 ]
 
 const musicaImage =
   musicaImages[Math.floor(Math.random() * musicaImages.length)]
 const senderismoImages = [
-  require('../assets/images/activities/senderismo/senderismo-1.png'),
-  require('../assets/images/activities/senderismo/senderismo-2.png'),
-  require('../assets/images/activities/senderismo/senderismo-3.png'),
+  require('../assets/images/activities/senderismo/senderismo-1.jpg'),
+  require('../assets/images/activities/senderismo/senderismo-2.jpg'),
+  require('../assets/images/activities/senderismo/senderismo-3.jpg'),
 ]
 
 const senderismoImage =
   senderismoImages[Math.floor(Math.random() * senderismoImages.length)]
 const equitacionImages = [
-  require('../assets/images/activities/equitacion/equitacion-1.png'),
-  require('../assets/images/activities/equitacion/equitacion-2.png'),
-  require('../assets/images/activities/equitacion/equitacion-3.png'),
+  require('../assets/images/activities/equitacion/equitacion-1.jpg'),
+  require('../assets/images/activities/equitacion/equitacion-2.jpg'),
+  require('../assets/images/activities/equitacion/equitacion-3.jpg'),
 ]
 
 const equitacionImage =
   equitacionImages[Math.floor(Math.random() * equitacionImages.length)]
 const futbolImages = [
-  require('../assets/images/activities/futbol/futbol-1.png'),
-  require('../assets/images/activities/futbol/futbol-2.png'),
-  require('../assets/images/activities/futbol/futbol-3.png'),
+  require('../assets/images/activities/futbol/futbol-1.jpg'),
+  require('../assets/images/activities/futbol/futbol-2.jpg'),
+  require('../assets/images/activities/futbol/futbol-3.jpg'),
 ]
 
 const futbolImage =
   futbolImages[Math.floor(Math.random() * futbolImages.length)]
 const tenisImages = [
-  require('../assets/images/activities/tenis/tenis-1.png'),
-  require('../assets/images/activities/tenis/tenis-2.png'),
-  require('../assets/images/activities/tenis/tenis-3.png'),
+  require('../assets/images/activities/tenis/tenis-1.jpg'),
+  require('../assets/images/activities/tenis/tenis-2.jpg'),
+  require('../assets/images/activities/tenis/tenis-3.jpg'),
 ]
 
 const tenisImage =
   tenisImages[Math.floor(Math.random() * tenisImages.length)]
 const basquetImages = [
-  require('../assets/images/activities/basquet/basquet-1.png'),
-  require('../assets/images/activities/basquet/basquet-2.png'),
-  require('../assets/images/activities/basquet/basquet-3.png'),
+  require('../assets/images/activities/basquet/basquet-1.jpg'),
+  require('../assets/images/activities/basquet/basquet-2.jpg'),
+  require('../assets/images/activities/basquet/basquet-3.jpg'),
 ]
 
 const basquetImage =
   basquetImages[Math.floor(Math.random() * basquetImages.length)]
 const beachvoleyImages = [
-  require('../assets/images/activities/beachvoley/beachvoley-1.png'),
-  require('../assets/images/activities/beachvoley/beachvoley-2.png'),
-  require('../assets/images/activities/beachvoley/beachvoley-3.png'),
+  require('../assets/images/activities/beachvoley/beachvoley-1.jpg'),
+  require('../assets/images/activities/beachvoley/beachvoley-2.jpg'),
+  require('../assets/images/activities/beachvoley/beachvoley-3.jpg'),
 ]
 
 const beachvoleyImage =
   beachvoleyImages[Math.floor(Math.random() * beachvoleyImages.length)]
 const newcomImages = [
-  require('../assets/images/activities/newcom/newcom-1.png'),
-  require('../assets/images/activities/newcom/newcom-2.png'),
-  require('../assets/images/activities/newcom/newcom-3.png'),
+  require('../assets/images/activities/newcom/newcom-1.jpg'),
+  require('../assets/images/activities/newcom/newcom-2.jpg'),
+  require('../assets/images/activities/newcom/newcom-3.jpg'),
 ]
 
 const newcomImage =
   newcomImages[Math.floor(Math.random() * newcomImages.length)]
 const padelImages = [
-  require('../assets/images/activities/padel/padel-1.png'),
-  require('../assets/images/activities/padel/padel-2.png'),
-  require('../assets/images/activities/padel/padel-3.png'),
+  require('../assets/images/activities/padel/padel-1.jpg'),
+  require('../assets/images/activities/padel/padel-2.jpg'),
+  require('../assets/images/activities/padel/padel-3.jpg'),
 ]
 
 const padelImage =
   padelImages[Math.floor(Math.random() * padelImages.length)]
 const pescaImages = [
-  require('../assets/images/activities/pesca/pesca-1.png'),
-  require('../assets/images/activities/pesca/pesca-2.png'),
-  require('../assets/images/activities/pesca/pesca-3.png'),
+  require('../assets/images/activities/pesca/pesca-1.jpg'),
+  require('../assets/images/activities/pesca/pesca-2.jpg'),
+  require('../assets/images/activities/pesca/pesca-3.jpg'),
 ]
 
 const pescaImage =
   pescaImages[Math.floor(Math.random() * pescaImages.length)]
 const cocinaImages = [
-  require('../assets/images/activities/cocina/cocina-1.png'),
-  require('../assets/images/activities/cocina/cocina-2.png'),
-  require('../assets/images/activities/cocina/cocina-3.png'),
+  require('../assets/images/activities/cocina/cocina-1.jpg'),
+  require('../assets/images/activities/cocina/cocina-2.jpg'),
+  require('../assets/images/activities/cocina/cocina-3.jpg'),
 ]
 
 const cocinaImage =
   cocinaImages[Math.floor(Math.random() * cocinaImages.length)]
 const juegosdemesaImages = [
-  require('../assets/images/activities/juegosdemesa/juegosdemesa-1.png'),
-  require('../assets/images/activities/juegosdemesa/juegosdemesa-2.png'),
-  require('../assets/images/activities/juegosdemesa/juegosdemesa-3.png'),
+  require('../assets/images/activities/juegosdemesa/juegosdemesa-1.jpg'),
+  require('../assets/images/activities/juegosdemesa/juegosdemesa-2.jpg'),
+  require('../assets/images/activities/juegosdemesa/juegosdemesa-3.jpg'),
 ]
 
 const juegosdemesaImage =
   juegosdemesaImages[Math.floor(Math.random() * juegosdemesaImages.length)]
 const idiomasImages = [
-  require('../assets/images/activities/idiomas/idiomas-1.png'),
-  require('../assets/images/activities/idiomas/idiomas-2.png'),
-  require('../assets/images/activities/idiomas/idiomas-3.png'),
+  require('../assets/images/activities/idiomas/idiomas-1.jpg'),
+  require('../assets/images/activities/idiomas/idiomas-2.jpg'),
+  require('../assets/images/activities/idiomas/idiomas-3.jpg'),
 ]
 
 const idiomasImage =
   idiomasImages[Math.floor(Math.random() * idiomasImages.length)]
 const meditacionImages = [
-  require('../assets/images/activities/meditacion/meditacion-1.png'),
-  require('../assets/images/activities/meditacion/meditacion-2.png'),
-  require('../assets/images/activities/meditacion/meditacion-3.png'),
+  require('../assets/images/activities/meditacion/meditacion-1.jpg'),
+  require('../assets/images/activities/meditacion/meditacion-2.jpg'),
+  require('../assets/images/activities/meditacion/meditacion-3.jpg'),
 ]
 
 const meditacionImage =
   meditacionImages[Math.floor(Math.random() * meditacionImages.length)]
 const kayakImages = [
-  require('../assets/images/activities/kayak/kayak-1.png'),
-  require('../assets/images/activities/kayak/kayak-2.png'),
-  require('../assets/images/activities/kayak/kayak-3.png'),
+  require('../assets/images/activities/kayak/kayak-1.jpg'),
+  require('../assets/images/activities/kayak/kayak-2.jpg'),
+  require('../assets/images/activities/kayak/kayak-3.jpg'),
 ]
 
 const kayakImage =
   kayakImages[Math.floor(Math.random() * kayakImages.length)]
 const natacionImages = [
-  require('../assets/images/activities/natacion/natacion-1.png'),
-  require('../assets/images/activities/natacion/natacion-2.png'),
-  require('../assets/images/activities/natacion/natacion-3.png'),
+  require('../assets/images/activities/natacion/natacion-1.jpg'),
+  require('../assets/images/activities/natacion/natacion-2.jpg'),
+  require('../assets/images/activities/natacion/natacion-3.jpg'),
 ]
 
 const natacionImage =
   natacionImages[Math.floor(Math.random() * natacionImages.length)]
 const natacionAguasAbiertasImages = [
-  require('../assets/images/activities/natacionaguasabiertas/natacionaguasabiertas-1.png'),
-  require('../assets/images/activities/natacionaguasabiertas/natacionaguasabiertas-2.png'),
-  require('../assets/images/activities/natacionaguasabiertas/natacionaguasabiertas-3.png'),
+  require('../assets/images/activities/natacionaguasabiertas/natacionaguasabiertas-1.jpg'),
+  require('../assets/images/activities/natacionaguasabiertas/natacionaguasabiertas-2.jpg'),
+  require('../assets/images/activities/natacionaguasabiertas/natacionaguasabiertas-3.jpg'),
 ]
 
 const natacionAguasAbiertasImage =
   natacionAguasAbiertasImages[Math.floor(Math.random() * natacionAguasAbiertasImages.length)]
 const surfImages = [
-  require('../assets/images/activities/surf/surf-1.png'),
-  require('../assets/images/activities/surf/surf-2.png'),
-  require('../assets/images/activities/surf/surf-3.png'),
+  require('../assets/images/activities/surf/surf-1.jpg'),
+  require('../assets/images/activities/surf/surf-2.jpg'),
+  require('../assets/images/activities/surf/surf-3.jpg'),
 ]
 
 const surfImage =
   surfImages[Math.floor(Math.random() * surfImages.length)]
 const pilatesImages = [
-  require('../assets/images/activities/pilates/pilates-1.png'),
-  require('../assets/images/activities/pilates/pilates-2.png'),
-  require('../assets/images/activities/pilates/pilates-3.png'),
+  require('../assets/images/activities/pilates/pilates-1.jpg'),
+  require('../assets/images/activities/pilates/pilates-2.jpg'),
+  require('../assets/images/activities/pilates/pilates-3.jpg'),
 ]
 
 const pilatesImage =
   pilatesImages[Math.floor(Math.random() * pilatesImages.length)]
 const pinturaImages = [
-  require('../assets/images/activities/pintura/pintura-1.png'),
-  require('../assets/images/activities/pintura/pintura-2.png'),
-  require('../assets/images/activities/pintura/pintura-3.png'),
+  require('../assets/images/activities/pintura/pintura-1.jpg'),
+  require('../assets/images/activities/pintura/pintura-2.jpg'),
+  require('../assets/images/activities/pintura/pintura-3.jpg'),
 ]
 
 const pinturaImage =
   pinturaImages[Math.floor(Math.random() * pinturaImages.length)]
 const ceramicaImages = [
-  require('../assets/images/activities/ceramica/ceramica-1.png'),
-  require('../assets/images/activities/ceramica/ceramica-2.png'),
-  require('../assets/images/activities/ceramica/ceramica-3.png'),
+  require('../assets/images/activities/ceramica/ceramica-1.jpg'),
+  require('../assets/images/activities/ceramica/ceramica-2.jpg'),
+  require('../assets/images/activities/ceramica/ceramica-3.jpg'),
 ]
 
 const ceramicaImage =
   ceramicaImages[Math.floor(Math.random() * ceramicaImages.length)]
 const fotografiaImages = [
-  require('../assets/images/activities/fotografia/fotografia-1.png'),
-  require('../assets/images/activities/fotografia/fotografia-2.png'),
-  require('../assets/images/activities/fotografia/fotografia-3.png'),
+  require('../assets/images/activities/fotografia/fotografia-1.jpg'),
+  require('../assets/images/activities/fotografia/fotografia-2.jpg'),
+  require('../assets/images/activities/fotografia/fotografia-3.jpg'),
 ]
 
 const fotografiaImage =
   fotografiaImages[Math.floor(Math.random() * fotografiaImages.length)]
 const tangoImages = [
-  require('../assets/images/activities/tango/tango-1.png'),
-  require('../assets/images/activities/tango/tango-2.png'),
-  require('../assets/images/activities/tango/tango-3.png'),
+  require('../assets/images/activities/tango/tango-1.jpg'),
+  require('../assets/images/activities/tango/tango-2.jpg'),
+  require('../assets/images/activities/tango/tango-3.jpg'),
 ]
 
 const tangoImage =
   tangoImages[Math.floor(Math.random() * tangoImages.length)]
 const folkloreImages = [
-  require('../assets/images/activities/folklore/folklore-1.png'),
-  require('../assets/images/activities/folklore/folklore-2.png'),
-  require('../assets/images/activities/folklore/folklore-3.png'),
+  require('../assets/images/activities/folklore/folklore-1.jpg'),
+  require('../assets/images/activities/folklore/folklore-2.jpg'),
+  require('../assets/images/activities/folklore/folklore-3.jpg'),
 ]
 
 const folkloreImage =
   folkloreImages[Math.floor(Math.random() * folkloreImages.length)]
 const motosImages = [
-  require('../assets/images/activities/motos/motos-1.png'),
-  require('../assets/images/activities/motos/motos-2.png'),
-  require('../assets/images/activities/motos/motos-3.png'),
+  require('../assets/images/activities/motos/motos-1.jpg'),
+  require('../assets/images/activities/motos/motos-2.jpg'),
+  require('../assets/images/activities/motos/motos-3.jpg'),
 ]
 
 const motosImage =
   motosImages[Math.floor(Math.random() * motosImages.length)]
 const teatroImages = [
-  require('../assets/images/activities/teatro/teatro-1.png'),
-  require('../assets/images/activities/teatro/teatro-2.png'),
-  require('../assets/images/activities/teatro/teatro-3.png'),
+  require('../assets/images/activities/teatro/teatro-1.jpg'),
+  require('../assets/images/activities/teatro/teatro-2.jpg'),
+  require('../assets/images/activities/teatro/teatro-3.jpg'),
 ]
 
 const teatroImage =
   teatroImages[Math.floor(Math.random() * teatroImages.length)]
 const astrologiaImages = [
-  require('../assets/images/activities/astrologia/astrologia-1.png'),
-  require('../assets/images/activities/astrologia/astrologia-2.png'),
-  require('../assets/images/activities/astrologia/astrologia-3.png'),
+  require('../assets/images/activities/astrologia/astrologia-1.jpg'),
+  require('../assets/images/activities/astrologia/astrologia-2.jpg'),
+  require('../assets/images/activities/astrologia/astrologia-3.jpg'),
 ]
 
 const astrologiaImage =
   astrologiaImages[Math.floor(Math.random() * astrologiaImages.length)]
 const eventosImages = [
-  require('../assets/images/activities/eventos/eventos-1.png'),
-  require('../assets/images/activities/eventos/eventos-2.png'),
-  require('../assets/images/activities/eventos/eventos-3.png'),
+  require('../assets/images/activities/eventos/eventos-1.jpg'),
+  require('../assets/images/activities/eventos/eventos-2.jpg'),
+  require('../assets/images/activities/eventos/eventos-3.jpg'),
 ]
 
 const eventosImage =
   eventosImages[Math.floor(Math.random() * eventosImages.length)]
 const gamingImage = require('../assets/images/categories/placeholder-gaming.jpg')
 const mateadaImages = [
-  require('../assets/images/activities/mateada/mateada-1.png'),
-  require('../assets/images/activities/mateada/mateada-2.png'),
-  require('../assets/images/activities/mateada/mateada-3.png'),
+  require('../assets/images/activities/mateada/mateada-1.jpg'),
+  require('../assets/images/activities/mateada/mateada-2.jpg'),
+  require('../assets/images/activities/mateada/mateada-3.jpg'),
 ]
 
 const mateadaImage =
   mateadaImages[Math.floor(Math.random() * mateadaImages.length)]
 const ciclismoImages = [
-  require('../assets/images/activities/ciclismo/ciclismo-1.png'),
-  require('../assets/images/activities/ciclismo/ciclismo-2.png'),
-  require('../assets/images/activities/ciclismo/ciclismo-3.png'),
+  require('../assets/images/activities/ciclismo/ciclismo-1.jpg'),
+  require('../assets/images/activities/ciclismo/ciclismo-2.jpg'),
+  require('../assets/images/activities/ciclismo/ciclismo-3.jpg'),
 ]
 
 const ciclismoImage =
   ciclismoImages[Math.floor(Math.random() * ciclismoImages.length)]
 const ciclismoIndoorImages = [
-  require('../assets/images/activities/ciclismoindoor/ciclismoindoor-1.png'),
-  require('../assets/images/activities/ciclismoindoor/ciclismoindoor-2.png'),
-  require('../assets/images/activities/ciclismoindoor/ciclismoindoor-3.png'),
+  require('../assets/images/activities/ciclismoindoor/ciclismoindoor-1.jpg'),
+  require('../assets/images/activities/ciclismoindoor/ciclismoindoor-2.jpg'),
+  require('../assets/images/activities/ciclismoindoor/ciclismoindoor-3.jpg'),
 ]
 
 const ciclismoIndoorImage =
   ciclismoIndoorImages[Math.floor(Math.random() * ciclismoIndoorImages.length)]
 const entrenamientoImages = [
-  require('../assets/images/activities/entrenamiento/entrenamiento-1.png'),
-  require('../assets/images/activities/entrenamiento/entrenamiento-2.png'),
-  require('../assets/images/activities/entrenamiento/entrenamiento-3.png'),
+  require('../assets/images/activities/entrenamiento/entrenamiento-1.jpg'),
+  require('../assets/images/activities/entrenamiento/entrenamiento-2.jpg'),
+  require('../assets/images/activities/entrenamiento/entrenamiento-3.jpg'),
 ]
 
 const entrenamientoImage =
   entrenamientoImages[Math.floor(Math.random() * entrenamientoImages.length)]
 const cantoImages = [
-  require('../assets/images/activities/canto/canto-1.png'),
-  require('../assets/images/activities/canto/canto-2.png'),
-  require('../assets/images/activities/canto/canto-3.png'),
+  require('../assets/images/activities/canto/canto-1.jpg'),
+  require('../assets/images/activities/canto/canto-2.jpg'),
+  require('../assets/images/activities/canto/canto-3.jpg'),
 ]
 
 const cantoImage =
   cantoImages[Math.floor(Math.random() * cantoImages.length)]
 const salsaImages = [
-  require('../assets/images/activities/salsa/salsa-1.png'),
-  require('../assets/images/activities/salsa/salsa-2.png'),
-  require('../assets/images/activities/salsa/salsa-3.png'),
+  require('../assets/images/activities/salsa/salsa-1.jpg'),
+  require('../assets/images/activities/salsa/salsa-2.jpg'),
+  require('../assets/images/activities/salsa/salsa-3.jpg'),
 ]
 
 const salsaImage =
   salsaImages[Math.floor(Math.random() * salsaImages.length)]
 const ritmosImages = [
-  require('../assets/images/activities/ritmos/ritmos-1.png'),
-  require('../assets/images/activities/ritmos/ritmos-2.png'),
-  require('../assets/images/activities/ritmos/ritmos-3.png'),
+  require('../assets/images/activities/ritmos/ritmos-1.jpg'),
+  require('../assets/images/activities/ritmos/ritmos-2.jpg'),
+  require('../assets/images/activities/ritmos/ritmos-3.jpg'),
 ]
 
 const ritmosImage =
   ritmosImages[Math.floor(Math.random() * ritmosImages.length)]
 const lecturaImages = [
-  require('../assets/images/activities/lectura/lectura-1.png'),
-  require('../assets/images/activities/lectura/lectura-2.png'),
-  require('../assets/images/activities/lectura/lectura-3.png'),
+  require('../assets/images/activities/lectura/lectura-1.jpg'),
+  require('../assets/images/activities/lectura/lectura-2.jpg'),
+  require('../assets/images/activities/lectura/lectura-3.jpg'),
 ]
 
 const lecturaImage =
   lecturaImages[Math.floor(Math.random() * lecturaImages.length)]
 const cursosTalleresCapacitacionesImages = [
-  require('../assets/images/activities/cursostallerescapacitaciones/cursostallerescapacitaciones-1.png'),
-  require('../assets/images/activities/cursostallerescapacitaciones/cursostallerescapacitaciones-2.png'),
-  require('../assets/images/activities/cursostallerescapacitaciones/cursostallerescapacitaciones-3.png'),
+  require('../assets/images/activities/cursostallerescapacitaciones/cursostallerescapacitaciones-1.jpg'),
+  require('../assets/images/activities/cursostallerescapacitaciones/cursostallerescapacitaciones-2.jpg'),
+  require('../assets/images/activities/cursostallerescapacitaciones/cursostallerescapacitaciones-3.jpg'),
 ]
 
 const cursosTalleresCapacitacionesImage =
   cursosTalleresCapacitacionesImages[Math.floor(Math.random() * cursosTalleresCapacitacionesImages.length)]
 const ajedrezImages = [
-  require('../assets/images/activities/ajedrez/ajedrez-1.png'),
-  require('../assets/images/activities/ajedrez/ajedrez-2.png'),
-  require('../assets/images/activities/ajedrez/ajedrez-3.png'),
+  require('../assets/images/activities/ajedrez/ajedrez-1.jpg'),
+  require('../assets/images/activities/ajedrez/ajedrez-2.jpg'),
+  require('../assets/images/activities/ajedrez/ajedrez-3.jpg'),
 ]
 
 const ajedrezImage =
   ajedrezImages[Math.floor(Math.random() * ajedrezImages.length)]
 const mascotasImages = [
-  require('../assets/images/activities/mascotas/mascotas-1.png'),
-  require('../assets/images/activities/mascotas/mascotas-2.png'),
-  require('../assets/images/activities/mascotas/mascotas-3.png'),
+  require('../assets/images/activities/mascotas/mascotas-1.jpg'),
+  require('../assets/images/activities/mascotas/mascotas-2.jpg'),
+  require('../assets/images/activities/mascotas/mascotas-3.jpg'),
 ]
 
 const mascotasImage =
   mascotasImages[Math.floor(Math.random() * mascotasImages.length)]
 const jardineriaImages = [
-  require('../assets/images/activities/jardineria/jardineria-1.png'),
-  require('../assets/images/activities/jardineria/jardineria-2.png'),
-  require('../assets/images/activities/jardineria/jardineria-3.png'),
+  require('../assets/images/activities/jardineria/jardineria-1.jpg'),
+  require('../assets/images/activities/jardineria/jardineria-2.jpg'),
+  require('../assets/images/activities/jardineria/jardineria-3.jpg'),
 ]
 
 const jardineriaImage =
   jardineriaImages[Math.floor(Math.random() * jardineriaImages.length)]
+const mundial2026Images = [
+  require('../assets/images/activities/mundial2026/mundial2026argentina-1.jpg'),
+  require('../assets/images/activities/mundial2026/mundial2026argentina-2.jpg'),
+  require('../assets/images/activities/mundial2026/mundial2026argentina-3.jpg'),
+]
+
+const mundial2026Image =
+  mundial2026Images[Math.floor(Math.random() * mundial2026Images.length)]
 const grupalImage = require('../assets/images/categories/placeholder-grupal.jpg')
 
 export const categoryImages: Record<string, ImageSourcePropType> = {
@@ -384,6 +392,11 @@ function normalize(value: unknown) {
     .toLowerCase()
 }
 
+function readTags(value: unknown) {
+  if (!Array.isArray(value)) return ''
+  return value.map(readString).filter(Boolean).join(' ')
+}
+
 function getRemoteImage(data: Record<string, unknown>) {
   const candidates = [
     data.imageUrl,
@@ -398,7 +411,7 @@ function getRemoteImage(data: Record<string, unknown>) {
     data.thumbnailUrl,
   ]
 
-  const uri = candidates.map(readString).find((value) => /^https?:\/\//i.test(value) || /^file:\/\//i.test(value))
+  const uri = candidates.map(readString).find((value) => /^https?:\/\//i.test(value))
   return uri ? { uri } : null
 }
 
@@ -418,6 +431,7 @@ const imageRules: { image: ImageSourcePropType; terms: string[] }[] = [
   { image: ajedrezImage, terms: ['ajedrez'] },
   { image: mascotasImage, terms: ['mascotas', 'mascota', 'perros', 'gatos'] },
   { image: jardineriaImage, terms: ['jardineria', 'jardin', 'plantas', 'huerta'] },
+  { image: mundial2026Image, terms: ['mundial 2026', 'mundial2026', 'mundial', 'argentina 2026'] },
   { image: futbolImage, terms: ['futbol', 'futbol 5', 'fulbito'] },
   { image: tenisImage, terms: ['tenis'] },
   { image: basquetImage, terms: ['basquet', 'basket', 'basketball'] },
@@ -449,6 +463,11 @@ const imageRules: { image: ImageSourcePropType; terms: string[] }[] = [
   { image: mateadaImage, terms: ['mate', 'mateada', 'mateadas', 'charlas', 'after office', 'salidas grupales', 'sociales', 'sociales y comunidad'] },
   { image: entrenamientoImage, terms: ['entrenamiento', 'entrenamiento y movimiento', 'funcional', 'crossfit', 'calistenia', 'gimnasio', 'gimnasio/estudio', 'deportes', 'sports', 'futbol', 'padel', 'paddle', 'tenis', 'basquet', 'hockey', 'voley'] },
   { image: grupalImage, terms: ['grupo', 'grupos', 'grupal', 'grupales', 'clubes', 'networking', 'voluntariado', 'idiomas', 'intercambio cultural'] },
+  { image: senderismoImage, terms: ['outdoor', 'aire libre y naturaleza', 'al aire libre'] },
+  { image: musicaImage, terms: ['culture', 'cultura', 'cultura, arte y aprendizaje'] },
+  { image: gamingImage, terms: ['hobbies', 'juegos y hobbies'] },
+  { image: yogaImage, terms: ['wellness', 'bienestar'] },
+  { image: grupalImage, terms: ['groups'] },
 ]
 
 export function getCategoryImage(data: Record<string, unknown> = {}, fallback = defaultActivityImage) {
@@ -460,10 +479,24 @@ export function getCategoryImage(data: Record<string, unknown> = {}, fallback = 
     data.category,
     data.categoryId,
     data.type,
+    readTags(data.tags),
     data.name,
     data.title,
   ].filter(Boolean).join(' '))
 
   const match = imageRules.find((rule) => rule.terms.some((term) => searchable.includes(term)))
-  return match?.image ?? fallback
+  if (match?.image) return match.image
+
+  if (__DEV__) {
+    console.log('[CATEGORY IMAGE FALLBACK]', {
+      title: data.title ?? data.name,
+      category: data.category,
+      categoryId: data.categoryId,
+      subcategory: data.subcategory,
+      type: data.type,
+      tags: data.tags,
+    })
+  }
+
+  return fallback ?? defaultActivityImage
 }

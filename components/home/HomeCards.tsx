@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react'
-import { Image, Platform, Pressable, StyleSheet, Text, View } from 'react-native'
+import { Image as ExpoImage } from 'expo-image'
+import { Platform, Pressable, StyleSheet, Text, View } from 'react-native'
 import { CalendarDays, MapPin, Share2, UserRound, UsersRound } from 'lucide-react-native'
 
 import { PressScale } from './PressScale'
 import type { ActivityCardItem, PrivateCardItem, SuggestionCardItem } from './types'
 import { getGroupTheme } from '../../constants/groupTheme'
-import { defaultActivityImage } from '../../utils/categoryImages'
+import { defaultActivityImage, getCategoryImage } from '../../utils/categoryImages'
 
 type ActivityCardProps = {
   item: ActivityCardItem
@@ -25,23 +26,34 @@ type SuggestionCardProps = {
 }
 
 export function ActivityCard({ item, onCtaPress, onPress, onSharePress }: ActivityCardProps) {
+  const fallbackImage = getCategoryImage({ category: item.category }, defaultActivityImage)
   const [imageSource, setImageSource] = useState(item.image || defaultActivityImage)
+  const [hasImageError, setHasImageError] = useState(false)
   const isCtaDisabled = Boolean(item.isCancelled || item.isOrganizer)
   const isGroupActivity = Boolean(item.groupId || item.groupName)
   const groupColors = getGroupTheme(item.groupColor)
 
   useEffect(() => {
     setImageSource(item.image || defaultActivityImage)
+    setHasImageError(false)
   }, [item.image])
 
   return (
     <View style={[styles.activityCard, isGroupActivity && { borderColor: groupColors.borderColor }]}>
       <View style={styles.activityImageWrap}>
-        <Image
-          onError={() => setImageSource(defaultActivityImage)}
-          source={imageSource}
-          style={styles.activityImage}
-        />
+        <ExpoImage contentFit="cover" source={fallbackImage} style={styles.activityImage} />
+        {!hasImageError ? (
+          <ExpoImage
+            contentFit="cover"
+            onError={() => {
+              if (__DEV__) console.log('[CARD IMAGE ERROR]', { title: item.title, category: item.category })
+              setHasImageError(true)
+              setImageSource(fallbackImage)
+            }}
+            source={imageSource || fallbackImage}
+            style={[styles.activityImage, StyleSheet.absoluteFillObject]}
+          />
+        ) : null}
         <View style={styles.imageOverlay} />
         <Pressable
           accessibilityLabel={`Ver detalle de ${item.title}`}
@@ -128,10 +140,13 @@ export function ActivityCard({ item, onCtaPress, onPress, onSharePress }: Activi
 }
 
 export function PrivateCard({ item, onPress }: PrivateCardProps) {
+  const fallbackImage = getCategoryImage({ title: item.title }, defaultActivityImage)
   const [imageSource, setImageSource] = useState(item.image || defaultActivityImage)
+  const [hasImageError, setHasImageError] = useState(false)
 
   useEffect(() => {
     setImageSource(item.image || defaultActivityImage)
+    setHasImageError(false)
   }, [item.image])
 
   return (
@@ -143,11 +158,19 @@ export function PrivateCard({ item, onPress }: PrivateCardProps) {
       pressedStyle={styles.pressed}
     >
       <View style={styles.privateImageWrap}>
-        <Image
-          onError={() => setImageSource(defaultActivityImage)}
-          source={imageSource}
-          style={styles.privateImage}
-        />
+        <ExpoImage contentFit="cover" source={fallbackImage} style={styles.privateImage} />
+        {!hasImageError ? (
+          <ExpoImage
+            contentFit="cover"
+            onError={() => {
+              if (__DEV__) console.log('[CARD IMAGE ERROR]', { title: item.title })
+              setHasImageError(true)
+              setImageSource(fallbackImage)
+            }}
+            source={imageSource || fallbackImage}
+            style={[styles.privateImage, StyleSheet.absoluteFillObject]}
+          />
+        ) : null}
         <View style={styles.imageOverlay} />
         <View style={styles.capacityBadge}>
           <Text style={styles.capacityText}>{item.capacity}</Text>

@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import {
   ActivityIndicator,
   Alert,
@@ -13,6 +13,7 @@ import {
 import { useRouter } from 'expo-router'
 import {
   GoogleAuthProvider,
+  onAuthStateChanged,
   signInWithCredential,
   signInWithEmailAndPassword,
 } from 'firebase/auth'
@@ -185,6 +186,27 @@ export default function LoginScreen() {
     () => email.trim().length > 0 && password.length > 0,
     [email, password],
   )
+
+  useEffect(() => {
+    try {
+      console.log('[AUTH RESTORE START]', { screen: 'login' })
+      const { auth } = getFirebaseServices()
+      return onAuthStateChanged(auth, (user) => {
+        console.log(user ? '[AUTH RESTORE USER]' : '[AUTH RESTORE NULL]', {
+          screen: 'login',
+          uid: user?.uid ?? null,
+        })
+
+        if (user) {
+          console.log('[ROUTE GUARD REDIRECT]', { from: 'login', to: '/home' })
+          router.replace('/home')
+        }
+      })
+    } catch (authRestoreError) {
+      console.error('[AUTH RESTORE ERROR]', authRestoreError)
+      return undefined
+    }
+  }, [router])
 
   const completeGoogleLogin = async (idToken) => {
     if (!idToken) {

@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   ActivityIndicator,
   Alert,
+  AppState,
   Image,
   Linking,
   Platform,
@@ -56,6 +57,8 @@ import { getFirebaseServices } from '../../firebaseConfig'
 import { notifyActivityCancelled, notifyActivityConfirmed, notifyActivityInterest, notifyActivityRejected } from '../../lib/notifications'
 import { getActivityGroupMeta } from '../../utils/activityGroups'
 import { getCategoryImage } from '../../utils/categoryImages'
+import { savePendingExternalReturnRoute } from '../../utils/externalReturnRoute'
+import { getJsInstanceId } from '../../utils/jsInstance'
 
 type ActivityData = Record<string, unknown>
 type CategoryId = 'outdoor' | 'sports' | 'wellness' | 'groups'
@@ -412,6 +415,7 @@ function getInitials(name: string) {
 export default function ActivityDetailScreen() {
   const router = useRouter()
   const { activityId } = useLocalSearchParams<{ activityId?: string }>()
+  const instanceId = getJsInstanceId()
   const [activity, setActivity] = useState<ActivityData | null>(null)
   const [currentUserId, setCurrentUserId] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(true)
@@ -426,6 +430,8 @@ export default function ActivityDetailScreen() {
   const [isDeletingActivity, setIsDeletingActivity] = useState(false)
   const [isCancellingActivity, setIsCancellingActivity] = useState(false)
   const [localGroups, setLocalGroups] = useState<LocalGroup[]>([])
+  const [isOpeningLocation, setIsOpeningLocation] = useState(false)
+  const openedExternalMapsRef = useRef(false)
 
   const loadLocalGroups = useCallback(async () => {
     try {
@@ -437,6 +443,22 @@ export default function ActivityDetailScreen() {
     }
   }, [])
 
+  useEffect(() => {
+    console.log('[DETAIL MOUNT]', { activityId, instanceId })
+
+    return () => {
+      console.log('[DETAIL UNMOUNT]', { activityId, instanceId })
+    }
+  }, [activityId, instanceId])
+
+  useEffect(() => {
+    console.log('[ROUTE CURRENT]', {
+      activityId,
+      instanceId,
+      pathname: '/activity/[activityId]',
+    })
+  }, [activityId, instanceId])
+
   useFocusEffect(
     useCallback(() => {
       void loadLocalGroups()
@@ -444,9 +466,35 @@ export default function ActivityDetailScreen() {
   )
 
   useEffect(() => {
+    const subscription = AppState.addEventListener('change', (nextState) => {
+      console.log('[APPSTATE CHANGE]', {
+        activityId,
+        instanceId,
+        screen: 'activityDetail',
+        state: nextState,
+      })
+
+      if (nextState === 'active' && openedExternalMapsRef.current) {
+        console.log('[MAPS EXTERNAL RETURN]', { activityId, instanceId })
+        openedExternalMapsRef.current = false
+      }
+    })
+
+    return () => {
+      subscription.remove()
+    }
+  }, [activityId, instanceId])
+
+  useEffect(() => {
     try {
       const { auth } = getFirebaseServices()
       return onAuthStateChanged(auth, (user) => {
+        console.log(user ? '[AUTH USER]' : '[AUTH NULL]', {
+          activityId,
+          instanceId,
+          screen: 'activityDetail',
+          uid: user?.uid ?? null,
+        })
         setCurrentUserId(user?.uid ?? null)
         setCurrentUserName(user?.displayName?.trim() ?? '')
       })
@@ -455,7 +503,7 @@ export default function ActivityDetailScreen() {
       setCurrentUserName('')
       return undefined
     }
-  }, [])
+  }, [activityId, instanceId])
 
   useEffect(() => {
     if (!activityId) {
@@ -1037,22 +1085,44 @@ export default function ActivityDetailScreen() {
   }
 
   const openActivityLocation = async () => {
+    if (isOpeningLocation) {
+      return
+    }
+
     const hasCoordinates = typeof detail.locationLatitude === 'number'
       && Number.isFinite(detail.locationLatitude)
       && typeof detail.locationLongitude === 'number'
       && Number.isFinite(detail.locationLongitude)
-    const query = hasCoordinates
-      ? `${detail.locationLatitude},${detail.locationLongitude}`
-      : detail.locationAddress || detail.location
 
-    if (!query || query === 'Ubicación a definir') {
+    if (!hasCoordinates) {
       Alert.alert('Ubicación no disponible', 'Esta actividad todavía no tiene una ubicación para abrir en Maps.')
       return
     }
 
+    const lat = detail.locationLatitude
+    const lng = detail.locationLongitude
+    const url = `https://www.google.com/maps/search/?api=1&query=${lat},${lng}`
+
+    console.log('[MAPS EXTERNAL OPEN]', { activityId, lat, lng, url })
+    setIsOpeningLocation(true)
+    setTimeout(() => {
+      setIsOpeningLocation(false)
+    }, 1000)
+
     try {
-      await Linking.openURL(`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`)
-    } catch {
+      if (activityId) {
+        await savePendingExternalReturnRoute({
+          params: { activityId },
+          pathname: '/activity/[activityId]',
+          source: 'googleMaps',
+        })
+      }
+      openedExternalMapsRef.current = true
+      await Linking.openURL(url)
+      console.log('[MAPS EXTERNAL OPEN OK]', { activityId })
+    } catch (error) {
+      openedExternalMapsRef.current = false
+      console.error('[ACTIVITY LOCATION OPEN ERROR]', error)
       Alert.alert('No pudimos abrir Maps', 'Intentá nuevamente en unos segundos.')
     }
   }
@@ -1092,7 +1162,7 @@ export default function ActivityDetailScreen() {
 
           <InfoRow Icon={CalendarDays} label={detail.date} />
           <InfoRow Icon={Clock3} label={detail.time} />
-          <InfoRow Icon={MapPin} label={detail.location} onPress={openActivityLocation} secondary="Tocar para abrir en Maps" />
+          <InfoRow Icon={MapPin} label={detail.location} onPress={openActivityLocation} secondary="Tocar para abrir en Maps" disabled={isOpeningLocation} />
           <InfoRow Icon={UsersRound} label={`${detail.participantCount} de ${detail.maxParticipants} participantes`} />
 
           {detail.groupName ? (
@@ -1313,9 +1383,10 @@ type InfoRowProps = {
   label: string
   onPress?: () => void
   secondary?: string
+  disabled?: boolean
 }
 
-function InfoRow({ Icon, label, onPress, secondary }: InfoRowProps) {
+function InfoRow({ Icon, label, onPress, secondary, disabled = false }: InfoRowProps) {
   const content = (
     <>
       <Icon color="#4B348A" size={20} strokeWidth={2.2} />
@@ -1331,8 +1402,9 @@ function InfoRow({ Icon, label, onPress, secondary }: InfoRowProps) {
       <Pressable
         accessibilityHint={secondary}
         accessibilityRole="button"
+        disabled={disabled}
         onPress={onPress}
-        style={({ pressed }) => [styles.infoRow, styles.infoRowPressable, pressed && styles.infoRowPressed]}
+        style={({ pressed }) => [styles.infoRow, styles.infoRowPressable, pressed && styles.infoRowPressed, disabled && styles.infoRowDisabled]}
       >
         {content}
       </Pressable>
@@ -1490,6 +1562,9 @@ const styles = StyleSheet.create({
   },
   infoRowPressed: {
     opacity: 0.76,
+  },
+  infoRowDisabled: {
+    opacity: 0.7,
   },
   infoCopy: {
     flex: 1,

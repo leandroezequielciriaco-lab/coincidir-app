@@ -14,6 +14,11 @@ type CategoryId = 'outdoor' | 'sports' | 'wellness' | 'groups'
 
 const image = (uri: string): ImageSourcePropType => ({ uri })
 
+function readRemoteImageUrl(value: unknown) {
+  const uri = readString(value)
+  return /^https?:\/\//i.test(uri) ? uri : ''
+}
+
 export function readString(value: unknown, fallback = '') {
   return typeof value === 'string' && value.trim() ? value.trim() : fallback
 }
@@ -61,7 +66,7 @@ export function getChatTitle(data: Record<string, unknown>, source: ChatSource) 
 }
 
 export function getChatImage(data: Record<string, unknown>, source: ChatSource) {
-  const photoURL = readString(data.imageUrl, readString(data.photoURL, readString(data.coverUrl)))
+  const photoURL = readRemoteImageUrl(data.imageUrl) || readRemoteImageUrl(data.photoURL) || readRemoteImageUrl(data.coverUrl)
   if (photoURL) return image(photoURL)
   return getCategoryImage(source === 'group' ? { category: 'Grupales', ...data } : data)
 }

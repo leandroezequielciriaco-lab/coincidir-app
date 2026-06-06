@@ -1,9 +1,11 @@
 import { useEffect, useRef } from 'react'
 import { Animated, View, useWindowDimensions } from 'react-native'
 import { useRouter } from 'expo-router'
+import { onAuthStateChanged } from 'firebase/auth'
 
 import CoincidirLogo from './CoincidirLogo'
 import { styles } from './SplashScreen.styles'
+import { getFirebaseServices } from '../firebaseConfig'
 
 const DISPLAY_TIME = 2000
 const FADE_DURATION = 700
@@ -23,16 +25,47 @@ export default function SplashScreen() {
       duration: FADE_DURATION,
       useNativeDriver: true,
     })
+    let authResolved = false
+    let displayResolved = false
+    let nextRoute = null
+    let unsubscribeAuth
+
+    const finishIfReady = () => {
+      if (!authResolved || !displayResolved || !nextRoute) return
+
+      console.log('[ROUTE GUARD REDIRECT]', { from: 'splash', to: nextRoute })
+      router.replace(nextRoute)
+    }
 
     const timeout = setTimeout(() => {
-      router.replace('/onboarding')
+      displayResolved = true
+      finishIfReady()
     }, DISPLAY_TIME)
 
     animation.start()
 
+    try {
+      console.log('[AUTH RESTORE START]')
+      const { auth } = getFirebaseServices()
+      unsubscribeAuth = onAuthStateChanged(auth, (user) => {
+        authResolved = true
+        nextRoute = user ? '/home' : '/onboarding'
+        console.log(user ? '[AUTH RESTORE USER]' : '[AUTH RESTORE NULL]', {
+          uid: user?.uid ?? null,
+        })
+        finishIfReady()
+      })
+    } catch (error) {
+      authResolved = true
+      nextRoute = '/onboarding'
+      console.error('[AUTH RESTORE ERROR]', error)
+      finishIfReady()
+    }
+
     return () => {
       clearTimeout(timeout)
       animation.stop()
+      if (unsubscribeAuth) unsubscribeAuth()
     }
   }, [entrance, router])
 

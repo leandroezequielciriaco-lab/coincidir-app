@@ -118,10 +118,10 @@ type ActivityFormPayload = {
   }
 }
 
-const hasGoogleMapsApiKey = Boolean(process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY?.trim())
-const shouldShowMapConfigNotice = Platform.OS === 'android' && !hasGoogleMapsApiKey
-const canUseNativeMap = !shouldShowMapConfigNotice
-const mapProvider = Platform.OS === 'android' && hasGoogleMapsApiKey ? PROVIDER_GOOGLE : undefined
+const hasGoogleMapsKey = Boolean(process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY?.trim())
+const canUseNativeMap = Platform.OS !== 'android' || hasGoogleMapsKey
+const shouldShowMapConfigNotice = Platform.OS === 'android' && !hasGoogleMapsKey
+const mapProvider = Platform.OS === 'android' ? PROVIDER_GOOGLE : undefined
 const weekDays = ['L', 'M', 'M', 'J', 'V', 'S', 'D']
 const monthNames = [
   'enero',
@@ -152,8 +152,8 @@ function getCategoryIcon(categoryId: CategoryId) {
 
 const currencyOptions = ['ARS', 'USD', 'UYU', 'BRL', 'EUR']
 const initialLocationRegion: Region = {
-  latitude: -34.4251,
-  longitude: -58.5797,
+  latitude: -37.3217,
+  longitude: -59.1332,
   latitudeDelta: 0.045,
   longitudeDelta: 0.045,
 }
@@ -1014,6 +1014,56 @@ export default function CrearScreen() {
     paddingBottom: Math.max(insets.bottom + 28, 38),
     paddingTop: Math.max(insets.top + 18, 28),
   }
+  const previewLocation = selectedLocation ?? {
+    address: 'Tandil',
+    latitude: initialLocationRegion.latitude,
+    longitude: initialLocationRegion.longitude,
+  }
+
+  useEffect(() => {
+    console.log('[CREATE MAP CONFIG]', {
+      canUseNativeMap,
+      hasGoogleMapsKey,
+      platform: Platform.OS,
+      provider: mapProvider ?? 'default',
+    })
+  }, [])
+
+  useEffect(() => {
+    if (!isLocationPickerVisible) return
+
+    if (canUseNativeMap) {
+      console.log('[CREATE MAP RENDER]', {
+        latitude: mapRegion.latitude,
+        longitude: mapRegion.longitude,
+        provider: mapProvider ?? 'default',
+        target: 'locationPicker',
+      })
+    } else {
+      console.error('[CREATE MAP ERROR]', {
+        hasGoogleMapsKey,
+        platform: Platform.OS,
+        reason: 'native_map_disabled',
+      })
+    }
+  }, [isLocationPickerVisible, mapRegion.latitude, mapRegion.longitude])
+
+  useEffect(() => {
+    if (canUseNativeMap) {
+      console.log('[CREATE MAP RENDER]', {
+        latitude: previewLocation.latitude,
+        longitude: previewLocation.longitude,
+        provider: mapProvider ?? 'default',
+        target: 'createPreview',
+      })
+    } else {
+      console.error('[CREATE MAP ERROR]', {
+        hasGoogleMapsKey,
+        platform: Platform.OS,
+        reason: 'preview_native_map_disabled',
+      })
+    }
+  }, [previewLocation.latitude, previewLocation.longitude])
 
   const renderAdditionalSettings = () => (
     <>
@@ -1282,13 +1332,13 @@ export default function CrearScreen() {
             onPress={openLocationPicker}
             style={styles.createMapCard}
           >
-            {selectedLocation && canUseNativeMap ? (
+            {canUseNativeMap ? (
               <MapView
                 mapType="standard"
                 provider={mapProvider}
                 region={{
-                  latitude: selectedLocation.latitude,
-                  longitude: selectedLocation.longitude,
+                  latitude: previewLocation.latitude,
+                  longitude: previewLocation.longitude,
                   latitudeDelta: 0.018,
                   longitudeDelta: 0.018,
                 }}
@@ -1299,8 +1349,8 @@ export default function CrearScreen() {
               >
                 <Marker
                   coordinate={{
-                    latitude: selectedLocation.latitude,
-                    longitude: selectedLocation.longitude,
+                    latitude: previewLocation.latitude,
+                    longitude: previewLocation.longitude,
                   }}
                   pinColor="#0E5A44"
                 />
@@ -2129,7 +2179,8 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   createMapCard: {
-    height: 176,
+    height: 220,
+    minHeight: 220,
     borderRadius: 14,
     borderWidth: 1,
     borderColor: '#E2E6E3',
@@ -2963,7 +3014,9 @@ const styles = StyleSheet.create({
   },
   locationPickerMapFrame: {
     backgroundColor: '#E7E2D8',
-    flex: 1,
+    borderRadius: 22,
+    height: 340,
+    marginHorizontal: 18,
     minHeight: 260,
     overflow: 'hidden',
   },

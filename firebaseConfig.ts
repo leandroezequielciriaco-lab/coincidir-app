@@ -42,6 +42,7 @@ function getConfiguredAuth(app: ReturnType<typeof initializeApp>) {
   if (cachedAuth) return cachedAuth
 
   try {
+    if (__DEV__) console.log('[AUTH RESTORE START]', { source: 'initializeAuth' })
     cachedAuth = initializeAuth(app, {
       persistence: getReactNativePersistence(AsyncStorage),
     })
@@ -68,6 +69,6 @@ export function getFirebaseServices(): { auth: Auth; db: Firestore; storage: Fir
   return {
     auth: getConfiguredAuth(app),
     db: getFirestore(app),
-    storage: getStorage(app),
+    storage: getStorage(app, `gs://${storageBucket}`),
   }
 }

@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { Image as ExpoImage } from 'expo-image'
 import {
   ActivityIndicator,
   FlatList,
-  Image,
   ImageSourcePropType,
   Modal,
   Platform,
@@ -621,12 +621,15 @@ function ExploreBanner() {
 }
 
 function ExploreCard({ cardWidth, item, onPress }: { cardWidth: number; item: ExploreCardItem; onPress: () => void }) {
+  const fallbackImage = getCategoryImage({ category: item.source === 'group' ? 'Grupales' : undefined, title: item.title, type: item.source }, defaultActivityImage)
   const [imageSource, setImageSource] = useState(item.image || defaultActivityImage)
+  const [hasImageError, setHasImageError] = useState(false)
   const isGroupActivity = Boolean(item.groupId || item.groupName)
   const groupColors = getGroupTheme(item.groupColor)
 
   useEffect(() => {
     setImageSource(item.image || defaultActivityImage)
+    setHasImageError(false)
   }, [item.image])
 
   return (
@@ -641,11 +644,19 @@ function ExploreCard({ cardWidth, item, onPress }: { cardWidth: number; item: Ex
       ]}
     >
       <View style={styles.cardImageWrap}>
-        <Image
-          onError={() => setImageSource(defaultActivityImage)}
-          source={imageSource}
-          style={styles.cardImage}
-        />
+        <ExpoImage contentFit="cover" source={fallbackImage} style={styles.cardImage} />
+        {!hasImageError ? (
+          <ExpoImage
+            contentFit="cover"
+            onError={() => {
+              if (__DEV__) console.log('[CARD IMAGE ERROR]', { title: item.title, source: item.source, groupId: item.groupId })
+              setHasImageError(true)
+              setImageSource(fallbackImage)
+            }}
+            source={imageSource || fallbackImage}
+            style={[styles.cardImage, StyleSheet.absoluteFillObject]}
+          />
+        ) : null}
         {item.isCancelled ? (
           <View style={styles.cancelledBadge}>
             <Text style={styles.cancelledBadgeText}>Cancelada</Text>

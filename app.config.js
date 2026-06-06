@@ -1,6 +1,6 @@
 const appJson = require('./app.json')
 
-const googleMapsApiKey = process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY
+const googleMapsApiKey = process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY?.trim()
 const expoConfig = appJson.expo
 
 const plugins = [
@@ -32,6 +32,10 @@ module.exports = {
         },
       }
       : {}),
+  },
+  extra: {
+    ...(expoConfig.extra || {}),
+    googleMapsApiKeyConfigured: Boolean(googleMapsApiKey),
   },
   plugins,
 }
