@@ -16,7 +16,7 @@ import {
 
 import { getFirebaseServices } from '../firebaseConfig'
 
-export type NotificationType = 'activity_cancelled' | 'activity_update' | 'activity_updated' | 'confirmed' | 'interest' | 'invite' | 'message' | 'rejected'
+export type NotificationType = 'activity_cancelled' | 'activity_update' | 'activity_updated' | 'confirmed' | 'group_join_accepted' | 'group_join_request' | 'interest' | 'invite' | 'message' | 'rejected'
 
 export type AppNotification = {
   activityId?: string
@@ -90,6 +90,8 @@ function readNotificationType(value: unknown): NotificationType {
     || value === 'activity_update'
     || value === 'activity_updated'
     || value === 'confirmed'
+    || value === 'group_join_accepted'
+    || value === 'group_join_request'
     || value === 'interest'
     || value === 'invite'
     || value === 'message'

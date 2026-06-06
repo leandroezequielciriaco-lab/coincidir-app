@@ -416,6 +416,13 @@ export default function ActivityDetailScreen() {
   const router = useRouter()
   const { activityId } = useLocalSearchParams<{ activityId?: string }>()
   const instanceId = getJsInstanceId()
+  const safeBack = useCallback(() => {
+    if (router.canGoBack()) {
+      router.back()
+    } else {
+      router.replace('/home')
+    }
+  }, [router])
   const [activity, setActivity] = useState<ActivityData | null>(null)
   const [currentUserId, setCurrentUserId] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(true)
@@ -577,6 +584,9 @@ export default function ActivityDetailScreen() {
     const locationLatitude = getLocationCoordinate(data, 'latitude')
     const locationLongitude = getLocationCoordinate(data, 'longitude')
     const groupMeta = getGroupMeta(data, localGroups)
+    const additionalSettings = getAdditionalSettings(data)
+    const visibility = normalize(readString(data.visibility, readString(additionalSettings.visibility)))
+    const isGroupActivity = visibility === 'group' || Boolean(groupMeta.groupId || groupMeta.groupName)
     return {
       action,
       category: readString(data.category, 'Espacio privado'),
@@ -586,6 +596,7 @@ export default function ActivityDetailScreen() {
       image: getCategoryImage(data),
       groupColor: groupMeta.groupColor,
       groupId: groupMeta.groupId,
+      isGroupActivity,
       groupName: groupMeta.groupName,
       interested,
       interestedCount: safeInterestedCount,
@@ -1065,7 +1076,7 @@ export default function ActivityDetailScreen() {
       <SafeAreaView style={styles.safeArea}>
         <View style={styles.centerState}>
           <Text style={styles.missingTitle}>No encontramos la actividad</Text>
-          <PressScale onPress={() => router.back()} style={styles.secondaryButton} scaleTo={0.97}>
+          <PressScale onPress={safeBack} style={styles.secondaryButton} scaleTo={0.97}>
             <Text style={styles.secondaryButtonText}>Volver</Text>
           </PressScale>
         </View>
@@ -1131,7 +1142,7 @@ export default function ActivityDetailScreen() {
     <SafeAreaView edges={['top']} style={styles.safeArea}>
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
         <View style={styles.topBar}>
-          <PressScale accessibilityLabel="Volver" accessibilityRole="button" onPress={() => router.back()} style={styles.iconButton} scaleTo={0.94}>
+          <PressScale accessibilityLabel="Volver" accessibilityRole="button" onPress={safeBack} style={styles.iconButton} scaleTo={0.94}>
             <ArrowLeft color="#063C31" size={26} strokeWidth={2.4} />
           </PressScale>
           <Text style={styles.headerTitle}>Detalle de actividad</Text>
@@ -1275,7 +1286,7 @@ export default function ActivityDetailScreen() {
             </View>
           ) : null}
 
-          {isOrganizer && detail.action === 'interest' ? (
+          {isOrganizer && detail.action === 'interest' && !detail.isGroupActivity ? (
             <View style={styles.interestedCard}>
               <Text style={styles.organizerEyebrow}>Personas interesadas</Text>
               <Text style={styles.interestedCount}>{getInterestedCountLabel(detail.interestedCount)}</Text>

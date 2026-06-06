@@ -17,7 +17,7 @@ import {
 } from 'react-native'
 import * as Location from 'expo-location'
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router'
-import { addDoc, collection, doc, getDoc, serverTimestamp, updateDoc } from 'firebase/firestore'
+import { addDoc, collection, doc, getDoc, serverTimestamp, setDoc, updateDoc } from 'firebase/firestore'
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import {
   ArrowLeft,
@@ -73,6 +73,8 @@ import { notifyActivityUpdated } from '../../lib/notifications'
 
 type PickerMode = 'category' | 'subcategory' | 'date' | 'time' | 'currency' | null
 type CreateStep = 1 | 2 | 3 | 4 | 5
+type CreateFlowMode = 'activity' | 'choice' | 'group' | 'groupCreated'
+type ActivityKind = 'group' | 'individual'
 
 type LocationSelection = {
   address: string
@@ -160,11 +162,25 @@ const initialLocationRegion: Region = {
 
 const privacyDetails = [
   { label: 'Pública', description: 'Cualquiera puede verla y sumarse', Icon: Globe2 },
-  { label: 'Grupo', description: 'Solo miembros del grupo', Icon: UsersRound },
   { label: 'Con aprobación', description: 'Debo aprobar participantes', Icon: ShieldCheck },
 ]
 
-const mockGroups = ['Running Tandil', 'Yoga Integral', 'Caminatas Activas']
+const activityKindDetails = [
+  {
+    description: 'La actividad no pertenece a ningún grupo.',
+    Icon: Sparkles,
+    label: 'Actividad individual',
+    value: 'individual' as const,
+  },
+  {
+    description: 'La actividad pertenece a uno de tus grupos.',
+    Icon: UsersRound,
+    label: 'Actividad de grupo',
+    value: 'group' as const,
+  },
+]
+
+const defaultGroups: string[] = []
 
 const levelDetails = [
   { label: 'Principiante', description: 'Ideal para empezar', Icon: Star },
@@ -365,9 +381,23 @@ function getSaveError(error: unknown, isEditMode: boolean) {
 
 export default function CrearScreen() {
   const router = useRouter()
-  const { activityId, mode } = useLocalSearchParams<{ activityId?: string; mode?: string }>()
+  const { activityId, groupId: preselectedGroupId, groupName: preselectedGroupName, kind, mode } = useLocalSearchParams<{ activityId?: string; groupId?: string; groupName?: string; kind?: string; mode?: string }>()
   const insets = useSafeAreaInsets()
   const isEditMode = mode === 'edit'
+  const safeBack = useCallback(() => {
+    if (router.canGoBack()) {
+      router.back()
+    } else {
+      router.replace('/home')
+    }
+  }, [router])
+  const [flowMode, setFlowMode] = useState<CreateFlowMode>(isEditMode ? 'activity' : 'choice')
+  const [activityKind, setActivityKind] = useState<ActivityKind>('individual')
+  const [groupDraftName, setGroupDraftName] = useState('')
+  const [groupDraftDescription, setGroupDraftDescription] = useState('')
+  const [groupDraftLocation, setGroupDraftLocation] = useState('')
+  const [createdGroupId, setCreatedGroupId] = useState('')
+  const [createdGroupName, setCreatedGroupName] = useState('')
   const [name, setName] = useState('')
   const [category, setCategory] = useState<Category | null>(null)
   const [subcategory, setSubcategory] = useState('')
@@ -393,8 +423,9 @@ export default function CrearScreen() {
   const [isResolvingLocation, setIsResolvingLocation] = useState(false)
   const [fallbackMapSize, setFallbackMapSize] = useState({ width: 1, height: 1 })
   const [privacy, setPrivacy] = useState('Pública')
-  const [availableGroups, setAvailableGroups] = useState(mockGroups)
-  const [selectedGroup, setSelectedGroup] = useState(mockGroups[0])
+  const [availableGroups, setAvailableGroups] = useState(defaultGroups)
+  const [selectedGroup, setSelectedGroup] = useState('')
+  const [selectedGroupId, setSelectedGroupId] = useState('')
   const [isCreateGroupVisible, setIsCreateGroupVisible] = useState(false)
   const [newGroupName, setNewGroupName] = useState('')
   const [maxParticipants, setMaxParticipants] = useState(10)
@@ -428,7 +459,7 @@ export default function CrearScreen() {
     try {
       const storedValue = await AsyncStorage.getItem(LOCAL_GROUPS_STORAGE_KEY)
       const storedGroups = readStoredGroups(storedValue)
-      const nextGroups = mergeGroupNames(mockGroups, storedGroups)
+      const nextGroups = mergeGroupNames(defaultGroups, storedGroups)
 
       setAvailableGroups(nextGroups)
       setSelectedGroup((current) => nextGroups.includes(current) ? current : nextGroups[0] ?? '')
@@ -439,7 +470,7 @@ export default function CrearScreen() {
           key: LOCAL_GROUPS_STORAGE_KEY,
           rawValue: storedValue,
         })
-        console.log('[CrearActividad] grupos mock', { groups: mockGroups })
+        console.log('[CrearActividad] grupos default', { groups: defaultGroups })
         console.log('[CrearActividad] grupos combinados finales', {
           count: nextGroups.length,
           groups: nextGroups,
@@ -455,6 +486,25 @@ export default function CrearScreen() {
       void loadLocalGroups()
     }, [loadLocalGroups]),
   )
+
+  useEffect(() => {
+    const cleanGroupName = readString(preselectedGroupName)
+    if (isEditMode || kind !== 'group' || !cleanGroupName) return
+
+    const groupCategory = findActivityCategory({ categoryId: 'groups' }) ?? categories[0] ?? null
+    const cleanGroupId = readString(preselectedGroupId, getLocalGroupId(cleanGroupName))
+    setFlowMode('activity')
+    setActivityKind('group')
+    setAvailableGroups((current) => mergeGroupNames(current, [cleanGroupName]))
+    setSelectedGroup(cleanGroupName)
+    setSelectedGroupId(cleanGroupId)
+    setName(cleanGroupName)
+    setCategory(groupCategory)
+    setSubcategory(groupCategory?.subcategories[0] ?? '')
+    setPrivacy('Pública')
+    setCurrentStep(3)
+    setMessage('')
+  }, [isEditMode, kind, preselectedGroupId, preselectedGroupName])
 
   useEffect(() => {
     if (!isEditMode) {
@@ -553,8 +603,11 @@ export default function CrearScreen() {
         setPrivacy(readString(additionalSettings.privacy, readString(data.privacy, 'Pública')))
         const existingGroupName = readString(additionalSettings.groupName, readString(data.groupName))
         if (existingGroupName) {
+          setActivityKind('group')
           setAvailableGroups((current) => mergeGroupNames(current, [existingGroupName]))
           setSelectedGroup(existingGroupName)
+        } else {
+          setActivityKind('individual')
         }
         setMaxParticipants(readNumber(additionalSettings.maxParticipants, readNumber(data.maxParticipants, 10)))
         setLevel(readString(additionalSettings.level, readString(data.level, 'Principiante')))
@@ -682,9 +735,9 @@ export default function CrearScreen() {
 
   const buildActivityPayload = (): ActivityFormPayload | null => {
     if (!category || !selectedDate || !selectedLocation) return null
-    const visibility = getVisibilityFromPrivacy(privacy)
-    const groupName = visibility === 'group' ? selectedGroup : ''
-    const groupId = groupName ? getLocalGroupId(groupName) : ''
+    const visibility = activityKind === 'group' ? 'group' : getVisibilityFromPrivacy(privacy)
+    const groupName = activityKind === 'group' ? selectedGroup : ''
+    const groupId = groupName ? selectedGroupId || getLocalGroupId(groupName) : ''
 
     const payload: ActivityFormPayload = {
       name: name.trim(),
@@ -714,7 +767,7 @@ export default function CrearScreen() {
       additionalSettings: {
         groupId,
         groupName,
-        privacy,
+        privacy: activityKind === 'group' ? 'Grupo' : privacy,
         visibility,
         maxParticipants,
         level,
@@ -740,6 +793,11 @@ export default function CrearScreen() {
   const saveActivity = async () => {
     if (!name.trim() || !category || !subcategory || !description.trim() || !selectedDate || !time || !selectedLocation) {
       setMessage(isEditMode ? 'Completá todos los campos para guardar los cambios.' : 'Completá todos los campos para crear la actividad.')
+      return
+    }
+
+    if (activityKind === 'group' && !selectedGroup) {
+      setMessage('Seleccioná un grupo para publicar la actividad.')
       return
     }
 
@@ -891,6 +949,7 @@ export default function CrearScreen() {
 
   const selectLocalGroup = (groupName: string) => {
     setSelectedGroup(groupName)
+    setSelectedGroupId(getLocalGroupId(groupName))
     if (__DEV__) {
       console.log('[CrearActividad] grupo seleccionado', { groupName })
     }
@@ -899,6 +958,111 @@ export default function CrearScreen() {
   const closeCreateGroup = () => {
     setNewGroupName('')
     setIsCreateGroupVisible(false)
+  }
+
+  const prepareGroupActivity = (groupName: string, groupId = '') => {
+    const groupCategory = findActivityCategory({ categoryId: 'groups' }) ?? categories[0] ?? null
+
+    setActivityKind('group')
+    setSelectedGroup(groupName)
+    setSelectedGroupId(groupId || getLocalGroupId(groupName))
+    setAvailableGroups((current) => mergeGroupNames(current, [groupName]))
+    setName(groupName)
+    setCategory(groupCategory)
+    setSubcategory(groupCategory?.subcategories[0] ?? '')
+    setPrivacy('Pública')
+    setCurrentStep(3)
+    setFlowMode('activity')
+    setMessage('')
+  }
+
+  const startCreateActivity = () => {
+    setFlowMode('activity')
+    setCurrentStep(1)
+    setMessage('')
+  }
+
+  const startCreateGroup = () => {
+    setGroupDraftName('')
+    setGroupDraftDescription('')
+    setGroupDraftLocation('')
+    setCreatedGroupId('')
+    setCreatedGroupName('')
+    setMessage('')
+    setFlowMode('group')
+  }
+
+  const createStandaloneGroup = async () => {
+    const cleanName = groupDraftName.trim()
+    if (!cleanName) {
+      setMessage('Ingresá un nombre para el grupo.')
+      return
+    }
+
+    const { auth, db } = getFirebaseServices()
+    const user = auth.currentUser
+    if (!user) {
+      setMessage('Necesitás iniciar sesión para crear un grupo.')
+      return
+    }
+
+    const cleanLocation = groupDraftLocation.trim()
+    const createdGroupId = getLocalGroupId(cleanName)
+    const nextGroups = mergeGroupNames(availableGroups, [cleanName])
+    setAvailableGroups(nextGroups)
+    setSelectedGroup(cleanName)
+    setSelectedGroupId(createdGroupId)
+    setCreatedGroupId(createdGroupId)
+    setCreatedGroupName(cleanName)
+    setMessage('')
+
+    try {
+      await setDoc(doc(db, 'groups', createdGroupId), {
+        address: cleanLocation,
+        category: 'Grupo',
+        createdAt: serverTimestamp(),
+        description: groupDraftDescription.trim(),
+        imageUrl: '',
+        locationName: cleanLocation,
+        memberIds: [user.uid],
+        memberCount: 1,
+        members: {
+          [user.uid]: {
+            joinedAt: serverTimestamp(),
+            name: user.displayName?.trim() || user.email?.split('@')[0]?.trim() || 'Organizador',
+            role: 'owner',
+          },
+        },
+        membersCount: 1,
+        name: cleanName,
+        ownerId: user.uid,
+        ownerName: user.displayName?.trim() || user.email?.split('@')[0]?.trim() || 'Organizador',
+        updatedAt: serverTimestamp(),
+      }, { merge: true })
+      await persistLocalGroups(nextGroups)
+    } catch (error) {
+      if (__DEV__) console.warn('[CrearActividad] error persistiendo grupo local', error)
+      setMessage('No pudimos guardar el grupo. Intentá nuevamente.')
+      return
+    }
+
+    setFlowMode('groupCreated')
+  }
+
+  const openCreatedGroup = () => {
+    const groupName = createdGroupName.trim()
+    if (!groupName) {
+      router.replace('/home')
+      return
+    }
+
+    router.replace({
+      pathname: '/group/[groupId]',
+      params: {
+        groupId: createdGroupId || getLocalGroupId(groupName),
+        groupName,
+      },
+    })
   }
 
   const createLocalGroup = async () => {
@@ -914,6 +1078,7 @@ export default function CrearScreen() {
 
     setAvailableGroups(nextGroups)
     setSelectedGroup(nextSelectedGroup)
+    setSelectedGroupId(createdGroupId)
     setIsCreateGroupVisible(false)
     setNewGroupName('')
     setMessage('')
@@ -938,7 +1103,7 @@ export default function CrearScreen() {
       return false
     }
 
-    if (currentStep === 2 && privacy === 'Grupo' && !selectedGroup) {
+    if (currentStep === 2 && activityKind === 'group' && !selectedGroup) {
       setMessage('Seleccioná un grupo para continuar.')
       return false
     }
@@ -1158,6 +1323,186 @@ export default function CrearScreen() {
     )
   }
 
+  if (flowMode === 'choice') {
+    return (
+      <SafeAreaView edges={['left', 'right']} style={styles.screen}>
+        <ScrollView
+          contentContainerStyle={[
+            styles.createScrollContent,
+            { paddingTop: Math.max(insets.top + 18, 28), paddingBottom: Math.max(insets.bottom + 120, 150) },
+          ]}
+          showsVerticalScrollIndicator={false}
+        >
+          <View style={styles.createHeader}>
+            <Pressable accessibilityLabel="Volver" accessibilityRole="button" onPress={safeBack} style={styles.createBackButton}>
+              <ArrowLeft color="#0E5A44" size={33} strokeWidth={2.2} />
+            </Pressable>
+            <View style={styles.createLogo}>
+              <CoincidirLogo compact markSize={48} textSize={18} />
+            </View>
+          </View>
+
+          <View style={styles.createTitleRow}>
+            <View style={styles.additionalTitleIcon}>
+              <Plus color="#0E5A44" size={25} strokeWidth={2.4} />
+            </View>
+            <Text style={styles.createScreenTitle}>¿Qué querés crear?</Text>
+          </View>
+          <Text style={styles.createSubtitle}>Elegí cómo querés empezar en COINCIDIR.</Text>
+
+          <View style={styles.createCard}>
+            <View style={styles.additionalGrid}>
+              <AdditionalChoiceCard
+                active={false}
+                description="Creá una actividad individual o para un grupo existente."
+                Icon={Sparkles}
+                label="Crear actividad"
+                onPress={startCreateActivity}
+              />
+              <AdditionalChoiceCard
+                active={false}
+                description="Creá un grupo nuevo y luego una actividad para ese grupo."
+                Icon={UsersRound}
+                label="Crear grupo"
+                onPress={startCreateGroup}
+              />
+            </View>
+          </View>
+        </ScrollView>
+      </SafeAreaView>
+    )
+  }
+
+  if (flowMode === 'group') {
+    return (
+      <SafeAreaView edges={['left', 'right']} style={styles.screen}>
+        <ScrollView
+          contentContainerStyle={[
+            styles.createScrollContent,
+            { paddingTop: Math.max(insets.top + 18, 28), paddingBottom: Math.max(insets.bottom + 120, 150) },
+          ]}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+        >
+          <View style={styles.createHeader}>
+            <Pressable accessibilityLabel="Volver" accessibilityRole="button" onPress={() => setFlowMode('choice')} style={styles.createBackButton}>
+              <ArrowLeft color="#0E5A44" size={33} strokeWidth={2.2} />
+            </Pressable>
+            <View style={styles.createLogo}>
+              <CoincidirLogo compact markSize={48} textSize={18} />
+            </View>
+          </View>
+
+          <View style={styles.createTitleRow}>
+            <View style={styles.additionalTitleIcon}>
+              <UsersRound color="#0E5A44" size={25} strokeWidth={2.4} />
+            </View>
+            <Text style={styles.createScreenTitle}>Crear grupo</Text>
+          </View>
+          <Text style={styles.createSubtitle}>Creá una comunidad estable para organizar actividades.</Text>
+
+          <View style={styles.createCard}>
+            <Text style={styles.createFieldLabel}>Nombre</Text>
+            <TextInput
+              maxLength={60}
+              onChangeText={setGroupDraftName}
+              placeholder="Ej: Club de lectura"
+              placeholderTextColor="#7A8790"
+              style={styles.createTextInput}
+              underlineColorAndroid="transparent"
+              value={groupDraftName}
+            />
+
+            <Text style={styles.createFieldLabel}>Descripción</Text>
+            <TextInput
+              maxLength={300}
+              multiline
+              onChangeText={setGroupDraftDescription}
+              placeholder="Contá qué tipo de comunidad querés crear."
+              placeholderTextColor="#7A8790"
+              style={[styles.createTextInput, styles.createDescriptionInput]}
+              textAlignVertical="top"
+              underlineColorAndroid="transparent"
+              value={groupDraftDescription}
+            />
+
+            <Text style={styles.createFieldLabel}>Ubicación / Dirección</Text>
+            <TextInput
+              maxLength={90}
+              onChangeText={setGroupDraftLocation}
+              placeholder="Ej: Tandil centro"
+              placeholderTextColor="#7A8790"
+              style={styles.createTextInput}
+              underlineColorAndroid="transparent"
+              value={groupDraftLocation}
+            />
+
+            <Text style={styles.createFieldLabel}>Foto</Text>
+            <View style={styles.createMapEmpty}>
+              <UsersRound color="#0E5A44" size={34} strokeWidth={2.1} />
+              <Text style={styles.createMapEmptyText}>Foto del grupo</Text>
+            </View>
+          </View>
+
+          {message ? <Text style={styles.createMessageText}>{message}</Text> : null}
+
+          <Pressable accessibilityRole="button" onPress={createStandaloneGroup} style={styles.createSubmitButton}>
+            <Text style={styles.createSubmitText}>Crear grupo</Text>
+            <ArrowRight color="#FFFFFF" size={32} strokeWidth={2.2} style={styles.createSubmitArrow} />
+          </Pressable>
+        </ScrollView>
+      </SafeAreaView>
+    )
+  }
+
+  if (flowMode === 'groupCreated') {
+    return (
+      <SafeAreaView edges={['left', 'right']} style={styles.screen}>
+        <ScrollView
+          contentContainerStyle={[
+            styles.groupCreatedScrollContent,
+            { paddingTop: Math.max(insets.top + 18, 28), paddingBottom: Math.max(insets.bottom + 72, 96) },
+          ]}
+          showsVerticalScrollIndicator={false}
+        >
+          <View style={styles.createHeader}>
+            <Pressable accessibilityLabel="Volver" accessibilityRole="button" onPress={() => setFlowMode('choice')} style={styles.createBackButton}>
+              <ArrowLeft color="#0E5A44" size={33} strokeWidth={2.2} />
+            </Pressable>
+            <View style={styles.createBackButton} />
+          </View>
+
+          <View style={styles.groupCreatedTitleRow}>
+            <View style={styles.additionalTitleIcon}>
+              <UsersRound color="#0E5A44" size={25} strokeWidth={2.4} />
+            </View>
+            <Text style={styles.createScreenTitle}>Grupo creado con éxito</Text>
+          </View>
+
+          <View style={styles.groupCreatedCard}>
+            <View style={styles.groupCreatedIcon}>
+              <UsersRound color="#0E5A44" size={34} strokeWidth={2.3} />
+            </View>
+            <Text numberOfLines={2} style={styles.groupCreatedName}>{createdGroupName || 'Tu grupo'}</Text>
+            <Text style={styles.groupCreatedCopy}>Ya está listo para recibir miembros y actividades.</Text>
+            <Text style={styles.groupCreatedStats}>0 miembros · 0 actividades</Text>
+          </View>
+
+          <View style={styles.groupCreatedActions}>
+            <Pressable accessibilityRole="button" onPress={() => prepareGroupActivity(createdGroupName, createdGroupId)} style={styles.createSubmitButton}>
+              <Text style={styles.createSubmitText}>Crear primera actividad</Text>
+              <ArrowRight color="#FFFFFF" size={32} strokeWidth={2.2} style={styles.createSubmitArrow} />
+            </Pressable>
+            <Pressable accessibilityRole="button" onPress={openCreatedGroup} style={styles.createSecondaryButton}>
+              <UsersRound color="#0E5A44" size={22} strokeWidth={2.3} />
+              <Text style={styles.createSecondaryText}>Ir al grupo</Text>
+            </Pressable>
+          </View>
+        </ScrollView>
+      </SafeAreaView>
+    )
+  }
+
   return (
     <SafeAreaView edges={['left', 'right']} style={styles.screen}>
       <ScrollView
@@ -1169,7 +1514,7 @@ export default function CrearScreen() {
         showsVerticalScrollIndicator={false}
       >
         <View style={styles.createHeader}>
-          <Pressable accessibilityLabel="Volver" accessibilityRole="button" onPress={() => router.back()} style={styles.createBackButton}>
+          <Pressable accessibilityLabel="Volver" accessibilityRole="button" onPress={isEditMode ? safeBack : () => setFlowMode('choice')} style={styles.createBackButton}>
             <ArrowLeft color="#0E5A44" size={33} strokeWidth={2.2} />
           </Pressable>
           <View style={styles.createLogo}>
@@ -1179,22 +1524,26 @@ export default function CrearScreen() {
 
         <View style={styles.createTitleRow}>
           <View style={styles.additionalTitleIcon}>
-            {currentStep === 2 ? <ShieldCheck color="#0E5A44" size={25} strokeWidth={2.4} /> : null}
+            {currentStep === 2 ? (
+              activityKind === 'group'
+                ? <UsersRound color="#0E5A44" size={25} strokeWidth={2.4} />
+                : <ShieldCheck color="#0E5A44" size={25} strokeWidth={2.4} />
+            ) : null}
             {currentStep === 4 ? <MapPin color="#0E5A44" size={25} strokeWidth={2.4} /> : null}
             {currentStep === 5 ? <SlidersHorizontal color="#0E5A44" size={25} strokeWidth={2.4} /> : null}
             {currentStep !== 2 && currentStep !== 4 && currentStep !== 5 ? <Sparkles color="#0E5A44" size={25} strokeWidth={2.4} /> : null}
           </View>
           <Text style={styles.createScreenTitle}>
             {currentStep === 1 ? 'Información básica' : null}
-            {currentStep === 2 ? '¿Quién puede ver esta actividad?' : null}
+            {currentStep === 2 ? (activityKind === 'group' ? 'Elegí un grupo' : 'Visibilidad') : null}
             {currentStep === 3 ? 'Descripción' : null}
             {currentStep === 4 ? '¿Cuándo y dónde?' : null}
             {currentStep === 5 ? 'Ajustes adicionales (opcionales)' : null}
           </Text>
         </View>
         <Text style={styles.createSubtitle}>
-          {currentStep === 1 ? 'Completá los datos principales de tu actividad.' : null}
-          {currentStep === 2 ? 'Elegí el nivel de visibilidad de tu actividad.' : null}
+          {currentStep === 1 ? 'Completá los datos principales y el tipo de actividad.' : null}
+          {currentStep === 2 ? (activityKind === 'group' ? 'Seleccioná el grupo al que pertenece esta actividad.' : 'Elegí el nivel de visibilidad de tu actividad.') : null}
           {currentStep === 3 ? 'Contá más detalles sobre tu actividad.' : null}
           {currentStep === 4 ? 'Elegí la fecha, hora y el lugar del encuentro.' : null}
           {currentStep === 5 ? 'Completá los detalles opcionales para que otros sepan qué esperar.' : null}
@@ -1254,19 +1603,34 @@ export default function CrearScreen() {
               </Pressable>
             </View>
           </View>
+          <View style={styles.groupPickerBlock}>
+            <Text style={styles.createFieldLabel}>Tipo de actividad</Text>
+            <View style={styles.additionalGrid}>
+              {activityKindDetails.map((item) => (
+                <AdditionalChoiceCard
+                  active={activityKind === item.value}
+                  description={item.description}
+                  Icon={item.Icon}
+                  key={item.value}
+                  label={item.label}
+                  onPress={() => setActivityKind(item.value)}
+                />
+              ))}
+            </View>
+          </View>
         </View> : null}
 
         {currentStep === 2 ? (
           <View style={styles.createCard}>
-            <View style={styles.additionalGrid}>
-              {privacyDetails.map((item) => (
-                <AdditionalChoiceCard active={privacy === item.label} description={item.description} Icon={item.Icon} key={item.label} label={item.label} onPress={() => setPrivacy(item.label)} />
-              ))}
-            </View>
-
-            {privacy === 'Grupo' ? (
+            {activityKind === 'individual' ? (
+              <View style={styles.additionalGrid}>
+                {privacyDetails.map((item) => (
+                  <AdditionalChoiceCard active={privacy === item.label} description={item.description} Icon={item.Icon} key={item.label} label={item.label} onPress={() => setPrivacy(item.label)} />
+                ))}
+              </View>
+            ) : (
               <View style={styles.groupPickerBlock}>
-                <Text style={styles.createFieldLabel}>Seleccionar grupo</Text>
+                <Text style={styles.createFieldLabel}>Elegí un grupo</Text>
                 {availableGroups.map((group) => (
                   <Pressable accessibilityRole="button" key={group} onPress={() => selectLocalGroup(group)} style={[styles.groupOptionCard, selectedGroup === group && styles.groupOptionCardActive]}>
                     <UsersRound color={selectedGroup === group ? '#0E5A44' : '#7A8790'} size={21} strokeWidth={2.2} />
@@ -1276,10 +1640,10 @@ export default function CrearScreen() {
                 ))}
                 <Pressable accessibilityRole="button" onPress={openCreateGroup} style={[styles.groupOptionCard, styles.groupCreateCard]}>
                   <Plus color="#0E5A44" size={21} strokeWidth={2.5} />
-                  <Text style={[styles.groupOptionText, styles.groupCreateText]}>Crear nuevo grupo</Text>
+                  <Text style={[styles.groupOptionText, styles.groupCreateText]}>Crear grupo</Text>
                 </Pressable>
               </View>
-            ) : null}
+            )}
           </View>
         ) : null}
 
@@ -1389,7 +1753,7 @@ export default function CrearScreen() {
         ) : null}
 
         <Pressable
-          accessibilityLabel={currentStep === 5 ? (isEditMode ? 'Guardar cambios' : 'Crear actividad') : 'Continuar'}
+          accessibilityLabel={currentStep === 5 ? (isEditMode ? 'Guardar cambios' : 'Publicar actividad') : 'Continuar'}
           accessibilityRole="button"
           disabled={isSaving}
           onPress={currentStep === 5 ? saveActivity : goToNextStep}
@@ -1399,7 +1763,7 @@ export default function CrearScreen() {
             <ActivityIndicator color="#FFFFFF" />
           ) : (
             <>
-              <Text style={styles.createSubmitText}>{currentStep === 5 ? (isEditMode ? 'Guardar cambios' : 'Crear actividad') : 'Continuar'}</Text>
+              <Text style={styles.createSubmitText}>{currentStep === 5 ? (isEditMode ? 'Guardar cambios' : 'Publicar actividad') : 'Continuar'}</Text>
               <ArrowRight color="#FFFFFF" size={32} strokeWidth={2.2} style={styles.createSubmitArrow} />
             </>
           )}
@@ -1498,14 +1862,14 @@ export default function CrearScreen() {
           >
             <Pressable style={styles.modalBackdrop} onPress={closeCreateGroup}>
               <Pressable style={[styles.groupModalCard, { paddingBottom: Math.max(insets.bottom + 24, 36) }]}>
-                <Text style={styles.modalTitle}>Crear nuevo grupo</Text>
+                <Text style={styles.modalTitle}>Crear grupo</Text>
                 <TextInput
                   autoCapitalize="words"
                   autoFocus
                   maxLength={60}
                   onChangeText={setNewGroupName}
                   onSubmitEditing={createLocalGroup}
-                  placeholder="Ej: Running Tandil"
+                  placeholder="Ej: Club de lectura"
                   placeholderTextColor="#7A8790"
                   returnKeyType="done"
                   style={styles.createTextInput}
@@ -1967,6 +2331,11 @@ const styles = StyleSheet.create({
     flexGrow: 1,
     paddingHorizontal: 16,
   },
+  groupCreatedScrollContent: {
+    flexGrow: 1,
+    justifyContent: 'flex-start',
+    paddingHorizontal: 16,
+  },
   createHeader: {
     minHeight: 86,
     alignItems: 'center',
@@ -1989,6 +2358,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     marginTop: 16,
+  },
+  groupCreatedTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 20,
+    marginTop: 8,
   },
   createScreenTitle: {
     color: '#0E5A44',
@@ -2054,6 +2430,65 @@ const styles = StyleSheet.create({
     shadowRadius: 14,
     shadowOffset: { width: 0, height: 8 },
     elevation: 2,
+  },
+  groupCreatedCard: {
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    borderColor: '#E2E6E3',
+    borderRadius: 18,
+    borderWidth: 1,
+    marginBottom: 18,
+    paddingHorizontal: 18,
+    paddingVertical: 24,
+    shadowColor: '#0E5A44',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.07,
+    shadowRadius: 16,
+    elevation: 2,
+  },
+  groupCreatedIcon: {
+    alignItems: 'center',
+    backgroundColor: '#E9F4D9',
+    borderColor: '#C9E2B5',
+    borderRadius: 999,
+    borderWidth: 1,
+    height: 70,
+    justifyContent: 'center',
+    marginBottom: 14,
+    width: 70,
+  },
+  groupCreatedName: {
+    color: '#0E5A44',
+    fontSize: 24,
+    fontWeight: '900',
+    lineHeight: 30,
+    marginBottom: 8,
+    textAlign: 'center',
+  },
+  groupCreatedCopy: {
+    color: '#34445F',
+    fontSize: 16,
+    fontWeight: '700',
+    lineHeight: 22,
+    marginBottom: 14,
+    textAlign: 'center',
+  },
+  groupCreatedStats: {
+    backgroundColor: '#F4F8F1',
+    borderColor: '#DDE8D3',
+    borderRadius: 999,
+    borderWidth: 1,
+    color: '#0E5A44',
+    fontSize: 14,
+    fontWeight: '900',
+    lineHeight: 18,
+    overflow: 'hidden',
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    textAlign: 'center',
+  },
+  groupCreatedActions: {
+    gap: 10,
   },
   createFieldLabel: {
     color: '#34445F',

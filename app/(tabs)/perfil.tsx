@@ -270,11 +270,14 @@ function getParticipantCount(data: Record<string, unknown>) {
 }
 
 function getGroupMemberCount(data: Record<string, unknown>) {
-  const membersCount = typeof data.membersCount === 'number' ? data.membersCount : -1
+  const memberCount = typeof data.memberCount === 'number' ? data.memberCount : -1
   const ownerId = readString(data.createdBy, readString(data.creatorId, readString(data.ownerId, readString(data.organizerId))))
+  if (memberCount >= 0) return ownerId ? Math.max(memberCount, 1) : memberCount
+
+  const membersCount = typeof data.membersCount === 'number' ? data.membersCount : -1
   if (membersCount >= 0) return ownerId ? Math.max(membersCount, 1) : membersCount
 
-  const members = data.members ?? data.joinedUsers ?? data.participants
+  const members = data.members ?? data.memberIds ?? data.joinedUsers ?? data.participants
   const count = typeof members === 'object' && members ? Object.keys(members).length : Array.isArray(members) ? members.length : 0
   return ownerId ? Math.max(count, 1) : count
 }
@@ -291,10 +294,13 @@ function isJoined(record: FirestoreRecord, userId: string | null) {
   const joinedUsers = record.data.joinedUsers
   const participants = record.data.participants
   const members = record.data.members
+  const memberIds = record.data.memberIds
 
   if (typeof joinedUsers === 'object' && joinedUsers && userId in joinedUsers) return true
   if (typeof participants === 'object' && participants && userId in participants) return true
   if (typeof members === 'object' && members && userId in members) return true
+  if (Array.isArray(members) && members.includes(userId)) return true
+  if (Array.isArray(memberIds) && memberIds.includes(userId)) return true
 
   return false
 }
@@ -302,11 +308,12 @@ function isJoined(record: FirestoreRecord, userId: string | null) {
 function getGroupStatus(data: Record<string, unknown> | undefined, userId: string | null): ProfileGroup['status'] {
   if (!data || !userId) return 'none'
   if (isOwnActivity(data, userId)) return 'host'
+  if (readString(data.ownerId) === userId) return 'host'
   return isJoined({ id: '', data }, userId) ? 'member' : 'none'
 }
 
 function getGroupStatusText(status: ProfileGroup['status']) {
-  if (status === 'host') return 'Sos anfitrión'
+  if (status === 'host') return 'Organizador'
   if (status === 'member') return 'Miembro'
   return 'No sos miembro'
 }
@@ -501,6 +508,7 @@ export default function PerfilScreen() {
     const now = Date.now()
     const groupsWithCounts = merged.map((group) => {
       const firestoreGroup = groups.find((item) => item.id === group.id)
+      const isLocalGroup = localGroups.some((localGroup) => localGroup.id === group.id)
       const matchingActivities = activities.filter((activity) => {
         if (isCancelled(activity.data)) return false
         const groupMeta = getActivityGroupMeta(activity.data, localGroups)
@@ -517,11 +525,11 @@ export default function PerfilScreen() {
         description: firestoreGroup
           ? readString(firestoreGroup.data.description, readString(firestoreGroup.data.summary))
           : '',
-        memberCount: firestoreGroup ? getGroupMemberCount(firestoreGroup.data) : undefined,
+        memberCount: firestoreGroup ? getGroupMemberCount(firestoreGroup.data) : isLocalGroup ? 1 : undefined,
         activityCount: upcomingTimes.length,
         nextActivityAt: upcomingTimes[0],
-        source: localGroups.some((localGroup) => localGroup.id === group.id) ? 'local' as const : 'activity' as const,
-        status: getGroupStatus(firestoreGroup?.data, userId),
+        source: isLocalGroup ? 'local' as const : 'activity' as const,
+        status: firestoreGroup ? getGroupStatus(firestoreGroup.data, userId) : isLocalGroup ? 'host' as const : 'none' as const,
       }
     }).sort((left, right) => {
       const rank = { host: 0, member: 1, none: 2 }
@@ -891,35 +899,62 @@ function getProfileGroupActivityText(group: ProfileGroup) {
 
 function ProfileGroupsSection({ groups, onOpen }: ProfileGroupsSectionProps) {
   const groupColors = getGroupTheme()
+  const hostedGroups = groups.filter((group) => group.status === 'host')
+  const memberGroups = groups.filter((group) => group.status === 'member')
+  const discoverGroups = groups.filter((group) => group.status === 'none')
+
+  const renderGroupCard = (group: ProfileGroup) => (
+    <PressScale accessibilityRole="button" key={group.id} onPress={() => onOpen(group)} scaleTo={0.985} style={[styles.profileGroupRow, { borderColor: groupColors.borderColor }]}>
+      <View style={styles.profileGroupTopRow}>
+        <View style={[styles.profileGroupIcon, { backgroundColor: groupColors.backgroundColor, borderColor: groupColors.borderColor }]}>
+          <UsersRound color={groupColors.color} size={24} strokeWidth={2.4} />
+        </View>
+        <View style={styles.profileGroupCopy}>
+          <Text ellipsizeMode="tail" numberOfLines={1} style={[styles.profileGroupName, { color: groupColors.chipTextColor }]}>{group.name}</Text>
+          <View style={styles.profileGroupMetaRow}>
+            <View style={styles.profileGroupMetaChip}>
+              <Text style={styles.profileGroupMeta}>{getProfileGroupMemberText(group)}</Text>
+            </View>
+            <View style={styles.profileGroupMetaChip}>
+              <Text style={styles.profileGroupMeta}>{getProfileGroupActivityText(group)}</Text>
+            </View>
+          </View>
+        </View>
+      </View>
+      <View style={styles.profileGroupFooter}>
+        <Text style={[styles.profileGroupStatus, group.status === 'host' ? styles.profileGroupStatusHost : group.status === 'member' ? styles.profileGroupStatusMember : styles.profileGroupStatusOpen]}>
+          {getGroupStatusText(group.status)}
+        </Text>
+        <View style={styles.profileGroupOpen}>
+          <Text style={[styles.profileGroupOpenText, { color: groupColors.color }]}>Ver grupo</Text>
+          <ChevronRight color={groupColors.color} size={18} strokeWidth={2.5} />
+        </View>
+      </View>
+    </PressScale>
+  )
+
+  const renderGroupBlock = (icon: number, title: string, blockGroups: ProfileGroup[]) => (
+    <View style={styles.profileGroupBlock}>
+      <Text style={styles.profileGroupBlockTitle}>{String.fromCodePoint(icon)} {title} ({blockGroups.length})</Text>
+      {blockGroups.length > 0 ? (
+        <View style={styles.list}>
+          {blockGroups.map(renderGroupCard)}
+        </View>
+      ) : (
+        <EmptyBlock text="No hay grupos para mostrar en esta sección." />
+      )}
+    </View>
+  )
 
   return (
     <ProfileSection title="Mis grupos">
       {groups.length === 0 ? (
         <EmptyBlock text="Tus grupos creados o donde participes van a aparecer acá." />
       ) : (
-        <View style={styles.list}>
-          {groups.map((group) => (
-            <PressScale accessibilityRole="button" key={group.id} onPress={() => onOpen(group)} scaleTo={0.985} style={[styles.profileGroupRow, { borderColor: groupColors.borderColor }]}>
-              <View style={[styles.profileGroupIcon, { backgroundColor: groupColors.backgroundColor, borderColor: groupColors.borderColor }]}>
-                <UsersRound color={groupColors.color} size={15} strokeWidth={2.4} />
-              </View>
-              <View style={styles.profileGroupCopy}>
-                <Text ellipsizeMode="tail" numberOfLines={1} style={[styles.profileGroupName, { color: groupColors.chipTextColor }]}>{group.name}</Text>
-                <View style={styles.profileGroupMetaRow}>
-                  <Text style={styles.profileGroupMeta}>{getProfileGroupMemberText(group)}</Text>
-                  <View style={styles.profileGroupMetaDot} />
-                  <Text style={styles.profileGroupMeta}>{getProfileGroupActivityText(group)}</Text>
-                </View>
-                <Text style={[styles.profileGroupStatus, group.status === 'host' ? styles.profileGroupStatusHost : group.status === 'member' ? styles.profileGroupStatusMember : styles.profileGroupStatusOpen]}>
-                  {getGroupStatusText(group.status)}
-                </Text>
-              </View>
-              <View style={styles.profileGroupOpen}>
-                <Text style={[styles.profileGroupOpenText, { color: groupColors.color }]}>Ver grupo</Text>
-                <ChevronRight color={groupColors.color} size={16} strokeWidth={2.5} />
-              </View>
-            </PressScale>
-          ))}
+        <View style={styles.profileGroupBlocks}>
+          {renderGroupBlock(0x1F451, 'Grupos que organizo', hostedGroups)}
+          {renderGroupBlock(0x1F465, 'Mis comunidades', memberGroups)}
+          {renderGroupBlock(0x1F30E, 'Descubrir grupos', discoverGroups)}
         </View>
       )}
     </ProfileSection>
@@ -1883,49 +1918,72 @@ const styles = StyleSheet.create({
   list: {
     gap: 10,
   },
+  profileGroupBlocks: {
+    gap: 18,
+  },
+  profileGroupBlock: {
+    gap: 10,
+  },
+  profileGroupBlockTitle: {
+    color: '#39206C',
+    fontSize: 14,
+    fontWeight: '900',
+    letterSpacing: 0,
+    lineHeight: 18,
+    textTransform: 'uppercase',
+  },
   profileGroupRow: {
-    alignItems: 'center',
     backgroundColor: '#FFFFFF',
-    borderRadius: 13,
+    borderRadius: 18,
     borderWidth: 1,
-    flexDirection: 'row',
-    gap: 9,
-    minHeight: 64,
-    paddingHorizontal: 11,
-    paddingVertical: 8,
+    gap: 14,
+    minHeight: 118,
+    paddingHorizontal: 14,
+    paddingVertical: 14,
     ...cardShadow,
+  },
+  profileGroupTopRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 12,
   },
   profileGroupIcon: {
     alignItems: 'center',
     borderRadius: 999,
     borderWidth: 1,
-    height: 30,
+    height: 52,
     justifyContent: 'center',
-    width: 30,
+    width: 52,
   },
   profileGroupCopy: {
     flex: 1,
     minWidth: 0,
   },
   profileGroupName: {
-    fontSize: 13,
+    fontSize: 18,
     fontWeight: '900',
     letterSpacing: 0,
-    lineHeight: 17,
+    lineHeight: 23,
   },
   profileGroupMetaRow: {
     alignItems: 'center',
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 6,
-    marginTop: 2,
+    gap: 8,
+    marginTop: 7,
+  },
+  profileGroupMetaChip: {
+    backgroundColor: '#F4F8F1',
+    borderRadius: 999,
+    paddingHorizontal: 9,
+    paddingVertical: 5,
   },
   profileGroupMeta: {
     color: '#5F6E68',
-    fontSize: 10,
-    fontWeight: '800',
+    fontSize: 12,
+    fontWeight: '900',
     letterSpacing: 0,
-    lineHeight: 13,
+    lineHeight: 15,
   },
   profileGroupMetaDot: {
     backgroundColor: '#AEB8B3',
@@ -1934,11 +1992,10 @@ const styles = StyleSheet.create({
     width: 3,
   },
   profileGroupStatus: {
-    fontSize: 10,
+    fontSize: 13,
     fontWeight: '900',
     letterSpacing: 0,
-    lineHeight: 13,
-    marginTop: 2,
+    lineHeight: 17,
   },
   profileGroupStatusHost: {
     color: '#006A32',
@@ -1953,13 +2010,18 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     flexDirection: 'row',
     flexShrink: 0,
-    gap: 2,
-    minHeight: 30,
+    gap: 3,
+    minHeight: 32,
   },
   profileGroupOpenText: {
-    fontSize: 10,
+    fontSize: 13,
     fontWeight: '900',
     letterSpacing: 0,
+  },
+  profileGroupFooter: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
   },
   profileRow: {
     alignItems: 'center',

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   ActivityIndicator,
   Alert,
@@ -13,12 +13,13 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { useLocalSearchParams, useRouter } from 'expo-router'
 import { onAuthStateChanged } from 'firebase/auth'
-import { collection, deleteField, doc, getDoc, increment, onSnapshot, serverTimestamp, updateDoc } from 'firebase/firestore'
+import { arrayUnion, collection, deleteDoc, deleteField, doc, getDoc, increment, onSnapshot, serverTimestamp, updateDoc } from 'firebase/firestore'
 import {
   ArrowLeft,
   CalendarDays,
   MapPin,
   Sprout,
+  Trash2,
   UserRound,
   UsersRound,
 } from 'lucide-react-native'
@@ -26,6 +27,7 @@ import {
 import { PressScale } from '../../components/home/PressScale'
 import { getLocalGroupId } from '../../constants/localGroups'
 import { getFirebaseServices } from '../../firebaseConfig'
+import { createNotification } from '../../lib/notifications'
 import { getActivityGroupMeta } from '../../utils/activityGroups'
 import { getCategoryImage } from '../../utils/categoryImages'
 
@@ -79,22 +81,58 @@ function getOwnerId(data: GroupData) {
     || readString(data.createdById)
 }
 
+function getUserIdsFromValue(value: unknown) {
+  if (Array.isArray(value)) {
+    return value
+      .map((item) => {
+        if (typeof item === 'string') return item.trim()
+        if (typeof item === 'object' && item) {
+          const record = item as Record<string, unknown>
+          return readString(record.uid, readString(record.userId, readString(record.id)))
+        }
+        return ''
+      })
+      .filter(Boolean)
+  }
+
+  if (typeof value === 'object' && value) {
+    return Object.keys(value).filter(Boolean)
+  }
+
+  return []
+}
+
+function getGroupMemberIds(data: GroupData) {
+  const ids = new Set<string>()
+
+  getUserIdsFromValue(data.members).forEach((id) => ids.add(id))
+  getUserIdsFromValue(data.memberIds).forEach((id) => ids.add(id))
+  getUserIdsFromValue(data.joinedUsers).forEach((id) => ids.add(id))
+  getUserIdsFromValue(data.participants).forEach((id) => ids.add(id))
+  getUserIdsFromValue(data.confirmedParticipants).forEach((id) => ids.add(id))
+
+  const ownerId = getOwnerId(data)
+  if (ownerId) ids.add(ownerId)
+
+  return Array.from(ids)
+}
+
 function getMemberCount(data: GroupData) {
+  const normalizedMemberIds = getGroupMemberIds(data)
+  if (normalizedMemberIds.length > 0) return normalizedMemberIds.length
+
+  const memberCount = readNumber(data.memberCount, -1)
+  if (memberCount >= 0) return getOwnerId(data) ? Math.max(memberCount, 1) : memberCount
+
   const membersCount = readNumber(data.membersCount, -1)
   if (membersCount >= 0) return getOwnerId(data) ? Math.max(membersCount, 1) : membersCount
 
-  const members = data.members ?? data.joinedUsers ?? data.participants
-  const count = typeof members === 'object' && members
-    ? Object.keys(members).length
-    : Array.isArray(members) ? members.length : 0
-
-  return getOwnerId(data) ? Math.max(count, 1) : count
+  return 0
 }
 
 function hasUserInValue(value: unknown, userId: string | null) {
   if (!userId) return false
-  if (typeof value === 'object' && value) return userId in value
-  return Array.isArray(value) ? value.includes(userId) : false
+  return getUserIdsFromValue(value).includes(userId)
 }
 
 function isGroupOwner(data: GroupData, userId: string | null) {
@@ -104,14 +142,14 @@ function isGroupOwner(data: GroupData, userId: string | null) {
 
 function isGroupMember(data: GroupData, userId: string | null) {
   if (isGroupOwner(data, userId)) return true
-  return hasUserInValue(data.members, userId)
-    || hasUserInValue(data.joinedUsers, userId)
-    || hasUserInValue(data.participants, userId)
+  if (!userId) return false
+  return getGroupMemberIds(data).includes(userId)
 }
 
 function getPendingRequests(data: GroupData) {
   const requests = data.membershipRequests ?? data.pendingMembers
   if (!requests || typeof requests !== 'object' || Array.isArray(requests)) return []
+  const memberIds = new Set(getGroupMemberIds(data))
 
   return Object.entries(requests).map(([id, value]) => {
     const requestData = value && typeof value === 'object' ? value as Record<string, unknown> : {}
@@ -119,7 +157,7 @@ function getPendingRequests(data: GroupData) {
       id,
       name: readString(requestData.name, readString(requestData.displayName, 'Usuario sin nombre')),
     }
-  })
+  }).filter((request) => !memberIds.has(request.id))
 }
 
 function hasPendingRequest(data: GroupData, userId: string | null) {
@@ -130,6 +168,13 @@ function hasPendingRequest(data: GroupData, userId: string | null) {
 export default function GroupDetailScreen() {
   const router = useRouter()
   const { groupId, groupName } = useLocalSearchParams<{ groupId?: string; groupName?: string }>()
+  const safeBack = useCallback(() => {
+    if (router.canGoBack()) {
+      router.back()
+    } else {
+      router.replace('/home')
+    }
+  }, [router])
   const [group, setGroup] = useState<GroupData | null>(null)
   const [activities, setActivities] = useState<ActivityRecord[]>([])
   const [userId, setUserId] = useState<string | null>(null)
@@ -137,6 +182,7 @@ export default function GroupDetailScreen() {
   const [hostName, setHostName] = useState('Anfitrión no disponible')
   const [isLoading, setIsLoading] = useState(true)
   const [isJoining, setIsJoining] = useState(false)
+  const [isDeletingGroup, setIsDeletingGroup] = useState(false)
   const [pendingRequestAction, setPendingRequestAction] = useState<string | null>(null)
   const [isEditingGroup, setIsEditingGroup] = useState(false)
   const [draftGroupName, setDraftGroupName] = useState('')
@@ -205,10 +251,10 @@ export default function GroupDetailScreen() {
       description: readString(data.description, readString(data.summary, 'Comunidad para organizar actividades compartidas.')),
       location: readString(data.location, 'Ubicación a definir'),
       members: getMemberCount(data),
-      baseLocation: readString(data.locationName, readString(data.location, 'Ubicación a definir')),
+      baseLocation: readString(data.locationName, readString(data.address, readString(data.location, 'Ubicación a definir'))),
       ownerId: getOwnerId(data),
       nextDate: readString(data.date, readString(data.schedule, 'Próximo encuentro a definir')),
-      organizer: readString(data.organizerName, readString(data.createdByName, 'Organizador de Coincidir')),
+      organizer: readString(data.ownerName, readString(data.organizerName, readString(data.createdByName, 'Organizador de Coincidir'))),
       title: readString(data.name, readString(data.title, fallbackTitle)),
     }
   }, [group, groupName])
@@ -216,7 +262,7 @@ export default function GroupDetailScreen() {
   useEffect(() => {
     let mounted = true
     const data = group ?? {}
-    const localHostName = readString(data.displayName, readString(data.profileName, readString(data.organizerName, readString(data.createdByName, readString(data.creatorName)))))
+    const localHostName = readString(data.ownerName, readString(data.displayName, readString(data.profileName, readString(data.organizerName, readString(data.createdByName, readString(data.creatorName))))))
     const ownerId = getOwnerId(data)
 
     if (localHostName) {
@@ -257,8 +303,28 @@ export default function GroupDetailScreen() {
     setDraftLocation(detail.baseLocation === 'Ubicación a definir' ? '' : detail.baseLocation)
   }, [detail.baseLocation, detail.description, detail.title, isEditingGroup])
 
-  const isOwner = useMemo(() => isGroupOwner(group ?? {}, userId), [group, userId])
-  const isMember = useMemo(() => isGroupMember(group ?? {}, userId), [group, userId])
+  const isLegacyLocalGroup = !group && Boolean(readString(groupName))
+  const isOwner = useMemo(() => isLegacyLocalGroup || isGroupOwner(group ?? {}, userId), [group, groupName, isLegacyLocalGroup, userId])
+  const isMember = useMemo(() => isOwner || isGroupMember(group ?? {}, userId), [group, isOwner, userId])
+
+  useEffect(() => {
+    if (!__DEV__) return
+
+    const data = group ?? {}
+    console.log('[GROUP MEMBERSHIP DEBUG]', {
+      currentUserId: userId,
+      groupId,
+      isMember,
+      isOwner,
+      joinedUsers: data.joinedUsers,
+      memberIds: data.memberIds,
+      members: data.members,
+      normalizedMemberIds: getGroupMemberIds(data),
+      ownerId: getOwnerId(data),
+      participants: data.participants,
+    })
+  }, [group, groupId, isMember, isOwner, userId])
+
   const groupActivities = useMemo(() => {
     const targetId = readString(groupId)
     const targetName = detail.title
@@ -310,6 +376,15 @@ export default function GroupDetailScreen() {
         },
         updatedAt: serverTimestamp(),
       })
+      if (detail.ownerId) {
+        await createNotification({
+          body: `${userName} quiere sumarse al grupo ${detail.title}.`,
+          senderId: userId,
+          title: 'Nueva solicitud de grupo',
+          type: 'group_join_request',
+          userId: detail.ownerId,
+        })
+      }
     } catch {
       Alert.alert('No pudimos enviar la solicitud', 'Intentá solicitar sumarte nuevamente en unos segundos.')
     } finally {
@@ -332,8 +407,17 @@ export default function GroupDetailScreen() {
         },
         [`membershipRequests.${request.id}`]: deleteField(),
         [`pendingMembers.${request.id}`]: deleteField(),
+        memberIds: arrayUnion(request.id),
+        memberCount: increment(1),
         membersCount: increment(1),
         updatedAt: serverTimestamp(),
+      })
+      await createNotification({
+        body: `Ya sos miembro de ${detail.title}.`,
+        senderId: userId ?? undefined,
+        title: 'Te aceptaron en un grupo',
+        type: 'group_join_accepted',
+        userId: request.id,
       })
     } catch {
       Alert.alert('No pudimos aceptar', 'Intentá aceptar la solicitud nuevamente.')
@@ -398,7 +482,7 @@ export default function GroupDetailScreen() {
       <SafeAreaView style={styles.safeArea}>
         <View style={styles.centerState}>
           <Text style={styles.missingTitle}>No encontramos el grupo</Text>
-          <PressScale onPress={() => router.back()} style={styles.secondaryButton} scaleTo={0.97}>
+          <PressScale onPress={safeBack} style={styles.secondaryButton} scaleTo={0.97}>
             <Text style={styles.secondaryButtonText}>Volver</Text>
           </PressScale>
         </View>
@@ -410,7 +494,7 @@ export default function GroupDetailScreen() {
     ? 'Solicitud enviada'
     : isMember
       ? 'Ya sos miembro'
-      : 'Solicitar sumarme'
+      : 'Ser miembro'
   const nextActivityTitle = nextActivity
     ? readString(nextActivity.data.name, readString(nextActivity.data.title, 'Actividad sin título'))
     : ''
@@ -418,11 +502,87 @@ export default function GroupDetailScreen() {
     ? `${readString(nextActivity.data.date, 'Fecha a definir')}${readString(nextActivity.data.time) ? ` · ${readString(nextActivity.data.time)}` : ''}`
     : ''
 
+  const displayedMemberCount = isOwner ? Math.max(detail.members, 1) : detail.members
+  const displayHostName = isLegacyLocalGroup ? userName : hostName
+  const roleText = isOwner ? 'Organizador' : isMember ? 'Sos miembro' : 'No sos miembro'
+  const createGroupActivity = () => {
+    router.push({
+      pathname: '/(tabs)/crear',
+      params: {
+        groupId: groupId || getLocalGroupId(detail.title),
+        groupName: detail.title,
+        kind: 'group',
+      },
+    })
+  }
+  const deleteGroupNow = async () => {
+    if (!groupId || !userId || isDeletingGroup) return
+
+    setIsDeletingGroup(true)
+    try {
+      const { db } = getFirebaseServices()
+      const groupRef = doc(db, 'groups', groupId)
+      const snapshot = await getDoc(groupRef)
+
+      if (!snapshot.exists()) {
+        Alert.alert('Grupo no disponible', 'No encontramos este grupo.')
+        router.replace('/home')
+        return
+      }
+
+      const latestGroup = snapshot.data() as GroupData
+      if (getOwnerId(latestGroup) !== userId) {
+        Alert.alert('No podés eliminar este grupo', 'Solo el organizador puede eliminarlo.')
+        return
+      }
+
+      await Promise.all(groupActivities.map((activity) => updateDoc(doc(db, 'activities', activity.id), {
+        groupId: deleteField(),
+        groupName: deleteField(),
+        visibility: 'public',
+        'additionalSettings.groupId': deleteField(),
+        'additionalSettings.groupName': deleteField(),
+        'additionalSettings.visibility': 'public',
+        'additionalSettings.privacy': 'Pública',
+        updatedAt: serverTimestamp(),
+      })))
+
+      await deleteDoc(groupRef)
+
+      Alert.alert('Grupo eliminado', 'El grupo fue eliminado correctamente.', [
+        { text: 'OK', onPress: () => (router.canGoBack() ? router.back() : router.replace('/home')) },
+      ])
+    } catch {
+      Alert.alert('No pudimos eliminar el grupo', 'Intentá nuevamente en unos segundos.')
+    } finally {
+      setIsDeletingGroup(false)
+    }
+  }
+
+  const confirmDeleteGroup = () => {
+    if (!isOwner || isDeletingGroup) return
+
+    Alert.alert(
+      '¿Eliminar grupo?',
+      'Esta acción eliminará el grupo y no se puede deshacer.',
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        {
+          text: 'Eliminar',
+          style: 'destructive',
+          onPress: () => {
+            void deleteGroupNow()
+          },
+        },
+      ],
+    )
+  }
+
   return (
     <SafeAreaView edges={['top']} style={styles.safeArea}>
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
         <View style={styles.topBar}>
-          <PressScale accessibilityLabel="Volver" accessibilityRole="button" onPress={() => router.back()} style={styles.iconButton} scaleTo={0.94}>
+          <PressScale accessibilityLabel="Volver" accessibilityRole="button" onPress={safeBack} style={styles.iconButton} scaleTo={0.94}>
             <ArrowLeft color="#063C31" size={26} strokeWidth={2.4} />
           </PressScale>
           <Text style={styles.headerTitle}>Detalle de grupo</Text>
@@ -444,16 +604,39 @@ export default function GroupDetailScreen() {
 
           <InfoRow Icon={MapPin} label={detail.baseLocation} />
           <InfoRow Icon={CalendarDays} label={nextActivity ? `Próximo encuentro: ${nextActivityTitle}` : 'Sin encuentros próximos'} secondary={nextActivityDate} />
-          <InfoRow Icon={UsersRound} label={`${detail.members} miembros`} />
+          <InfoRow Icon={UsersRound} label={`${displayedMemberCount} miembros`} />
           <InfoRow Icon={CalendarDays} label={`${groupActivities.length} actividades asociadas`} />
-          <InfoRow Icon={UserRound} label={`Anfitrión: ${hostName}`} />
+          <InfoRow Icon={UserRound} label={`Anfitrión: ${displayHostName}`} />
 
           <Text style={styles.description}>{detail.description}</Text>
 
           {isOwner ? (
-            <PressScale onPress={() => setIsEditingGroup((current) => !current)} style={styles.editGroupButton} scaleTo={0.97}>
-              <Text style={styles.editGroupButtonText}>{isEditingGroup ? 'Cerrar edición' : 'Editar grupo'}</Text>
-            </PressScale>
+            <View style={styles.ownerActions}>
+              <PressScale onPress={() => setIsEditingGroup((current) => !current)} style={styles.editGroupButton} scaleTo={0.97}>
+                <Text style={styles.editGroupButtonText}>{isEditingGroup ? 'Cerrar edición' : 'Editar grupo'}</Text>
+              </PressScale>
+              <PressScale onPress={createGroupActivity} style={styles.editGroupButton} scaleTo={0.97}>
+                <Text style={styles.editGroupButtonText}>Crear actividad para este grupo</Text>
+              </PressScale>
+              <View style={styles.editGroupButton}>
+                <Text style={styles.editGroupButtonText}>Gestionar solicitudes ({pendingRequests.length})</Text>
+              </View>
+              <PressScale
+                disabled={isDeletingGroup}
+                onPress={confirmDeleteGroup}
+                style={[styles.editGroupButton, styles.deleteGroupButton]}
+                scaleTo={0.97}
+              >
+                {isDeletingGroup ? (
+                  <ActivityIndicator color="#B42318" size="small" />
+                ) : (
+                  <>
+                    <Trash2 color="#B42318" size={17} strokeWidth={2.4} />
+                    <Text style={styles.deleteGroupButtonText}>Eliminar grupo</Text>
+                  </>
+                )}
+              </PressScale>
+            </View>
           ) : null}
 
           {isOwner && isEditingGroup ? (
@@ -489,7 +672,7 @@ export default function GroupDetailScreen() {
           <View style={[styles.memberStatus, isOwner ? styles.memberStatusOwner : isMember ? styles.memberStatusJoined : styles.memberStatusOpen]}>
             <UsersRound color={isOwner || isMember ? '#006A32' : '#4B348A'} size={17} strokeWidth={2.3} />
             <Text style={[styles.memberStatusText, isOwner || isMember ? styles.memberStatusTextJoined : styles.memberStatusTextOpen]}>
-              {isOwner ? 'Sos anfitrión' : isMember ? 'Ya sos miembro' : hasRequestedJoin ? 'Solicitud enviada' : 'No sos miembro'}
+              {hasRequestedJoin && !isOwner && !isMember ? 'Solicitud enviada' : roleText}
             </Text>
           </View>
 
@@ -507,10 +690,13 @@ export default function GroupDetailScreen() {
 
           {isOwner && pendingRequests.length > 0 ? (
             <View style={styles.requestsBlock}>
-              <Text style={styles.requestsTitle}>Solicitudes pendientes</Text>
+              <Text style={styles.requestsTitle}>Solicitudes para unirse</Text>
               {pendingRequests.map((request) => (
                 <View key={request.id} style={styles.requestRow}>
-                  <Text numberOfLines={1} style={styles.requestName}>{request.name}</Text>
+                  <View style={styles.requestCopy}>
+                    <Text numberOfLines={1} style={styles.requestName}>{request.name}</Text>
+                    <Text style={styles.requestSubtitle}>Quiere sumarse al grupo</Text>
+                  </View>
                   <View style={styles.requestActions}>
                     <PressScale disabled={Boolean(pendingRequestAction)} onPress={() => rejectRequest(request)} scaleTo={0.97} style={styles.rejectRequestButton}>
                       <Text style={styles.rejectRequestText}>Rechazar</Text>
@@ -696,13 +882,31 @@ const styles = StyleSheet.create({
     borderColor: '#D9CBF6',
     borderRadius: 14,
     borderWidth: 1,
+    flexDirection: 'row',
+    gap: 6,
     justifyContent: 'center',
     marginTop: 16,
     minHeight: 42,
     paddingHorizontal: 16,
   },
+  ownerActions: {
+    alignItems: 'flex-start',
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
   editGroupButtonText: {
     color: '#4B348A',
+    fontSize: 14,
+    fontWeight: '900',
+    letterSpacing: 0,
+  },
+  deleteGroupButton: {
+    backgroundColor: '#FFF4F4',
+    borderColor: '#F2B8B5',
+  },
+  deleteGroupButtonText: {
+    color: '#B42318',
     fontSize: 14,
     fontWeight: '900',
     letterSpacing: 0,
@@ -817,31 +1021,43 @@ const styles = StyleSheet.create({
     letterSpacing: 0,
   },
   requestRow: {
-    alignItems: 'center',
+    alignItems: 'stretch',
     backgroundColor: '#FFFFFF',
     borderColor: '#E7E7E1',
     borderRadius: 14,
     borderWidth: 1,
-    flexDirection: 'row',
-    gap: 10,
-    padding: 10,
+    gap: 12,
+    padding: 12,
+  },
+  requestCopy: {
+    minWidth: 0,
   },
   requestName: {
     color: '#071D19',
-    flex: 1,
     fontSize: 14,
     fontWeight: '900',
     letterSpacing: 0,
   },
+  requestSubtitle: {
+    color: '#596A65',
+    fontSize: 12,
+    fontWeight: '700',
+    letterSpacing: 0,
+    lineHeight: 17,
+    marginTop: 2,
+  },
   requestActions: {
     flexDirection: 'row',
     gap: 8,
+    width: '100%',
   },
   rejectRequestButton: {
     alignItems: 'center',
+    backgroundColor: '#FFF4F4',
     borderColor: '#D95454',
     borderRadius: 10,
     borderWidth: 1,
+    flex: 1,
     minHeight: 36,
     paddingHorizontal: 10,
     justifyContent: 'center',
@@ -856,6 +1072,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     backgroundColor: '#006A32',
     borderRadius: 10,
+    flex: 1,
     minHeight: 36,
     paddingHorizontal: 12,
     justifyContent: 'center',

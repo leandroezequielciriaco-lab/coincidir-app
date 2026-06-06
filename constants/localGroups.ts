@@ -5,6 +5,12 @@ export type LocalGroup = {
   name: string
 }
 
+const LEGACY_EXAMPLE_GROUP_IDS = new Set([
+  'caminatas-activas',
+  'running-tandil',
+  'yoga-integral',
+])
+
 type StoredLocalGroup = LocalGroup & {
   deleted?: boolean
 }
@@ -23,14 +29,21 @@ export function getLocalGroupId(groupName: string) {
     .replace(/^-+|-+$/g, '')
 }
 
+export function isLegacyExampleGroup(group: Pick<LocalGroup, 'id' | 'name'>) {
+  const id = group.id.trim() || getLocalGroupId(group.name)
+  return LEGACY_EXAMPLE_GROUP_IDS.has(id)
+}
+
 export function toLocalGroup(groupName: string, id = ''): LocalGroup | null {
   const name = groupName.trim()
   if (!name) return null
 
-  return {
+  const group = {
     id: id.trim() || getLocalGroupId(name),
     name,
   }
+
+  return isLegacyExampleGroup(group) ? null : group
 }
 
 export function readStoredLocalGroups(value: string | null) {
@@ -79,9 +92,9 @@ export function mergeLocalGroups(...groups: LocalGroup[][]) {
   const seen = new Set<string>()
   const merged: LocalGroup[] = []
 
-  groups.flat().forEach((group) => {
-    const key = group.id || getLocalGroupId(group.name)
-    if (!key || seen.has(key)) return
+    groups.flat().forEach((group) => {
+      const key = group.id || getLocalGroupId(group.name)
+    if (!key || seen.has(key) || isLegacyExampleGroup(group)) return
     seen.add(key)
     merged.push({ id: key, name: group.name })
   })
