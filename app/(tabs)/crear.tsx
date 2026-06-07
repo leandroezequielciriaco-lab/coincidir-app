@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
-import AsyncStorage from '@react-native-async-storage/async-storage'
 import {
   ActivityIndicator,
   Alert,
@@ -18,8 +17,9 @@ import {
 } from 'react-native'
 import * as ImagePicker from 'expo-image-picker'
 import * as Location from 'expo-location'
-import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router'
-import { addDoc, collection, doc, getDoc, serverTimestamp, setDoc, updateDoc } from 'firebase/firestore'
+import { useLocalSearchParams, useRouter } from 'expo-router'
+import { onAuthStateChanged } from 'firebase/auth'
+import { addDoc, collection, doc, getDoc, onSnapshot, serverTimestamp, setDoc, updateDoc } from 'firebase/firestore'
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import {
   ArrowLeft,
@@ -65,14 +65,7 @@ import {
 } from '../../constants/activityCategories'
 import { legacyInterestAliases, normalizeInterestLabel } from '../../constants/userInterests'
 import {
-  type LocalGroup,
   getLocalGroupId,
-  LOCAL_GROUPS_STORAGE_KEY,
-  mergeLocalGroups,
-  readDeletedLocalGroupIds,
-  readStoredLocalGroups,
-  serializeLocalGroups,
-  toLocalGroup,
 } from '../../constants/localGroups'
 import { getFirebaseServices } from '../../firebaseConfig'
 import { uploadGroupPhoto } from '../../lib/groupPhotos'
@@ -80,8 +73,15 @@ import { notifyActivityUpdated } from '../../lib/notifications'
 
 type PickerMode = 'category' | 'subcategory' | 'date' | 'time' | 'currency' | null
 type CreateStep = 1 | 2 | 3 | 4 | 5
+const allActivitySteps: CreateStep[] = [1, 2, 3, 4, 5]
+const groupContextActivitySteps: CreateStep[] = [1, 3, 4, 5]
 type CreateFlowMode = 'activity' | 'choice' | 'group' | 'groupCreated'
 type ActivityKind = 'group' | 'individual'
+
+type AvailableGroup = {
+  id: string
+  name: string
+}
 
 type ActivitySearchOption = {
   category: Category
@@ -194,8 +194,6 @@ const activityKindDetails = [
     value: 'group' as const,
   },
 ]
-
-const defaultGroups: string[] = []
 
 const levelDetails = [
   { label: 'Principiante', description: 'Ideal para empezar', Icon: Star },
@@ -347,27 +345,6 @@ function getVisibilityFromPrivacy(value: string): 'approval' | 'group' | 'public
   return 'public'
 }
 
-function mergeGroupNames(...groups: string[][]) {
-  return mergeLocalGroups(...groups.map((groupList) => groupList
-    .map((groupName) => toLocalGroup(groupName))
-    .filter((group): group is LocalGroup => Boolean(group))))
-    .map((group) => group.name)
-}
-
-function readStoredGroups(value: string | null) {
-  return readStoredLocalGroups(value).map((group) => group.name)
-}
-
-async function persistLocalGroups(groups: string[]) {
-  const storedValue = await AsyncStorage.getItem(LOCAL_GROUPS_STORAGE_KEY)
-  const deletedGroupIds = readDeletedLocalGroupIds(storedValue)
-  const localGroups = groups
-    .map((groupName) => toLocalGroup(groupName))
-    .filter((group): group is LocalGroup => Boolean(group))
-
-  await AsyncStorage.setItem(LOCAL_GROUPS_STORAGE_KEY, serializeLocalGroups(localGroups, deletedGroupIds))
-}
-
 function getCreatorId(data: ActivityData) {
   return readString(data.createdBy)
     || readString(data.creatorId)
@@ -416,11 +393,57 @@ function getSaveError(error: unknown, isEditMode: boolean) {
   return isEditMode ? 'No pudimos guardar los cambios.' : 'No pudimos crear la actividad.'
 }
 
+function includesUser(value: unknown, userId: string) {
+  if (Array.isArray(value)) return value.includes(userId)
+  if (typeof value === 'object' && value) return userId in value
+  return false
+}
+
+function isActiveFirestoreGroup(id: string, data: ActivityData) {
+  if (!id.trim()) return false
+  if (data.deleted === true) return false
+  if (readString(data.status).toLowerCase() === 'deleted') return false
+  return true
+}
+
+function isUserFirestoreGroup(data: ActivityData, userId: string) {
+  if (readString(data.ownerId) === userId) return true
+  if (readString(data.createdBy) === userId) return true
+  if (readString(data.creatorId) === userId) return true
+  if (readString(data.userId) === userId) return true
+
+  return [
+    data.joinedUsers,
+    data.participants,
+    data.members,
+    data.memberProfiles,
+    data.memberIds,
+  ].some((value) => includesUser(value, userId))
+}
+
+function getFirestoreGroupName(data: ActivityData) {
+  return readString(data.name, readString(data.title))
+}
+
+function mergeAvailableGroups(...groupLists: AvailableGroup[][]) {
+  const groupsById = new Map<string, AvailableGroup>()
+
+  groupLists.flat().forEach((group) => {
+    const id = group.id.trim()
+    const name = group.name.trim()
+    if (!id || !name || groupsById.has(id)) return
+    groupsById.set(id, { id, name })
+  })
+
+  return Array.from(groupsById.values()).sort((left, right) => left.name.localeCompare(right.name))
+}
+
 export default function CrearScreen() {
   const router = useRouter()
-  const { activityId, groupId: preselectedGroupId, groupName: preselectedGroupName, kind, mode } = useLocalSearchParams<{ activityId?: string; groupId?: string; groupName?: string; kind?: string; mode?: string }>()
+  const { activityId, groupContext, groupId: preselectedGroupId, groupName: preselectedGroupName, kind, mode } = useLocalSearchParams<{ activityId?: string; groupContext?: string; groupId?: string; groupName?: string; kind?: string; mode?: string }>()
   const insets = useSafeAreaInsets()
   const isEditMode = mode === 'edit'
+  const isGroupContext = !isEditMode && groupContext === '1' && kind === 'group' && Boolean(readString(preselectedGroupId))
   const safeBack = useCallback(() => {
     if (router.canGoBack()) {
       router.back()
@@ -428,7 +451,7 @@ export default function CrearScreen() {
       router.replace('/home')
     }
   }, [router])
-  const [flowMode, setFlowMode] = useState<CreateFlowMode>(isEditMode ? 'activity' : 'choice')
+  const [flowMode, setFlowMode] = useState<CreateFlowMode>(isEditMode || isGroupContext ? 'activity' : 'choice')
   const [activityKind, setActivityKind] = useState<ActivityKind>('individual')
   const [groupDraftName, setGroupDraftName] = useState('')
   const [groupDraftDescription, setGroupDraftDescription] = useState('')
@@ -464,7 +487,8 @@ export default function CrearScreen() {
   const [isResolvingLocation, setIsResolvingLocation] = useState(false)
   const [fallbackMapSize, setFallbackMapSize] = useState({ width: 1, height: 1 })
   const [privacy, setPrivacy] = useState('Pública')
-  const [availableGroups, setAvailableGroups] = useState(defaultGroups)
+  const [currentUserId, setCurrentUserId] = useState('')
+  const [availableGroups, setAvailableGroups] = useState<AvailableGroup[]>([])
   const [selectedGroup, setSelectedGroup] = useState('')
   const [selectedGroupId, setSelectedGroupId] = useState('')
   const [isCreateGroupVisible, setIsCreateGroupVisible] = useState(false)
@@ -476,6 +500,10 @@ export default function CrearScreen() {
   const [price, setPrice] = useState('')
   const [currency, setCurrency] = useState('ARS')
   const [quickSettings, setQuickSettings] = useState(['Mascotas permitidas'])
+  const visibleActivitySteps = isGroupContext ? groupContextActivitySteps : allActivitySteps
+  const currentVisibleStepIndex = Math.max(visibleActivitySteps.indexOf(currentStep), 0)
+  const firstVisibleStep = visibleActivitySteps[0]
+  const lastVisibleStep = visibleActivitySteps[visibleActivitySteps.length - 1]
 
   const subcategoryOptions = useMemo(
     () => category?.subcategories ?? [],
@@ -520,58 +548,92 @@ export default function CrearScreen() {
     [calendarMonth],
   )
 
-  const loadLocalGroups = useCallback(async () => {
+  useEffect(() => {
     try {
-      const storedValue = await AsyncStorage.getItem(LOCAL_GROUPS_STORAGE_KEY)
-      const storedGroups = readStoredGroups(storedValue)
-      const nextGroups = mergeGroupNames(defaultGroups, storedGroups)
-
-      setAvailableGroups(nextGroups)
-      setSelectedGroup((current) => nextGroups.includes(current) ? current : nextGroups[0] ?? '')
-
-      if (__DEV__) {
-        console.log('[CrearActividad] grupos leidos de AsyncStorage', {
-          groups: storedGroups,
-          key: LOCAL_GROUPS_STORAGE_KEY,
-          rawValue: storedValue,
-        })
-        console.log('[CrearActividad] grupos default', { groups: defaultGroups })
-        console.log('[CrearActividad] grupos combinados finales', {
-          count: nextGroups.length,
-          groups: nextGroups,
-        })
-      }
-    } catch (error) {
-      if (__DEV__) console.warn('[CrearActividad] error cargando grupos locales', error)
+      const { auth } = getFirebaseServices()
+      return onAuthStateChanged(auth, (user) => {
+        setCurrentUserId(user?.uid ?? '')
+      })
+    } catch {
+      setCurrentUserId('')
+      return undefined
     }
   }, [])
 
-  useFocusEffect(
-    useCallback(() => {
-      void loadLocalGroups()
-    }, [loadLocalGroups]),
-  )
+  useEffect(() => {
+    if (!currentUserId) {
+      setAvailableGroups([])
+      setSelectedGroup('')
+      setSelectedGroupId('')
+      return undefined
+    }
+
+    try {
+      const { db } = getFirebaseServices()
+
+      return onSnapshot(collection(db, 'groups'), (snapshot) => {
+        const nextGroups = snapshot.docs
+          .map((item) => {
+            const data = item.data() as ActivityData
+            return {
+              data,
+              id: item.id,
+              name: getFirestoreGroupName(data),
+            }
+          })
+          .filter((group) => isActiveFirestoreGroup(group.id, group.data))
+          .filter((group) => isUserFirestoreGroup(group.data, currentUserId))
+          .filter((group) => Boolean(group.name))
+          .map(({ id, name }) => ({ id, name }))
+          .sort((left, right) => left.name.localeCompare(right.name))
+
+        setAvailableGroups(nextGroups)
+
+        if (__DEV__) {
+          console.log('[CrearActividad] grupos Firestore vigentes', {
+            count: nextGroups.length,
+            groups: nextGroups,
+          })
+        }
+      })
+    } catch (error) {
+      if (__DEV__) console.warn('[CrearActividad] error cargando grupos Firestore', error)
+      return undefined
+    }
+  }, [currentUserId])
+
+  useEffect(() => {
+    if (activityKind !== 'group') return
+    if (isGroupContext && selectedGroupId && availableGroups.length === 0) return
+
+    const selectedAvailableGroup = availableGroups.find((group) => group.id === selectedGroupId)
+      ?? availableGroups.find((group) => group.name === selectedGroup)
+      ?? availableGroups[0]
+
+    setSelectedGroup(selectedAvailableGroup?.name ?? '')
+    setSelectedGroupId(selectedAvailableGroup?.id ?? '')
+  }, [activityKind, availableGroups, isGroupContext, selectedGroup, selectedGroupId])
 
   useEffect(() => {
     const cleanGroupName = readString(preselectedGroupName)
     if (isEditMode || kind !== 'group' || !cleanGroupName) return
 
     const groupCategory = findActivityCategory({ categoryId: 'groups' }) ?? categories[0] ?? null
-    const cleanGroupId = readString(preselectedGroupId, getLocalGroupId(cleanGroupName))
+    const cleanGroupId = readString(preselectedGroupId)
+    if (!cleanGroupId) return
     setFlowMode('activity')
     setActivityKind('group')
-    setAvailableGroups((current) => mergeGroupNames(current, [cleanGroupName]))
     setSelectedGroup(cleanGroupName)
     setSelectedGroupId(cleanGroupId)
-    setName(cleanGroupName)
+    setName((current) => isGroupContext ? current : cleanGroupName)
     setCategory(groupCategory)
     setSubcategory(groupCategory?.subcategories[0] ?? '')
     setActivitySearchQuery('')
     setSelectedActivitySearchLabel('')
     setPrivacy('Pública')
-    setCurrentStep(3)
+    setCurrentStep(isGroupContext ? 1 : 3)
     setMessage('')
-  }, [isEditMode, kind, preselectedGroupId, preselectedGroupName])
+  }, [isEditMode, isGroupContext, kind, preselectedGroupId, preselectedGroupName])
 
   useEffect(() => {
     if (!isEditMode) {
@@ -673,8 +735,8 @@ export default function CrearScreen() {
         const existingGroupName = readString(additionalSettings.groupName, readString(data.groupName))
         if (existingGroupName) {
           setActivityKind('group')
-          setAvailableGroups((current) => mergeGroupNames(current, [existingGroupName]))
           setSelectedGroup(existingGroupName)
+          setSelectedGroupId(readString(additionalSettings.groupId, readString(data.groupId)))
         } else {
           setActivityKind('individual')
         }
@@ -806,7 +868,7 @@ export default function CrearScreen() {
     if (!category || !selectedDate || !selectedLocation) return null
     const visibility = activityKind === 'group' ? 'group' : getVisibilityFromPrivacy(privacy)
     const groupName = activityKind === 'group' ? selectedGroup : ''
-    const groupId = groupName ? selectedGroupId || getLocalGroupId(groupName) : ''
+    const groupId = groupName ? selectedGroupId : ''
 
     const payload: ActivityFormPayload = {
       name: name.trim(),
@@ -865,7 +927,7 @@ export default function CrearScreen() {
       return
     }
 
-    if (activityKind === 'group' && !selectedGroup) {
+    if (activityKind === 'group' && (!selectedGroup || !selectedGroupId)) {
       setMessage('Seleccioná un grupo para publicar la actividad.')
       return
     }
@@ -1038,11 +1100,11 @@ export default function CrearScreen() {
     setIsCreateGroupVisible(true)
   }
 
-  const selectLocalGroup = (groupName: string) => {
-    setSelectedGroup(groupName)
-    setSelectedGroupId(getLocalGroupId(groupName))
+  const selectFirestoreGroup = (group: AvailableGroup) => {
+    setSelectedGroup(group.name)
+    setSelectedGroupId(group.id)
     if (__DEV__) {
-      console.log('[CrearActividad] grupo seleccionado', { groupName })
+      console.log('[CrearActividad] grupo seleccionado', { groupId: group.id, groupName: group.name })
     }
   }
 
@@ -1056,8 +1118,7 @@ export default function CrearScreen() {
 
     setActivityKind('group')
     setSelectedGroup(groupName)
-    setSelectedGroupId(groupId || getLocalGroupId(groupName))
-    setAvailableGroups((current) => mergeGroupNames(current, [groupName]))
+    setSelectedGroupId(groupId)
     setName(groupName)
     setCategory(groupCategory)
     setSubcategory(groupCategory?.subcategories[0] ?? '')
@@ -1151,8 +1212,6 @@ export default function CrearScreen() {
       }
     }
 
-    const nextGroups = mergeGroupNames(availableGroups, [cleanName])
-    setAvailableGroups(nextGroups)
     setSelectedGroup(cleanName)
     setSelectedGroupId(createdGroupId)
     setCreatedGroupId(createdGroupId)
@@ -1182,8 +1241,11 @@ export default function CrearScreen() {
         name: cleanName,
         ownerId: user.uid,
         ownerName: user.displayName?.trim() || user.email?.split('@')[0]?.trim() || 'Organizador',
+        deleted: false,
+        status: 'active',
         updatedAt: serverTimestamp(),
       }, { merge: true })
+      setAvailableGroups((current) => mergeAvailableGroups(current, [{ id: createdGroupId, name: cleanName }]))
       if (__DEV__) {
         console.log('[GROUP CREATE OWNERSHIP DEBUG]', {
           currentUserUid: user.uid,
@@ -1193,9 +1255,8 @@ export default function CrearScreen() {
           ownerId: user.uid,
         })
       }
-      await persistLocalGroups(nextGroups)
     } catch (error) {
-      if (__DEV__) console.warn('[CrearActividad] error persistiendo grupo local', error)
+      if (__DEV__) console.warn('[CrearActividad] error creando grupo Firestore', error)
       setMessage('No pudimos guardar el grupo. Intentá nuevamente.')
       return
     }
@@ -1226,28 +1287,54 @@ export default function CrearScreen() {
       return
     }
 
-    const createdGroupId = getLocalGroupId(cleanName)
-    const nextGroups = mergeGroupNames(availableGroups, [cleanName])
-    const nextSelectedGroup = nextGroups.find((group) => getLocalGroupId(group) === createdGroupId) ?? cleanName
+    const { auth, db } = getFirebaseServices()
+    const user = auth.currentUser
+    if (!user) {
+      setMessage('Necesitás iniciar sesión para crear un grupo.')
+      return
+    }
 
-    setAvailableGroups(nextGroups)
-    setSelectedGroup(nextSelectedGroup)
-    setSelectedGroupId(createdGroupId)
-    setIsCreateGroupVisible(false)
-    setNewGroupName('')
-    setMessage('')
+    const createdGroupId = getLocalGroupId(cleanName)
 
     try {
-      await persistLocalGroups(nextGroups)
+      await setDoc(doc(db, 'groups', createdGroupId), {
+        category: 'Grupo',
+        createdAt: serverTimestamp(),
+        deleted: false,
+        memberCount: 1,
+        memberIds: [user.uid],
+        members: [user.uid],
+        memberProfiles: {
+          [user.uid]: {
+            joinedAt: serverTimestamp(),
+            name: user.displayName?.trim() || user.email?.split('@')[0]?.trim() || 'Organizador',
+            role: 'owner',
+          },
+        },
+        membersCount: 1,
+        name: cleanName,
+        ownerId: user.uid,
+        ownerName: user.displayName?.trim() || user.email?.split('@')[0]?.trim() || 'Organizador',
+        status: 'active',
+        updatedAt: serverTimestamp(),
+      }, { merge: true })
+
+      setAvailableGroups((current) => mergeAvailableGroups(current, [{ id: createdGroupId, name: cleanName }]))
+      setSelectedGroup(cleanName)
+      setSelectedGroupId(createdGroupId)
+      setIsCreateGroupVisible(false)
+      setNewGroupName('')
+      setMessage('')
+
       if (__DEV__) {
         console.log('[CrearActividad] grupo creado', {
           groupId: createdGroupId,
-          groupName: nextSelectedGroup,
+          groupName: cleanName,
         })
-        console.log('[CrearActividad] grupos en state despues de crear', { groups: nextGroups })
       }
     } catch (error) {
-      if (__DEV__) console.warn('[CrearActividad] error persistiendo grupo local', error)
+      if (__DEV__) console.warn('[CrearActividad] error creando grupo Firestore', error)
+      setMessage('No pudimos guardar el grupo. Intentá nuevamente.')
     }
   }
 
@@ -1257,7 +1344,7 @@ export default function CrearScreen() {
       return false
     }
 
-    if (currentStep === 2 && activityKind === 'group' && !selectedGroup) {
+    if (currentStep === 2 && activityKind === 'group' && !isGroupContext && (!selectedGroup || !selectedGroupId)) {
       setMessage('Seleccioná un grupo para continuar.')
       return false
     }
@@ -1278,13 +1365,19 @@ export default function CrearScreen() {
 
   const goToNextStep = () => {
     if (!validateCurrentStep()) return
-    setCurrentStep((step) => (Math.min(step + 1, 5) as CreateStep))
+    setCurrentStep((step) => {
+      const currentIndex = visibleActivitySteps.indexOf(step)
+      return visibleActivitySteps[Math.min(currentIndex + 1, visibleActivitySteps.length - 1)] ?? lastVisibleStep
+    })
   }
 
   const goToPreviousStep = () => {
     setPickerMode(null)
     setMessage('')
-    setCurrentStep((step) => (Math.max(step - 1, 1) as CreateStep))
+    setCurrentStep((step) => {
+      const currentIndex = visibleActivitySteps.indexOf(step)
+      return visibleActivitySteps[Math.max(currentIndex - 1, 0)] ?? firstVisibleStep
+    })
   }
 
   const returnToCreateActivity = () => {
@@ -1721,17 +1814,24 @@ export default function CrearScreen() {
           </Text>
         </View>
         <Text style={styles.createSubtitle}>
-          {currentStep === 1 ? 'Completá los datos principales y el tipo de actividad.' : null}
+          {currentStep === 1 ? (isGroupContext ? 'Completá los datos principales de la actividad.' : 'Completá los datos principales y el tipo de actividad.') : null}
           {currentStep === 2 ? (activityKind === 'group' ? 'Seleccioná el grupo al que pertenece esta actividad.' : 'Elegí el nivel de visibilidad de tu actividad.') : null}
           {currentStep === 3 ? 'Contá más detalles sobre tu actividad.' : null}
           {currentStep === 4 ? 'Elegí la fecha, hora y el lugar del encuentro.' : null}
           {currentStep === 5 ? 'Completá los detalles opcionales para que otros sepan qué esperar.' : null}
         </Text>
 
+        {isGroupContext ? (
+          <View style={styles.groupContextChip}>
+            <UsersRound color="#4B348A" size={18} strokeWidth={2.4} />
+            <Text numberOfLines={2} style={styles.groupContextChipText}>Actividad del grupo: {selectedGroup || readString(preselectedGroupName, 'Grupo')}</Text>
+          </View>
+        ) : null}
+
         <View style={styles.createStepPills}>
-          {[1, 2, 3, 4, 5].map((step) => (
-            <View key={step} style={[styles.createStepPill, currentStep === step && styles.createStepPillActive, currentStep > step && styles.createStepPillDone]}>
-              <Text style={[styles.createStepPillText, currentStep === step && styles.createStepPillTextActive, currentStep > step && styles.createStepPillTextDone]}>{step}</Text>
+          {visibleActivitySteps.map((step, index) => (
+            <View key={step} style={[styles.createStepPill, currentStep === step && styles.createStepPillActive, index < currentVisibleStepIndex && styles.createStepPillDone]}>
+              <Text style={[styles.createStepPillText, currentStep === step && styles.createStepPillTextActive, index < currentVisibleStepIndex && styles.createStepPillTextDone]}>{index + 1}</Text>
             </View>
           ))}
         </View>
@@ -1820,21 +1920,23 @@ export default function CrearScreen() {
               </Pressable>
             </View>
           </View>
-          <View style={styles.groupPickerBlock}>
-            <Text style={styles.createFieldLabel}>Tipo de actividad</Text>
-            <View style={styles.additionalGrid}>
-              {activityKindDetails.map((item) => (
-                <AdditionalChoiceCard
-                  active={activityKind === item.value}
-                  description={item.description}
-                  Icon={item.Icon}
-                  key={item.value}
-                  label={item.label}
-                  onPress={() => setActivityKind(item.value)}
-                />
-              ))}
+          {!isGroupContext ? (
+            <View style={styles.groupPickerBlock}>
+              <Text style={styles.createFieldLabel}>Tipo de actividad</Text>
+              <View style={styles.additionalGrid}>
+                {activityKindDetails.map((item) => (
+                  <AdditionalChoiceCard
+                    active={activityKind === item.value}
+                    description={item.description}
+                    Icon={item.Icon}
+                    key={item.value}
+                    label={item.label}
+                    onPress={() => setActivityKind(item.value)}
+                  />
+                ))}
+              </View>
             </View>
-          </View>
+          ) : null}
         </View> : null}
 
         {currentStep === 2 ? (
@@ -1849,10 +1951,10 @@ export default function CrearScreen() {
               <View style={styles.groupPickerBlock}>
                 <Text style={styles.createFieldLabel}>Elegí un grupo</Text>
                 {availableGroups.map((group) => (
-                  <Pressable accessibilityRole="button" key={group} onPress={() => selectLocalGroup(group)} style={[styles.groupOptionCard, selectedGroup === group && styles.groupOptionCardActive]}>
-                    <UsersRound color={selectedGroup === group ? '#0E5A44' : '#7A8790'} size={21} strokeWidth={2.2} />
-                    <Text style={[styles.groupOptionText, selectedGroup === group && styles.groupOptionTextActive]}>{group}</Text>
-                    {selectedGroup === group ? <View style={styles.additionalCheck}><Text style={styles.additionalCheckText}>✓</Text></View> : null}
+                  <Pressable accessibilityRole="button" key={group.id} onPress={() => selectFirestoreGroup(group)} style={[styles.groupOptionCard, selectedGroupId === group.id && styles.groupOptionCardActive]}>
+                    <UsersRound color={selectedGroupId === group.id ? '#0E5A44' : '#7A8790'} size={21} strokeWidth={2.2} />
+                    <Text style={[styles.groupOptionText, selectedGroupId === group.id && styles.groupOptionTextActive]}>{group.name}</Text>
+                    {selectedGroupId === group.id ? <View style={styles.additionalCheck}><Text style={styles.additionalCheckText}>✓</Text></View> : null}
                   </Pressable>
                 ))}
                 <Pressable accessibilityRole="button" onPress={openCreateGroup} style={[styles.groupOptionCard, styles.groupCreateCard]}>
@@ -1962,7 +2064,7 @@ export default function CrearScreen() {
 
         {message ? <Text style={styles.createMessageText}>{message}</Text> : null}
 
-        {currentStep > 1 ? (
+        {currentStep !== firstVisibleStep ? (
           <Pressable accessibilityLabel="Volver al paso anterior" accessibilityRole="button" onPress={goToPreviousStep} style={styles.createSecondaryButton}>
             <ChevronLeft color="#0E5A44" size={24} strokeWidth={2.4} />
             <Text style={styles.createSecondaryText}>Atrás</Text>
@@ -1970,17 +2072,17 @@ export default function CrearScreen() {
         ) : null}
 
         <Pressable
-          accessibilityLabel={currentStep === 5 ? (isEditMode ? 'Guardar cambios' : 'Publicar actividad') : 'Continuar'}
+          accessibilityLabel={currentStep === lastVisibleStep ? (isEditMode ? 'Guardar cambios' : 'Publicar actividad') : 'Continuar'}
           accessibilityRole="button"
           disabled={isSaving}
-          onPress={currentStep === 5 ? saveActivity : goToNextStep}
+          onPress={currentStep === lastVisibleStep ? saveActivity : goToNextStep}
           style={[styles.createSubmitButton, isSaving && styles.createSubmitButtonDisabled]}
         >
           {isSaving ? (
             <ActivityIndicator color="#FFFFFF" />
           ) : (
             <>
-              <Text style={styles.createSubmitText}>{currentStep === 5 ? (isEditMode ? 'Guardar cambios' : 'Publicar actividad') : 'Continuar'}</Text>
+              <Text style={styles.createSubmitText}>{currentStep === lastVisibleStep ? (isEditMode ? 'Guardar cambios' : 'Publicar actividad') : 'Continuar'}</Text>
               <ArrowRight color="#FFFFFF" size={32} strokeWidth={2.2} style={styles.createSubmitArrow} />
             </>
           )}
@@ -2598,6 +2700,28 @@ const styles = StyleSheet.create({
     marginBottom: 22,
     marginTop: 8,
     textAlign: 'center',
+  },
+  groupContextChip: {
+    alignItems: 'center',
+    alignSelf: 'center',
+    backgroundColor: '#F3EEFF',
+    borderColor: '#D8C7F5',
+    borderRadius: 999,
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: 16,
+    maxWidth: '100%',
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+  },
+  groupContextChipText: {
+    color: '#3A256A',
+    flexShrink: 1,
+    fontSize: 14,
+    fontWeight: '900',
+    letterSpacing: 0,
+    lineHeight: 18,
   },
   createStepPills: {
     flexDirection: 'row',

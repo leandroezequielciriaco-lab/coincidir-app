@@ -15,6 +15,7 @@ import {
   useWindowDimensions,
 } from 'react-native'
 import AsyncStorage from '@react-native-async-storage/async-storage'
+import * as Location from 'expo-location'
 import { useFocusEffect, useRouter } from 'expo-router'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import {
@@ -498,6 +499,15 @@ function getRecordCity(data: Record<string, unknown>) {
   return readString(data.city) || readString(data.locationCity) || readString(data.town)
 }
 
+function getCityFromGeocode(place: Location.LocationGeocodedAddress | null | undefined) {
+  if (!place) return ''
+
+  return readString(place.city)
+    || readString(place.district)
+    || readString(place.subregion)
+    || readString(place.region)
+}
+
 function matchesSelectedCity(record: CreatedRecord, selectedCity: string) {
   const recordCity = getRecordCity(record.data)
   const normalizedCity = normalize(selectedCity)
@@ -583,6 +593,7 @@ export default function HomeScreen() {
   const [isCitySelectorVisible, setIsCitySelectorVisible] = useState(false)
   const [isCitySearchVisible, setIsCitySearchVisible] = useState(false)
   const [citySearchQuery, setCitySearchQuery] = useState('')
+  const [isResolvingCurrentLocation, setIsResolvingCurrentLocation] = useState(false)
   const [isInviteVisible, setIsInviteVisible] = useState(false)
   const [shareTarget, setShareTarget] = useState<InviteShareTarget>({ type: 'app' })
   const [searchQuery, setSearchQuery] = useState('')
@@ -787,9 +798,9 @@ export default function HomeScreen() {
     () => filterRecordsByCategory(searchedActivities, activeCategory),
     [activeCategory, searchedActivities],
   )
-  const selectCity = async (city: string) => {
+  const persistSelectedCity = async (city: string) => {
     const nextCity = city.trim()
-    if (!nextCity) return
+    if (!nextCity) return false
 
     setSelectedCity(nextCity)
     setIsCitySelectorVisible(false)
@@ -801,9 +812,48 @@ export default function HomeScreen() {
     } catch {
       // The selector still works in-memory if local persistence is unavailable.
     }
+
+    return true
   }
-  const useCurrentLocation = () => {
-    Alert.alert('Usar mi ubicación actual', 'Próximamente vamos a pedir permiso para detectar tu ciudad.')
+
+  const selectCity = async (city: string) => {
+    await persistSelectedCity(city)
+  }
+  const useCurrentLocation = async () => {
+    if (isResolvingCurrentLocation) return
+
+    setIsResolvingCurrentLocation(true)
+    try {
+      const permission = await Location.requestForegroundPermissionsAsync()
+      if (permission.status !== 'granted') {
+        await persistSelectedCity(DEFAULT_CITY)
+        Alert.alert('Ubicación no disponible', 'No pudimos usar tu ubicación actual. Seguimos mostrando Tandil.')
+        return
+      }
+
+      const currentLocation = await Location.getCurrentPositionAsync({
+        accuracy: Location.Accuracy.Balanced,
+      })
+      const [place] = await Location.reverseGeocodeAsync({
+        latitude: currentLocation.coords.latitude,
+        longitude: currentLocation.coords.longitude,
+      })
+      const resolvedCity = getCityFromGeocode(place)
+
+      if (!resolvedCity) {
+        await persistSelectedCity(DEFAULT_CITY)
+        Alert.alert('Ciudad no disponible', 'No pudimos detectar tu ciudad. Seguimos mostrando Tandil.')
+        return
+      }
+
+      await persistSelectedCity(resolvedCity)
+    } catch (error) {
+      if (__DEV__) console.warn('[Home] error usando ubicación actual', error)
+      await persistSelectedCity(DEFAULT_CITY)
+      Alert.alert('Ubicación no disponible', 'No pudimos detectar tu ubicación actual. Seguimos mostrando Tandil.')
+    } finally {
+      setIsResolvingCurrentLocation(false)
+    }
   }
   const openCitySearch = () => {
     setIsCitySearchVisible(true)
@@ -1065,11 +1115,12 @@ export default function HomeScreen() {
               <Text style={styles.cityModalTitle}>Elegí una ciudad</Text>
               <Pressable
                 accessibilityRole="menuitem"
+                disabled={isResolvingCurrentLocation}
                 onPress={useCurrentLocation}
-                style={styles.cityActionOption}
+                style={[styles.cityActionOption, isResolvingCurrentLocation && styles.cityActionOptionDisabled]}
               >
                 <MapPin color="#006A32" size={21} strokeWidth={2.2} />
-                <Text numberOfLines={1} style={styles.cityActionText}>Usar mi ubicación actual</Text>
+                <Text numberOfLines={1} style={styles.cityActionText}>{isResolvingCurrentLocation ? 'Detectando ubicación...' : 'Usar mi ubicación actual'}</Text>
               </Pressable>
               <Text style={styles.cityModalSectionTitle}>Ciudades populares</Text>
               {cityOptions.map((city) => {
@@ -1468,6 +1519,9 @@ const styles = StyleSheet.create({
     gap: 10,
     minHeight: 50,
     paddingHorizontal: 12,
+  },
+  cityActionOptionDisabled: {
+    opacity: 0.72,
   },
   cityActionText: {
     color: '#006A32',

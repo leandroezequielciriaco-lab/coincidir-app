@@ -720,6 +720,7 @@ export default function GroupDetailScreen() {
       params: {
         groupId: groupId || getLocalGroupId(detail.title),
         groupName: detail.title,
+        groupContext: '1',
         kind: 'group',
       },
     })
@@ -889,15 +890,22 @@ export default function GroupDetailScreen() {
                 scaleTo={0.985}
               >
                 {draftGroupPhotoPreviewUri ? (
-                  <Image resizeMode="cover" source={{ uri: draftGroupPhotoPreviewUri }} style={styles.groupPhotoPreview} />
-                ) : null}
-                <View style={[styles.groupPhotoPickerContent, draftGroupPhotoPreviewUri && styles.groupPhotoPickerContentOverlay]}>
-                  <View style={styles.groupPhotoIcon}>
-                    <ImageIcon color="#4B348A" size={23} strokeWidth={2.4} />
+                  <>
+                    <Image resizeMode="cover" source={{ uri: draftGroupPhotoPreviewUri }} style={styles.groupPhotoPreview} />
+                    <View style={styles.groupPhotoChangeChip}>
+                      <ImageIcon color="#4B348A" size={17} strokeWidth={2.4} />
+                      <Text style={styles.groupPhotoActionText}>Cambiar foto</Text>
+                    </View>
+                  </>
+                ) : (
+                  <View style={styles.groupPhotoPickerContent}>
+                    <View style={styles.groupPhotoIcon}>
+                      <ImageIcon color="#4B348A" size={23} strokeWidth={2.4} />
+                    </View>
+                    <Text style={styles.groupPhotoTitle}>Foto del grupo</Text>
+                    <Text style={styles.groupPhotoActionText}>Elegir de la galería</Text>
                   </View>
-                  <Text style={styles.groupPhotoTitle}>Foto del grupo</Text>
-                  <Text style={styles.groupPhotoActionText}>{draftGroupPhotoPreviewUri ? 'Cambiar foto' : 'Elegir de la galería'}</Text>
-                </View>
+                )}
               </PressScale>
               {draftGroupPhotoPreviewUri ? (
                 <PressScale
@@ -911,8 +919,13 @@ export default function GroupDetailScreen() {
                   <Text style={styles.groupPhotoRemoveText}>Eliminar foto</Text>
                 </PressScale>
               ) : null}
-              <PressScale disabled={isSavingGroupEdits} onPress={saveGroupEdits} style={styles.editGroupSaveButton} scaleTo={0.97}>
-                {isSavingGroupEdits ? <ActivityIndicator color="#FFFFFF" /> : <Text style={styles.editGroupSaveText}>Guardar cambios</Text>}
+              <PressScale
+                disabled={isSavingGroupEdits}
+                onPress={saveGroupEdits}
+                style={[styles.editGroupSaveButton, isSavingGroupEdits && styles.editGroupSaveButtonDisabled]}
+                scaleTo={0.97}
+              >
+                {isSavingGroupEdits ? <ActivityIndicator color="#3B5F4A" /> : <Text style={styles.editGroupSaveText}>Guardar cambios</Text>}
               </PressScale>
             </View>
           ) : null}
@@ -1275,10 +1288,19 @@ const styles = StyleSheet.create({
     paddingHorizontal: 18,
     paddingVertical: 16,
   },
-  groupPhotoPickerContentOverlay: {
-    backgroundColor: 'rgba(255,255,255,0.84)',
-    borderRadius: 14,
-    margin: 12,
+  groupPhotoChangeChip: {
+    alignItems: 'center',
+    backgroundColor: 'rgba(255,255,255,0.92)',
+    borderColor: 'rgba(217,200,244,0.9)',
+    borderRadius: 999,
+    borderWidth: 1,
+    bottom: 12,
+    flexDirection: 'row',
+    gap: 7,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    position: 'absolute',
+    right: 12,
   },
   groupPhotoIcon: {
     alignItems: 'center',
@@ -1324,9 +1346,17 @@ const styles = StyleSheet.create({
   editGroupSaveButton: {
     alignItems: 'center',
     backgroundColor: '#006A32',
+    borderColor: '#005229',
+    borderWidth: 1,
     borderRadius: 12,
     height: 44,
     justifyContent: 'center',
+    marginTop: 2,
+    width: '100%',
+  },
+  editGroupSaveButtonDisabled: {
+    backgroundColor: '#E8F1EA',
+    borderColor: '#B9D2C0',
   },
   editGroupSaveText: {
     color: '#FFFFFF',
