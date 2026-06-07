@@ -75,7 +75,6 @@ import {
   readDeletedLocalGroupIds,
   readStoredLocalGroups,
   serializeLocalGroups,
-  toLocalGroup,
 } from '../../constants/localGroups'
 import { canonicalUserInterests, expandUserInterests } from '../../constants/userInterests'
 import { getFirebaseServices } from '../../firebaseConfig'
@@ -207,7 +206,7 @@ type ProfileGroup = LocalGroup & {
   description?: string
   nextActivityAt?: number
   memberCount?: number
-  source: 'activity' | 'local'
+  source: 'activity' | 'firestore' | 'local'
   status: 'host' | 'member' | 'none'
 }
 
@@ -271,14 +270,30 @@ function getParticipantCount(data: Record<string, unknown>) {
 
 function getGroupMemberCount(data: Record<string, unknown>) {
   const memberCount = typeof data.memberCount === 'number' ? data.memberCount : -1
-  const ownerId = readString(data.createdBy, readString(data.creatorId, readString(data.ownerId, readString(data.organizerId))))
+  const ownerId = readString(data.ownerId)
   if (memberCount >= 0) return ownerId ? Math.max(memberCount, 1) : memberCount
 
   const membersCount = typeof data.membersCount === 'number' ? data.membersCount : -1
   if (membersCount >= 0) return ownerId ? Math.max(membersCount, 1) : membersCount
 
-  const members = data.members ?? data.memberIds ?? data.joinedUsers ?? data.participants
-  const count = typeof members === 'object' && members ? Object.keys(members).length : Array.isArray(members) ? members.length : 0
+  const ids = new Set<string>()
+  ;[data.members, data.memberProfiles, data.memberIds, data.joinedUsers, data.participants].forEach((value) => {
+    if (Array.isArray(value)) {
+      value.forEach((item) => {
+        const id = typeof item === 'string' ? item.trim() : ''
+        if (id) ids.add(id)
+      })
+      return
+    }
+
+    if (typeof value === 'object' && value) {
+      Object.keys(value).forEach((id) => {
+        if (id) ids.add(id)
+      })
+    }
+  })
+
+  const count = ids.size
   return ownerId ? Math.max(count, 1) : count
 }
 
@@ -294,11 +309,13 @@ function isJoined(record: FirestoreRecord, userId: string | null) {
   const joinedUsers = record.data.joinedUsers
   const participants = record.data.participants
   const members = record.data.members
+  const memberProfiles = record.data.memberProfiles
   const memberIds = record.data.memberIds
 
   if (typeof joinedUsers === 'object' && joinedUsers && userId in joinedUsers) return true
   if (typeof participants === 'object' && participants && userId in participants) return true
   if (typeof members === 'object' && members && userId in members) return true
+  if (typeof memberProfiles === 'object' && memberProfiles && userId in memberProfiles) return true
   if (Array.isArray(members) && members.includes(userId)) return true
   if (Array.isArray(memberIds) && memberIds.includes(userId)) return true
 
@@ -307,7 +324,6 @@ function isJoined(record: FirestoreRecord, userId: string | null) {
 
 function getGroupStatus(data: Record<string, unknown> | undefined, userId: string | null): ProfileGroup['status'] {
   if (!data || !userId) return 'none'
-  if (isOwnActivity(data, userId)) return 'host'
   if (readString(data.ownerId) === userId) return 'host'
   return isJoined({ id: '', data }, userId) ? 'member' : 'none'
 }
@@ -468,70 +484,35 @@ export default function PerfilScreen() {
     () => activities.filter((item) => isJoined(item, userId) && !isOwnActivity(item.data, userId)),
     [activities, userId],
   )
-  const activityDerivedGroups = useMemo(() => {
-    const derived = createdActivities
-      .map((item) => {
-        const groupMeta = getActivityGroupMeta(item.data, localGroups)
-        const groupName = groupMeta.groupName
-        if (!groupMeta.groupId && !groupName) return null
-
-        return {
-          id: groupMeta.groupId || getLocalGroupId(groupName),
-          name: groupName || groupMeta.groupId,
-        }
-      })
-      .filter((item): item is LocalGroup => Boolean(item?.id && item.name))
-
-    if (__DEV__) {
-      console.log('[Perfil] grupos derivados desde actividades', {
-        count: derived.length,
-        groups: derived,
-      })
-    }
-
-    return derived
-  }, [createdActivities, localGroups])
-  const firestoreProfileGroups = useMemo(() => {
-    const derived = groups
-      .map((item) => toLocalGroup(
-        readString(item.data.name, readString(item.data.title, 'Grupo sin título')),
-        item.id,
-      ))
-      .filter((item): item is LocalGroup => Boolean(item))
-
-    return derived
-  }, [groups])
   const myGroups = useMemo<ProfileGroup[]>(() => {
     const deletedIds = new Set(deletedLocalGroupIds)
-    const merged = mergeLocalGroups(localGroups, activityDerivedGroups, firestoreProfileGroups)
-      .filter((group) => !deletedIds.has(group.id))
     const now = Date.now()
-    const groupsWithCounts = merged.map((group) => {
-      const firestoreGroup = groups.find((item) => item.id === group.id)
-      const isLocalGroup = localGroups.some((localGroup) => localGroup.id === group.id)
-      const matchingActivities = activities.filter((activity) => {
-        if (isCancelled(activity.data)) return false
-        const groupMeta = getActivityGroupMeta(activity.data, localGroups)
-        const activityGroupId = groupMeta.groupId || getLocalGroupId(groupMeta.groupName)
-        return activityGroupId === group.id
-      })
-      const upcomingTimes = matchingActivities
-        .map((activity) => getActivityStartTime(activity.data))
-        .filter((time) => time >= now)
-        .sort((left, right) => left - right)
+    const groupsWithCounts = groups
+      .filter((group) => !deletedIds.has(group.id))
+      .map((firestoreGroup) => {
+        const groupName = readString(firestoreGroup.data.name, readString(firestoreGroup.data.title, 'Grupo sin título'))
+        const matchingActivities = activities.filter((activity) => {
+          if (isCancelled(activity.data)) return false
+          const groupMeta = getActivityGroupMeta(activity.data, localGroups)
+          const activityGroupId = groupMeta.groupId || getLocalGroupId(groupMeta.groupName)
+          return activityGroupId === firestoreGroup.id || groupMeta.groupName === groupName
+        })
+        const upcomingTimes = matchingActivities
+          .map((activity) => getActivityStartTime(activity.data))
+          .filter((time) => time >= now)
+          .sort((left, right) => left - right)
 
-      return {
-        ...group,
-        description: firestoreGroup
-          ? readString(firestoreGroup.data.description, readString(firestoreGroup.data.summary))
-          : '',
-        memberCount: firestoreGroup ? getGroupMemberCount(firestoreGroup.data) : isLocalGroup ? 1 : undefined,
-        activityCount: upcomingTimes.length,
-        nextActivityAt: upcomingTimes[0],
-        source: isLocalGroup ? 'local' as const : 'activity' as const,
-        status: firestoreGroup ? getGroupStatus(firestoreGroup.data, userId) : isLocalGroup ? 'host' as const : 'none' as const,
-      }
-    }).sort((left, right) => {
+        return {
+          id: firestoreGroup.id,
+          name: groupName,
+          description: readString(firestoreGroup.data.description, readString(firestoreGroup.data.summary)),
+          memberCount: getGroupMemberCount(firestoreGroup.data),
+          activityCount: upcomingTimes.length,
+          nextActivityAt: upcomingTimes[0],
+          source: 'firestore' as const,
+          status: getGroupStatus(firestoreGroup.data, userId),
+        }
+      }).sort((left, right) => {
       const rank = { host: 0, member: 1, none: 2 }
       const statusDiff = rank[left.status] - rank[right.status]
       if (statusDiff !== 0) return statusDiff
@@ -544,6 +525,13 @@ export default function PerfilScreen() {
     })
 
     if (__DEV__) {
+      console.log('[PROFILE GROUP OWNERSHIP DEBUG]', groups.map((group) => ({
+        currentUserUid: userId,
+        groupId: group.id,
+        members: group.data.members,
+        name: readString(group.data.name, readString(group.data.title)),
+        ownerId: readString(group.data.ownerId),
+      })))
       console.log('[Perfil] grupos finales deduplicados', {
         count: groupsWithCounts.length,
         groups: groupsWithCounts,
@@ -552,7 +540,7 @@ export default function PerfilScreen() {
     }
 
     return groupsWithCounts
-  }, [activities, activityDerivedGroups, deletedLocalGroupIds, firestoreProfileGroups, groups, localGroups, userId])
+  }, [activities, deletedLocalGroupIds, groups, localGroups, userId])
   const stats = useMemo(() => [
     { label: 'Actividades', value: String(createdActivities.length + joinedActivities.length), Icon: CalendarDays, color: '#5A35D6' },
     { label: 'Grupos', value: String(myGroups.length), Icon: UsersRound, color: '#17803C' },
@@ -952,8 +940,8 @@ function ProfileGroupsSection({ groups, onOpen }: ProfileGroupsSectionProps) {
         <EmptyBlock text="Tus grupos creados o donde participes van a aparecer acá." />
       ) : (
         <View style={styles.profileGroupBlocks}>
-          {renderGroupBlock(0x1F451, 'Grupos que organizo', hostedGroups)}
-          {renderGroupBlock(0x1F465, 'Mis comunidades', memberGroups)}
+          {renderGroupBlock(0x1F451, 'Mis grupos creados', hostedGroups)}
+          {renderGroupBlock(0x1F465, 'Mis grupos', memberGroups)}
           {renderGroupBlock(0x1F30E, 'Descubrir grupos', discoverGroups)}
         </View>
       )}

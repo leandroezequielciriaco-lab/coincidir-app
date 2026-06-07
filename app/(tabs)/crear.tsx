@@ -1168,7 +1168,8 @@ export default function CrearScreen() {
         locationName: cleanLocation,
         memberIds: [user.uid],
         memberCount: 1,
-        members: {
+        members: [user.uid],
+        memberProfiles: {
           [user.uid]: {
             joinedAt: serverTimestamp(),
             name: user.displayName?.trim() || user.email?.split('@')[0]?.trim() || 'Organizador',
@@ -1181,6 +1182,15 @@ export default function CrearScreen() {
         ownerName: user.displayName?.trim() || user.email?.split('@')[0]?.trim() || 'Organizador',
         updatedAt: serverTimestamp(),
       }, { merge: true })
+      if (__DEV__) {
+        console.log('[GROUP CREATE OWNERSHIP DEBUG]', {
+          currentUserUid: user.uid,
+          groupId: createdGroupId,
+          members: [user.uid],
+          name: cleanName,
+          ownerId: user.uid,
+        })
+      }
       await persistLocalGroups(nextGroups)
     } catch (error) {
       if (__DEV__) console.warn('[CrearActividad] error persistiendo grupo local', error)

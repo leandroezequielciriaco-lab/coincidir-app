@@ -83,12 +83,7 @@ function getActivityStartTime(data: Record<string, unknown>) {
 }
 
 function getOwnerId(data: GroupData) {
-  return readString(data.createdBy)
-    || readString(data.creatorId)
-    || readString(data.ownerId)
-    || readString(data.organizerId)
-    || readString(data.userId)
-    || readString(data.createdById)
+  return readString(data.ownerId)
 }
 
 function getUserIdsFromValue(value: unknown) {
@@ -116,6 +111,7 @@ function getGroupMemberIds(data: GroupData) {
   const ids = new Set<string>()
 
   getUserIdsFromValue(data.members).forEach((id) => ids.add(id))
+  getUserIdsFromValue(data.memberProfiles).forEach((id) => ids.add(id))
   getUserIdsFromValue(data.memberIds).forEach((id) => ids.add(id))
   getUserIdsFromValue(data.joinedUsers).forEach((id) => ids.add(id))
   getUserIdsFromValue(data.participants).forEach((id) => ids.add(id))
@@ -322,7 +318,7 @@ export default function GroupDetailScreen() {
   }, [detail.baseLocation, detail.description, detail.photoUrl, detail.title, isEditingGroup])
 
   const isLegacyLocalGroup = !group && Boolean(readString(groupName))
-  const isOwner = useMemo(() => isLegacyLocalGroup || isGroupOwner(group ?? {}, userId), [group, isLegacyLocalGroup, userId])
+  const isOwner = useMemo(() => isGroupOwner(group ?? {}, userId), [group, userId])
   const isMember = useMemo(() => isOwner || isGroupMember(group ?? {}, userId), [group, isOwner, userId])
 
   useEffect(() => {
@@ -331,17 +327,27 @@ export default function GroupDetailScreen() {
     const data = group ?? {}
     console.log('[GROUP MEMBERSHIP DEBUG]', {
       currentUserId: userId,
+      currentUserUid: userId,
       groupId,
+      groupName: readString(data.name, readString(data.title, groupName ?? '')),
       isMember,
       isOwner,
       joinedUsers: data.joinedUsers,
       memberIds: data.memberIds,
       members: data.members,
+      memberProfiles: data.memberProfiles,
       normalizedMemberIds: getGroupMemberIds(data),
       ownerId: getOwnerId(data),
+      legacyOwnerCandidates: {
+        createdBy: data.createdBy,
+        createdById: data.createdById,
+        creatorId: data.creatorId,
+        organizerId: data.organizerId,
+        userId: data.userId,
+      },
       participants: data.participants,
     })
-  }, [group, groupId, isMember, isOwner, userId])
+  }, [group, groupId, groupName, isMember, isOwner, userId])
 
   const groupActivities = useMemo(() => {
     const targetId = readString(groupId)
@@ -418,7 +424,7 @@ export default function GroupDetailScreen() {
       const { db } = getFirebaseServices()
       await updateDoc(doc(db, 'groups', groupId), {
         [`joinedUsers.${request.id}`]: true,
-        [`members.${request.id}`]: {
+        [`memberProfiles.${request.id}`]: {
           joinedAt: serverTimestamp(),
           name: request.name,
           role: 'member',
@@ -426,6 +432,7 @@ export default function GroupDetailScreen() {
         [`membershipRequests.${request.id}`]: deleteField(),
         [`pendingMembers.${request.id}`]: deleteField(),
         memberIds: arrayUnion(request.id),
+        members: arrayUnion(request.id),
         memberCount: increment(1),
         membersCount: increment(1),
         updatedAt: serverTimestamp(),
@@ -576,7 +583,7 @@ export default function GroupDetailScreen() {
     : ''
 
   const displayedMemberCount = isOwner ? Math.max(detail.members, 1) : detail.members
-  const displayHostName = isLegacyLocalGroup ? userName : hostName
+  const displayHostName = isLegacyLocalGroup ? 'Anfitrión no disponible' : hostName
   const roleText = isOwner ? 'Organizador' : isMember ? 'Sos miembro' : 'No sos miembro'
   const heroSource = detail.photoUrl
     ? { uri: detail.photoUrl }
@@ -607,7 +614,18 @@ export default function GroupDetailScreen() {
       }
 
       const latestGroup = snapshot.data() as GroupData
-      if (getOwnerId(latestGroup) !== userId) {
+      const latestOwnerId = getOwnerId(latestGroup)
+      if (__DEV__) {
+        console.log('[GROUP DELETE OWNERSHIP DEBUG]', {
+          currentUserUid: userId,
+          groupId,
+          members: latestGroup.members,
+          name: readString(latestGroup.name, readString(latestGroup.title)),
+          ownerId: latestOwnerId,
+        })
+      }
+
+      if (latestOwnerId !== userId) {
         Alert.alert('No podés eliminar este grupo', 'Solo el organizador puede eliminarlo.')
         return
       }
