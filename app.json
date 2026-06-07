@@ -38,19 +38,19 @@
       [
         "expo-splash-screen",
         {
-          "image": "./assets/images/coincidir-logo-official.png",
-          "imageWidth": 220,
+          "image": "./assets/images/coincidir-splash-logo.png",
+          "imageWidth": 170,
           "resizeMode": "contain",
-          "backgroundColor": "#FCFAF3",
+          "backgroundColor": "#FAF8F3",
           "android": {
-            "image": "./assets/images/coincidir-logo-official.png",
-            "imageWidth": 220,
-            "backgroundColor": "#FCFAF3"
+            "image": "./assets/images/coincidir-splash-logo.png",
+            "imageWidth": 170,
+            "backgroundColor": "#FAF8F3"
           },
           "ios": {
-            "image": "./assets/images/coincidir-logo-official.png",
-            "imageWidth": 220,
-            "backgroundColor": "#FCFAF3"
+            "image": "./assets/images/coincidir-splash-logo.png",
+            "imageWidth": 170,
+            "backgroundColor": "#FAF8F3"
           }
         }
       ],

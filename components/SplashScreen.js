@@ -1,11 +1,12 @@
 import { useEffect, useRef } from 'react'
-import { Animated, View, useWindowDimensions } from 'react-native'
+import { Animated, Image, Text, View, useWindowDimensions } from 'react-native'
 import { useRouter } from 'expo-router'
 import { onAuthStateChanged } from 'firebase/auth'
 
-import CoincidirLogo from './CoincidirLogo'
 import { styles } from './SplashScreen.styles'
 import { getFirebaseServices } from '../firebaseConfig'
+
+const SPLASH_LOGO_SOURCE = require('../assets/images/coincidir-splash-logo.png')
 
 const DISPLAY_TIME = 2000
 const FADE_DURATION = 700
@@ -15,9 +16,7 @@ export default function SplashScreen() {
   const { width } = useWindowDimensions()
   const entrance = useRef(new Animated.Value(0)).current
 
-  const cardSize = Math.min(Math.max(width * 0.74, 276), 360)
-  const logoSize = Math.min(Math.max(width * 0.24, 92), 128)
-  const brandSize = Math.min(Math.max(width * 0.1, 36), 48)
+  const logoWidth = Math.min(Math.max(width * 0.44, 150), 180)
 
   useEffect(() => {
     const animation = Animated.timing(entrance, {
@@ -91,15 +90,17 @@ export default function SplashScreen() {
     <View style={styles.screen}>
       <Animated.View
         style={[
-          styles.card,
+          styles.brand,
           animatedStyle,
-          {
-            width: cardSize,
-            minHeight: cardSize,
-          },
         ]}
       >
-        <CoincidirLogo markSize={logoSize} textSize={brandSize} />
+        <Image
+          accessibilityLabel="Logo de Coincidir"
+          resizeMode="contain"
+          source={SPLASH_LOGO_SOURCE}
+          style={[styles.logo, { width: logoWidth, height: logoWidth * 0.872 }]}
+        />
+        <Text style={styles.tagline}>Conectá. Movete. Coincidí.</Text>
       </Animated.View>
     </View>
   )

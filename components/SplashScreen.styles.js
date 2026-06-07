@@ -1,31 +1,27 @@
-import { Platform, StyleSheet } from 'react-native'
+import { StyleSheet } from 'react-native'
 
 export const styles = StyleSheet.create({
   screen: {
     flex: 1,
-    backgroundColor: '#F4F4F4',
+    backgroundColor: '#FAF8F3',
     justifyContent: 'center',
     alignItems: 'center',
     padding: 28,
   },
-  card: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 44,
+  brand: {
     justifyContent: 'center',
     alignItems: 'center',
-    paddingHorizontal: 34,
-    paddingVertical: 40,
-    ...Platform.select({
-      web: {
-        boxShadow: '0 20px 34px rgba(13, 47, 54, 0.11)',
-      },
-      default: {
-        shadowColor: '#0D2F36',
-        shadowOffset: { width: 0, height: 20 },
-        shadowOpacity: 0.11,
-        shadowRadius: 34,
-        elevation: 8,
-      },
-    }),
+  },
+  logo: {
+    marginBottom: 18,
+  },
+  tagline: {
+    color: '#0E5A44',
+    fontSize: 14,
+    fontWeight: '700',
+    letterSpacing: 0,
+    lineHeight: 19,
+    opacity: 0.72,
+    textAlign: 'center',
   },
 })
