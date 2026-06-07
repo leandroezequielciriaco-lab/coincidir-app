@@ -16,6 +16,7 @@ export type ActivityCardItem = {
   organizer: string
   groupColor?: string
   groupId?: string
+  groupImageUrl?: string
   groupName?: string
   iconLabel: string
   cta: string

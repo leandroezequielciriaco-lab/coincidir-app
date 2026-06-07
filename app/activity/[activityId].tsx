@@ -17,6 +17,7 @@ import { SafeAreaView } from 'react-native-safe-area-context'
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router'
 import { onAuthStateChanged } from 'firebase/auth'
 import {
+  collection,
   deleteField,
   deleteDoc,
   doc,
@@ -45,6 +46,7 @@ import {
 } from 'lucide-react-native'
 import type { LucideIcon } from 'lucide-react-native'
 
+import { GroupAvatar } from '../../components/groups/GroupAvatar'
 import { PressScale } from '../../components/home/PressScale'
 import { InviteFriendsSheet, type InviteShareTarget } from '../../components/InviteFriendsSheet'
 import { getGroupTheme, groupTheme } from '../../constants/groupTheme'
@@ -54,6 +56,7 @@ import {
   readStoredLocalGroups,
 } from '../../constants/localGroups'
 import { getFirebaseServices } from '../../firebaseConfig'
+import { readRemoteGroupPhotoUrl } from '../../lib/groupPhotos'
 import { notifyActivityCancelled, notifyActivityConfirmed, notifyActivityInterest, notifyActivityRejected } from '../../lib/notifications'
 import { getActivityGroupMeta } from '../../utils/activityGroups'
 import { getCategoryImage } from '../../utils/categoryImages'
@@ -432,6 +435,7 @@ export default function ActivityDetailScreen() {
   const [optimisticJoined, setOptimisticJoined] = useState<boolean | null>(null)
   const [optimisticInterested, setOptimisticInterested] = useState<boolean | null>(null)
   const [organizerProfile, setOrganizerProfile] = useState<ActivityData | null>(null)
+  const [associatedGroupPhotoUrl, setAssociatedGroupPhotoUrl] = useState('')
   const [currentUserName, setCurrentUserName] = useState('')
   const [pendingInterestedActions, setPendingInterestedActions] = useState<string[]>([])
   const [isDeletingActivity, setIsDeletingActivity] = useState(false)
@@ -562,6 +566,44 @@ export default function ActivityDetailScreen() {
     }
   }, [creatorId])
 
+  const activityGroupMeta = useMemo(() => getGroupMeta(activity ?? {}, localGroups), [activity, localGroups])
+
+  useEffect(() => {
+    if (!activityGroupMeta.groupId && !activityGroupMeta.groupName) {
+      setAssociatedGroupPhotoUrl('')
+      return undefined
+    }
+
+    try {
+      const { db } = getFirebaseServices()
+      if (!activityGroupMeta.groupId) {
+        const targetName = normalize(activityGroupMeta.groupName)
+
+        return onSnapshot(
+          collection(db, 'groups'),
+          (snapshot) => {
+            const match = snapshot.docs.find((item) => {
+              const data = item.data() as ActivityData
+              return normalize(readString(data.name, readString(data.title))) === targetName
+            })
+
+            setAssociatedGroupPhotoUrl(match ? readRemoteGroupPhotoUrl(match.data() as ActivityData) : '')
+          },
+          () => setAssociatedGroupPhotoUrl(''),
+        )
+      }
+
+      return onSnapshot(
+        doc(db, 'groups', activityGroupMeta.groupId),
+        (snapshot) => setAssociatedGroupPhotoUrl(snapshot.exists() ? readRemoteGroupPhotoUrl(snapshot.data() as ActivityData) : ''),
+        () => setAssociatedGroupPhotoUrl(''),
+      )
+    } catch {
+      setAssociatedGroupPhotoUrl('')
+      return undefined
+    }
+  }, [activityGroupMeta.groupId])
+
   const detail = useMemo(() => {
     const data = activity ?? {}
     const participantCount = getParticipantCount(data)
@@ -583,7 +625,7 @@ export default function ActivityDetailScreen() {
     const locationAddress = getLocationAddress(data, locationDisplayName)
     const locationLatitude = getLocationCoordinate(data, 'latitude')
     const locationLongitude = getLocationCoordinate(data, 'longitude')
-    const groupMeta = getGroupMeta(data, localGroups)
+    const groupMeta = activityGroupMeta
     const additionalSettings = getAdditionalSettings(data)
     const visibility = normalize(readString(data.visibility, readString(additionalSettings.visibility)))
     const isGroupActivity = visibility === 'group' || Boolean(groupMeta.groupId || groupMeta.groupName)
@@ -596,6 +638,7 @@ export default function ActivityDetailScreen() {
       image: getCategoryImage(data),
       groupColor: groupMeta.groupColor,
       groupId: groupMeta.groupId,
+      groupImageUrl: associatedGroupPhotoUrl,
       isGroupActivity,
       groupName: groupMeta.groupName,
       interested,
@@ -617,7 +660,7 @@ export default function ActivityDetailScreen() {
       time: readString(data.time, 'Horario a definir'),
       title: readString(data.name, 'Actividad sin título'),
     }
-  }, [activity, currentUserId, localGroups, optimisticInterested, optimisticJoined, organizerProfile])
+  }, [activity, activityGroupMeta, associatedGroupPhotoUrl, currentUserId, optimisticInterested, optimisticJoined, organizerProfile])
 
   useEffect(() => {
     if (detail.isCancelled && isInviteVisible) setIsInviteVisible(false)
@@ -1180,7 +1223,7 @@ export default function ActivityDetailScreen() {
             <View style={[styles.groupActivityCard, { backgroundColor: groupColors.backgroundColor, borderColor: groupColors.borderColor }]}>
               <Text style={styles.groupActivityEyebrow}>Actividad de grupo</Text>
               <View style={styles.groupActivityRow}>
-                <UsersRound color={groupColors.color} size={22} strokeWidth={2.3} />
+                <GroupAvatar groupName={detail.groupName} imageUrl={detail.groupImageUrl} size={32} />
                 <Text numberOfLines={1} style={[styles.groupActivityName, { color: groupColors.chipTextColor }]}>{detail.groupName}</Text>
               </View>
             </View>

@@ -37,6 +37,7 @@ import {
 } from 'lucide-react-native'
 import type { LucideIcon } from 'lucide-react-native'
 
+import { GroupAvatar } from '../../components/groups/GroupAvatar'
 import { PressScale } from '../../components/home/PressScale'
 import { activityCategories, type ActivityCategoryId } from '../../constants/activityCategories'
 import { getGroupTheme } from '../../constants/groupTheme'
@@ -46,6 +47,7 @@ import {
   readStoredLocalGroups,
 } from '../../constants/localGroups'
 import { getFirebaseServices } from '../../firebaseConfig'
+import { readRemoteGroupPhotoUrl } from '../../lib/groupPhotos'
 import { getActivityRecommendationScore, getActivityRecommendationTerms } from '../../lib/recommendations'
 import { getActivityGroupMeta } from '../../utils/activityGroups'
 import { defaultActivityImage, getCategoryImage } from '../../utils/categoryImages'
@@ -57,6 +59,7 @@ type RecordItem = {
 }
 
 type SortMode = 'recommended' | 'recent' | 'popular'
+type GroupImageUrlsByKey = Record<string, string>
 type QuickFilterItem = {
   id: 'all' | ActivityCategoryId
   label: string
@@ -80,6 +83,7 @@ type ExploreCardItem = {
   schedule: string
   groupColor?: string
   groupId?: string
+  groupImageUrl?: string
   groupName?: string
   cta: string
   image: ImageSourcePropType
@@ -172,6 +176,16 @@ function getMaxParticipants(data: Record<string, unknown>) {
 
 function getGroupMeta(data: Record<string, unknown>, localGroups: LocalGroup[] = []) {
   return getActivityGroupMeta(data, localGroups)
+}
+
+function getGroupLookupKey(value: string) {
+  return normalize(value)
+}
+
+function getGroupImageUrl(groupMeta: { groupId?: string; groupName?: string }, groupImageUrlsByKey: GroupImageUrlsByKey) {
+  return groupImageUrlsByKey[groupMeta.groupId ?? '']
+    || groupImageUrlsByKey[getGroupLookupKey(groupMeta.groupName ?? '')]
+    || ''
 }
 
 function getRecordTime(item: RecordItem) {
@@ -320,7 +334,7 @@ function getQuickIcon(filter: QuickFilterItem): LucideIcon {
   return Leaf
 }
 
-function mapExploreCard(item: RecordItem, localGroups: LocalGroup[] = []): ExploreCardItem {
+function mapExploreCard(item: RecordItem, localGroups: LocalGroup[] = [], groupImageUrlsByKey: GroupImageUrlsByKey = {}): ExploreCardItem {
   const data = item.data
   const count = getParticipantCount(data)
   const max = getMaxParticipants(data)
@@ -340,6 +354,7 @@ function mapExploreCard(item: RecordItem, localGroups: LocalGroup[] = []): Explo
       : `${readString(data.date, 'Fecha a definir')}${readString(data.time) ? ` ${readString(data.time)}` : ''}`,
     groupColor: groupMeta.groupColor,
     groupId: groupMeta.groupId,
+    groupImageUrl: isGroup ? readRemoteGroupPhotoUrl(data) : getGroupImageUrl(groupMeta, groupImageUrlsByKey),
     groupName: groupMeta.groupName,
     cta: cancelled ? 'Cancelada' : isGroup ? 'Ver grupo' : 'Ver encuentro',
     image: getCardImage(item),
@@ -459,7 +474,27 @@ export default function ExplorarScreen() {
     return sortRecords(filtered, filters.sort, userInterests)
   }, [debouncedQuery, filters, quickFilter, records, userInterests])
 
-  const cards = useMemo(() => filteredRecords.map((item) => mapExploreCard(item, localGroups)), [filteredRecords, localGroups])
+  const groupImageUrlsByKey = useMemo(() => {
+    const nextImages: GroupImageUrlsByKey = {}
+
+    records.forEach((item) => {
+      if (item.source !== 'group') return
+
+      const imageUrl = readRemoteGroupPhotoUrl(item.data)
+      if (!imageUrl) return
+
+      nextImages[item.id] = imageUrl
+      const nameKey = getGroupLookupKey(readString(item.data.name, readString(item.data.title)))
+      if (nameKey) nextImages[nameKey] = imageUrl
+    })
+
+    return nextImages
+  }, [records])
+
+  const cards = useMemo(
+    () => filteredRecords.map((item) => mapExploreCard(item, localGroups, groupImageUrlsByKey)),
+    [filteredRecords, groupImageUrlsByKey, localGroups],
+  )
 
   const openFilters = () => {
     setDraftFilters(filters)
@@ -663,7 +698,11 @@ function ExploreCard({ cardWidth, item, onPress }: { cardWidth: number; item: Ex
           </View>
         ) : null}
         <View style={styles.cardIcon}>
-          <item.Icon color="#17803C" size={31} strokeWidth={2.2} />
+          {item.source === 'group' ? (
+            <GroupAvatar groupName={item.title} imageUrl={item.groupImageUrl} size={58} />
+          ) : (
+            <item.Icon color="#17803C" size={31} strokeWidth={2.2} />
+          )}
         </View>
       </View>
       <View style={styles.cardBody}>
@@ -678,7 +717,7 @@ function ExploreCard({ cardWidth, item, onPress }: { cardWidth: number; item: Ex
         </View>
         {item.groupName ? (
           <View style={styles.groupIndicator}>
-            <UsersRound color={groupColors.color} size={11} strokeWidth={2.4} />
+            <GroupAvatar groupName={item.groupName} imageUrl={item.groupImageUrl} size={18} />
             <Text numberOfLines={1} style={[styles.groupIndicatorText, { color: groupColors.chipTextColor }]}>{item.groupName}</Text>
           </View>
         ) : null}
@@ -1050,7 +1089,7 @@ const styles = StyleSheet.create({
   groupIndicator: {
     alignItems: 'center',
     flexDirection: 'row',
-    gap: 4,
+    gap: 5,
     marginTop: 4,
     maxWidth: '100%',
   },

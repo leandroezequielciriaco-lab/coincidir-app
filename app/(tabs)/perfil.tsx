@@ -46,6 +46,7 @@ import {
   UsersRound,
   Waves,
   Wine,
+  X,
 } from 'lucide-react-native'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
@@ -66,6 +67,7 @@ import {
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 
 import { PressScale } from '../../components/home/PressScale'
+import { GroupAvatar } from '../../components/groups/GroupAvatar'
 import { getGroupTheme } from '../../constants/groupTheme'
 import {
   type LocalGroup,
@@ -78,7 +80,8 @@ import {
 } from '../../constants/localGroups'
 import { canonicalUserInterests, expandUserInterests } from '../../constants/userInterests'
 import { getFirebaseServices } from '../../firebaseConfig'
-import { createNotification } from '../../lib/notifications'
+import { readRemoteGroupPhotoUrl } from '../../lib/groupPhotos'
+import { createNotification, deletePendingGroupJoinRequestNotifications } from '../../lib/notifications'
 import { applyGroupNameToActivity, getActivityGroupMeta } from '../../utils/activityGroups'
 import { isOwnActivity } from '../../utils/activityOwnership'
 import { defaultActivityImage, getCategoryImage } from '../../utils/categoryImages'
@@ -88,6 +91,7 @@ type FirestoreRecord = {
   id: string
   data: Record<string, unknown>
 }
+type GroupImageUrlsByKey = Record<string, string>
 
 type UserProfile = {
   bio: string
@@ -209,6 +213,7 @@ type ProfileGroup = LocalGroup & {
   nextActivityAt?: number
   memberCount?: number
   ownerId?: string
+  photoUrl?: string
   source: 'activity' | 'firestore' | 'local'
   status: 'host' | 'member' | 'none' | 'pending'
 }
@@ -348,6 +353,16 @@ function getGroupStatusText(status: ProfileGroup['status']) {
   if (status === 'member') return 'Miembro'
   if (status === 'pending') return 'Solicitud enviada'
   return 'No sos miembro'
+}
+
+function getGroupLookupKey(value: string) {
+  return normalize(value)
+}
+
+function getGroupImageUrl(groupMeta: { groupId?: string; groupName?: string }, groupImageUrlsByKey: GroupImageUrlsByKey) {
+  return groupImageUrlsByKey[groupMeta.groupId ?? '']
+    || groupImageUrlsByKey[getGroupLookupKey(groupMeta.groupName ?? '')]
+    || ''
 }
 
 function getActivityStartTime(data: Record<string, unknown>) {
@@ -527,6 +542,7 @@ export default function PerfilScreen() {
           activityCount: upcomingTimes.length,
           nextActivityAt: upcomingTimes[0],
           ownerId: readString(firestoreGroup.data.ownerId),
+          photoUrl: readRemoteGroupPhotoUrl(firestoreGroup.data),
           source: 'firestore' as const,
           status: getGroupStatus(firestoreGroup.data, userId),
         }
@@ -559,6 +575,19 @@ export default function PerfilScreen() {
 
     return groupsWithCounts
   }, [activities, deletedLocalGroupIds, groups, localGroups, userId])
+  const groupImageUrlsByKey = useMemo(() => {
+    const nextImages: GroupImageUrlsByKey = {}
+
+    myGroups.forEach((group) => {
+      if (!group.photoUrl) return
+
+      nextImages[group.id] = group.photoUrl
+      const nameKey = getGroupLookupKey(group.name)
+      if (nameKey) nextImages[nameKey] = group.photoUrl
+    })
+
+    return nextImages
+  }, [myGroups])
   const stats = useMemo(() => [
     { label: 'Actividades', value: String(createdActivities.length + joinedActivities.length), Icon: CalendarDays, color: '#5A35D6' },
     { label: 'Grupos', value: String(myGroups.length), Icon: UsersRound, color: '#17803C' },
@@ -757,6 +786,7 @@ export default function PerfilScreen() {
         <ProfileListSection
           emptyText="Cuando crees actividades, van a aparecer acá."
           currentUserId={userId}
+          groupImageUrlsByKey={groupImageUrlsByKey}
           items={createdActivities}
           localGroups={localGroups}
           onPress={(item) => router.push({ pathname: '/activity/[activityId]', params: { activityId: item.id } })}
@@ -766,6 +796,7 @@ export default function PerfilScreen() {
         <ProfileListSection
           emptyText="Cuando te sumes a una actividad, la vas a ver acá."
           currentUserId={userId}
+          groupImageUrlsByKey={groupImageUrlsByKey}
           items={joinedActivities}
           localGroups={localGroups}
           onPress={(item) => router.push({ pathname: '/activity/[activityId]', params: { activityId: item.id } })}
@@ -868,6 +899,7 @@ function EmptyBlock({ text }: { text: string }) {
 type ProfileListSectionProps = {
   currentUserId?: string | null
   emptyText: string
+  groupImageUrlsByKey?: GroupImageUrlsByKey
   items: FirestoreRecord[]
   localGroups?: LocalGroup[]
   onPress: (item: FirestoreRecord) => void
@@ -875,7 +907,7 @@ type ProfileListSectionProps = {
   variant?: 'activity' | 'group'
 }
 
-function ProfileListSection({ currentUserId = null, emptyText, items, localGroups = [], onPress, title, variant = 'activity' }: ProfileListSectionProps) {
+function ProfileListSection({ currentUserId = null, emptyText, groupImageUrlsByKey = {}, items, localGroups = [], onPress, title, variant = 'activity' }: ProfileListSectionProps) {
   return (
     <ProfileSection title={title}>
       {items.length === 0 ? (
@@ -883,7 +915,7 @@ function ProfileListSection({ currentUserId = null, emptyText, items, localGroup
       ) : (
         <View style={styles.list}>
           {items.slice(0, 4).map((item) => (
-            <ProfileRow currentUserId={currentUserId} item={item} key={item.id} localGroups={localGroups} onPress={() => onPress(item)} variant={variant} />
+            <ProfileRow currentUserId={currentUserId} groupImageUrlsByKey={groupImageUrlsByKey} item={item} key={item.id} localGroups={localGroups} onPress={() => onPress(item)} variant={variant} />
           ))}
         </View>
       )}
@@ -949,6 +981,31 @@ function ProfileGroupsSection({ currentUserId, currentUserName, groups, onOpen }
     }
   }
 
+  const cancelGroupMembershipRequest = async (group: ProfileGroup) => {
+    if (!currentUserId || group.status !== 'pending' || pendingGroupAction) return
+
+    setPendingGroupAction(`cancel:${group.id}`)
+    try {
+      const { db } = getFirebaseServices()
+      await updateDoc(doc(db, 'groups', group.id), {
+        [`membershipRequests.${currentUserId}`]: deleteField(),
+        [`pendingMembers.${currentUserId}`]: deleteField(),
+        updatedAt: serverTimestamp(),
+      })
+
+      await deletePendingGroupJoinRequestNotifications({
+        groupId: group.id,
+        requesterId: currentUserId,
+        userId: group.ownerId || undefined,
+      })
+    } catch (error) {
+      if (__DEV__) console.warn('[PROFILE GROUP CANCEL REQUEST ERROR]', error)
+      Alert.alert('No pudimos cancelar la solicitud', 'Intentá cancelar tu solicitud nuevamente en unos segundos.')
+    } finally {
+      setPendingGroupAction(null)
+    }
+  }
+
   const leaveGroup = async (group: ProfileGroup) => {
     if (!currentUserId || group.status !== 'member' || pendingGroupAction) return
 
@@ -1005,12 +1062,29 @@ function ProfileGroupsSection({ currentUserId, currentUserName, groups, onOpen }
     )
   }
 
+  const confirmCancelGroupMembershipRequest = (group: ProfileGroup) => {
+    if (group.status !== 'pending' || pendingGroupAction) return
+
+    Alert.alert(
+      '¿Querés cancelar tu solicitud para unirte a este grupo?',
+      undefined,
+      [
+        { text: 'No', style: 'cancel' },
+        {
+          text: 'Cancelar solicitud',
+          style: 'destructive',
+          onPress: () => {
+            void cancelGroupMembershipRequest(group)
+          },
+        },
+      ],
+    )
+  }
+
   const renderGroupCard = (group: ProfileGroup) => (
     <PressScale accessibilityRole="button" key={group.id} onPress={() => onOpen(group)} scaleTo={0.985} style={[styles.profileGroupRow, { borderColor: groupColors.borderColor }]}>
       <View style={styles.profileGroupTopRow}>
-        <View style={[styles.profileGroupIcon, { backgroundColor: groupColors.backgroundColor, borderColor: groupColors.borderColor }]}>
-          <UsersRound color={groupColors.color} size={24} strokeWidth={2.4} />
-        </View>
+        <GroupAvatar groupName={group.name} imageUrl={group.photoUrl} size={54} />
         <View style={styles.profileGroupCopy}>
           <Text ellipsizeMode="tail" numberOfLines={1} style={[styles.profileGroupName, { color: groupColors.chipTextColor }]}>{group.name}</Text>
           <View style={styles.profileGroupMetaRow}>
@@ -1057,6 +1131,31 @@ function ProfileGroupsSection({ currentUserId, currentUserName, groups, onOpen }
           ]}
         >
           {pendingGroupAction === `join:${group.id}` ? <ActivityIndicator color="#4B348A" /> : <Text style={styles.profileGroupJoinButtonText}>+ Ser miembro</Text>}
+        </Pressable>
+      ) : null}
+      {group.status === 'pending' ? (
+        <Pressable
+          accessibilityLabel={`Cancelar solicitud para unirte a ${group.name}`}
+          accessibilityRole="button"
+          disabled={Boolean(pendingGroupAction)}
+          onPress={(event) => {
+            event.stopPropagation()
+            confirmCancelGroupMembershipRequest(group)
+          }}
+          style={({ pressed }) => [
+            styles.profileGroupCancelRequestButton,
+            pressed && styles.profileGroupActionPressed,
+            Boolean(pendingGroupAction) && styles.profileGroupActionDisabled,
+          ]}
+        >
+          {pendingGroupAction === `cancel:${group.id}` ? (
+            <ActivityIndicator color="#B63232" />
+          ) : (
+            <>
+              <X color="#B63232" size={17} strokeWidth={2.6} />
+              <Text style={styles.profileGroupCancelRequestButtonText}>Cancelar solicitud</Text>
+            </>
+          )}
         </Pressable>
       ) : null}
       {group.status === 'member' ? (
@@ -1155,7 +1254,21 @@ function EditGroupModal({
   )
 }
 
-function ProfileRow({ currentUserId, item, localGroups = [], onPress, variant }: { currentUserId?: string | null; item: FirestoreRecord; localGroups?: LocalGroup[]; onPress: () => void; variant: 'activity' | 'group' }) {
+function ProfileRow({
+  currentUserId,
+  groupImageUrlsByKey = {},
+  item,
+  localGroups = [],
+  onPress,
+  variant,
+}: {
+  currentUserId?: string | null
+  groupImageUrlsByKey?: GroupImageUrlsByKey
+  item: FirestoreRecord
+  localGroups?: LocalGroup[]
+  onPress: () => void
+  variant: 'activity' | 'group'
+}) {
   const title = readString(item.data.name, readString(item.data.title, variant === 'group' ? 'Grupo sin título' : 'Actividad sin título'))
   const location = readString(item.data.location, variant === 'group' ? 'Grupo de amigos' : 'Ubicación a definir')
   const date = readString(item.data.date, readString(item.data.schedule, variant === 'group' ? 'Próximo encuentro' : 'Fecha a definir'))
@@ -1163,6 +1276,7 @@ function ProfileRow({ currentUserId, item, localGroups = [], onPress, variant }:
   const cancelled = variant === 'activity' && isCancelled(item.data)
   const ownActivity = variant === 'activity' && isOwnActivity(item.data, currentUserId)
   const groupMeta = variant === 'activity' ? getActivityGroupMeta(item.data, localGroups) : { groupColor: '', groupId: '', groupName: '' }
+  const groupImageUrl = getGroupImageUrl(groupMeta, groupImageUrlsByKey)
   const isGroupActivity = Boolean(groupMeta.groupId || groupMeta.groupName)
   const groupColors = getGroupTheme(groupMeta.groupColor)
   const iconColor = variant === 'group' ? '#4B348A' : '#006A32'
@@ -1217,7 +1331,7 @@ function ProfileRow({ currentUserId, item, localGroups = [], onPress, variant }:
         </View>
         {groupMeta.groupName ? (
           <View style={styles.rowGroupIndicator}>
-            <UsersRound color={groupColors.color} size={11} strokeWidth={2.4} />
+            <GroupAvatar groupName={groupMeta.groupName} imageUrl={groupImageUrl} size={18} />
             <Text ellipsizeMode="tail" numberOfLines={1} style={[styles.rowGroupIndicatorText, { color: groupColors.chipTextColor }]}>
               {groupMeta.groupName}
             </Text>
@@ -2209,6 +2323,26 @@ const styles = StyleSheet.create({
     fontWeight: '900',
     letterSpacing: 0,
   },
+  profileGroupCancelRequestButton: {
+    alignItems: 'center',
+    alignSelf: 'stretch',
+    backgroundColor: '#FFF4F4',
+    borderColor: '#D95454',
+    borderRadius: 12,
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: 7,
+    justifyContent: 'center',
+    minHeight: 44,
+    paddingHorizontal: 14,
+    width: '100%',
+  },
+  profileGroupCancelRequestButtonText: {
+    color: '#B63232',
+    fontSize: 14,
+    fontWeight: '900',
+    letterSpacing: 0,
+  },
   profileGroupActionDisabled: {
     opacity: 0.62,
   },
@@ -2321,7 +2455,7 @@ const styles = StyleSheet.create({
   rowGroupIndicator: {
     alignItems: 'center',
     flexDirection: 'row',
-    gap: 4,
+    gap: 5,
     marginTop: 3,
     maxWidth: '100%',
   },

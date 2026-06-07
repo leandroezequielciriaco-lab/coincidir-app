@@ -4,6 +4,7 @@ import { Platform, Pressable, StyleSheet, Text, View } from 'react-native'
 import { CalendarDays, MapPin, Share2, UserRound, UsersRound } from 'lucide-react-native'
 
 import { PressScale } from './PressScale'
+import { GroupAvatar } from '../groups/GroupAvatar'
 import type { ActivityCardItem, PrivateCardItem, SuggestionCardItem } from './types'
 import { getGroupTheme } from '../../constants/groupTheme'
 import { defaultActivityImage, getCategoryImage } from '../../utils/categoryImages'
@@ -95,7 +96,7 @@ export function ActivityCard({ item, onCtaPress, onPress, onSharePress }: Activi
           <Text numberOfLines={2} style={[styles.activityTitle, item.groupName && styles.activityTitleWithGroup]}>{item.title}</Text>
           {item.groupName ? (
             <View style={styles.groupIndicator}>
-              <UsersRound color={groupColors.color} size={11} strokeWidth={2.4} />
+              <GroupAvatar groupName={item.groupName} imageUrl={item.groupImageUrl} size={18} />
               <Text numberOfLines={1} style={[styles.groupIndicatorText, { color: groupColors.chipTextColor }]}>{item.groupName}</Text>
             </View>
           ) : null}
@@ -389,7 +390,7 @@ const styles = StyleSheet.create({
   groupIndicator: {
     alignItems: 'center',
     flexDirection: 'row',
-    gap: 4,
+    gap: 5,
     marginBottom: 1,
     marginTop: 0,
     maxWidth: '100%',

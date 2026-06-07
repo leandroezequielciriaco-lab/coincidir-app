@@ -63,6 +63,7 @@ import {
   readStoredLocalGroups,
 } from '../../constants/localGroups'
 import { getFirebaseServices } from '../../firebaseConfig'
+import { readRemoteGroupPhotoUrl } from '../../lib/groupPhotos'
 import { notifyActivityInterest, useUnreadNotificationsCount } from '../../lib/notifications'
 import { getActivityGroupMeta } from '../../utils/activityGroups'
 import { isOwnActivity } from '../../utils/activityOwnership'
@@ -103,6 +104,7 @@ type InterestState = {
 }
 
 type UserNamesById = Record<string, string>
+type GroupImageUrlsByKey = Record<string, string>
 
 function readString(value: unknown, fallback = '') {
   return typeof value === 'string' && value.trim() ? value.trim() : fallback
@@ -400,6 +402,16 @@ function getGroupMeta(data: Record<string, unknown>, localGroups: LocalGroup[] =
   return groupMeta
 }
 
+function getGroupLookupKey(value: string) {
+  return normalize(value)
+}
+
+function getGroupImageUrl(groupMeta: { groupId?: string; groupName?: string }, groupImageUrlsByKey: GroupImageUrlsByKey) {
+  return groupImageUrlsByKey[groupMeta.groupId ?? '']
+    || groupImageUrlsByKey[getGroupLookupKey(groupMeta.groupName ?? '')]
+    || ''
+}
+
 function getJoinState(
   record: CreatedRecord,
   collectionName: JoinableCollection,
@@ -448,6 +460,7 @@ function mapActivityCard(
   userNamesById: UserNamesById,
   currentUserId: string | null,
   localGroups: LocalGroup[] = [],
+  groupImageUrlsByKey: GroupImageUrlsByKey = {},
 ): ActivityCardItem {
   const { data } = record
   const category = readString(data.category, 'Encuentro')
@@ -470,6 +483,7 @@ function mapActivityCard(
     organizer: getOrganizerName(data, userNamesById),
     groupColor: groupMeta.groupColor,
     groupId: groupMeta.groupId,
+    groupImageUrl: getGroupImageUrl(groupMeta, groupImageUrlsByKey),
     groupName: groupMeta.groupName,
     iconLabel: category,
     cta: cancelled ? 'Cancelada' : isOrganizer ? 'Tu actividad' : action === 'interest' ? getInterestCta(interestState.interested) : getJoinCta(joinState.joined),
@@ -560,6 +574,7 @@ export default function HomeScreen() {
   const [userName, setUserName] = useState<string | null>(null)
   const [userNamesById, setUserNamesById] = useState<UserNamesById>({})
   const [createdActivities, setCreatedActivities] = useState<CreatedRecord[]>([])
+  const [groupImageUrlsByKey, setGroupImageUrlsByKey] = useState<GroupImageUrlsByKey>({})
   const [optimisticJoins, setOptimisticJoins] = useState<Record<string, boolean>>({})
   const [optimisticInterests, setOptimisticInterests] = useState<Record<string, boolean>>({})
   const [pendingJoinKeys, setPendingJoinKeys] = useState<string[]>([])
@@ -672,6 +687,7 @@ export default function HomeScreen() {
 
   useEffect(() => {
     let unsubscribeActivities = () => {}
+    let unsubscribeGroups = () => {}
     let unsubscribeUsers = () => {}
 
     try {
@@ -717,13 +733,35 @@ export default function HomeScreen() {
         },
         () => setUserNamesById({}),
       )
+
+      unsubscribeGroups = onSnapshot(
+        collection(db, 'groups'),
+        (snapshot) => {
+          const nextImages: GroupImageUrlsByKey = {}
+
+          snapshot.docs.forEach((item) => {
+            const data = item.data() as Record<string, unknown>
+            const imageUrl = readRemoteGroupPhotoUrl(data)
+            if (!imageUrl) return
+
+            nextImages[item.id] = imageUrl
+            const nameKey = getGroupLookupKey(readString(data.name, readString(data.title)))
+            if (nameKey) nextImages[nameKey] = imageUrl
+          })
+
+          setGroupImageUrlsByKey(nextImages)
+        },
+        () => setGroupImageUrlsByKey({}),
+      )
     } catch {
       setCreatedActivities([])
+      setGroupImageUrlsByKey({})
       setUserNamesById({})
     }
 
     return () => {
       unsubscribeActivities()
+      unsubscribeGroups()
       unsubscribeUsers()
     }
   }, [])
@@ -917,8 +955,9 @@ export default function HomeScreen() {
           userNamesById,
           currentUserId,
           localGroups,
+          groupImageUrlsByKey,
         )),
-    [currentUserId, filteredActivities, localGroups, optimisticInterests, optimisticJoins, userNamesById],
+    [currentUserId, filteredActivities, groupImageUrlsByKey, localGroups, optimisticInterests, optimisticJoins, userNamesById],
   )
   const hasSearch = debouncedSearchQuery.trim().length > 0
   const hasCategoryFilter = activeCategory !== 'Todas'

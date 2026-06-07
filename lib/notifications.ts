@@ -370,6 +370,24 @@ export async function deleteNotification(notificationId: string) {
   await deleteDoc(doc(db, 'notifications', notificationId))
 }
 
+export async function deletePendingGroupJoinRequestNotifications(filters: {
+  groupId: string
+  requesterId: string
+  userId?: string
+}) {
+  const { db } = getFirebaseServices()
+  const constraints = [
+    where('type', '==', 'group_join_request'),
+    where('groupId', '==', filters.groupId),
+    where('requesterId', '==', filters.requesterId),
+  ]
+
+  if (filters.userId) constraints.push(where('userId', '==', filters.userId))
+
+  const snapshot = await getDocs(query(collection(db, 'notifications'), ...constraints))
+  await Promise.all(snapshot.docs.map((item) => deleteDoc(item.ref)))
+}
+
 export function useNotifications(userId: string | null): NotificationsState {
   const [state, setState] = useState<NotificationsState>({
     error: null,

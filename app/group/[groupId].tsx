@@ -31,10 +31,11 @@ import {
 } from 'lucide-react-native'
 
 import { PressScale } from '../../components/home/PressScale'
+import { GroupAvatar } from '../../components/groups/GroupAvatar'
 import { getLocalGroupId } from '../../constants/localGroups'
 import { getFirebaseServices } from '../../firebaseConfig'
 import { readRemoteGroupPhotoUrl, uploadGroupPhoto } from '../../lib/groupPhotos'
-import { createNotification } from '../../lib/notifications'
+import { createNotification, deletePendingGroupJoinRequestNotifications } from '../../lib/notifications'
 import { getActivityGroupMeta } from '../../utils/activityGroups'
 import { getCategoryImage } from '../../utils/categoryImages'
 
@@ -201,6 +202,7 @@ export default function GroupDetailScreen() {
   const [hostName, setHostName] = useState('Anfitrión no disponible')
   const [isLoading, setIsLoading] = useState(true)
   const [isJoining, setIsJoining] = useState(false)
+  const [isCancelingJoinRequest, setIsCancelingJoinRequest] = useState(false)
   const [isLeavingGroup, setIsLeavingGroup] = useState(false)
   const [isDeletingGroup, setIsDeletingGroup] = useState(false)
   const [pendingRequestAction, setPendingRequestAction] = useState<string | null>(null)
@@ -433,6 +435,31 @@ export default function GroupDetailScreen() {
     }
   }
 
+  const cancelJoinRequest = async () => {
+    if (!groupId || !userId || !group || isOwner || isMember || !hasRequestedJoin || isCancelingJoinRequest) return
+
+    setIsCancelingJoinRequest(true)
+    try {
+      const { db } = getFirebaseServices()
+      await updateDoc(doc(db, 'groups', groupId), {
+        [`membershipRequests.${userId}`]: deleteField(),
+        [`pendingMembers.${userId}`]: deleteField(),
+        updatedAt: serverTimestamp(),
+      })
+
+      await deletePendingGroupJoinRequestNotifications({
+        groupId,
+        requesterId: userId,
+        userId: detail.ownerId || undefined,
+      })
+      showGroupRequestFeedback('Solicitud cancelada')
+    } catch {
+      Alert.alert('No pudimos cancelar la solicitud', 'Intentá cancelar tu solicitud nuevamente en unos segundos.')
+    } finally {
+      setIsCancelingJoinRequest(false)
+    }
+  }
+
   const leaveGroup = async () => {
     if (!groupId || !userId || !group || isOwner || !isMember || isLeavingGroup) return
 
@@ -485,6 +512,25 @@ export default function GroupDetailScreen() {
           style: 'destructive',
           onPress: () => {
             void leaveGroup()
+          },
+        },
+      ],
+    )
+  }
+
+  const confirmCancelJoinRequest = () => {
+    if (isOwner || isMember || !hasRequestedJoin || isCancelingJoinRequest) return
+
+    Alert.alert(
+      '¿Querés cancelar tu solicitud para unirte a este grupo?',
+      undefined,
+      [
+        { text: 'No', style: 'cancel' },
+        {
+          text: 'Cancelar solicitud',
+          style: 'destructive',
+          onPress: () => {
+            void cancelJoinRequest()
           },
         },
       ],
@@ -663,7 +709,7 @@ export default function GroupDetailScreen() {
     : isMember
       ? 'Miembro'
       : hasRequestedJoin
-        ? 'Solicitud pendiente'
+        ? 'Solicitud enviada'
         : 'No sos miembro'
   const heroSource = detail.photoUrl
     ? { uri: detail.photoUrl }
@@ -767,9 +813,7 @@ export default function GroupDetailScreen() {
 
         <View style={styles.content}>
           <View style={styles.titleRow}>
-            <View style={styles.groupIcon}>
-              <UsersRound color="#006A32" size={30} strokeWidth={2.2} />
-            </View>
+            <GroupAvatar groupName={detail.title} imageUrl={detail.photoUrl} size={66} />
             <View style={styles.titleCopy}>
               <Text style={styles.title}>{detail.title}</Text>
               <Text style={styles.subtitle}>{detail.category}</Text>
@@ -895,7 +939,20 @@ export default function GroupDetailScreen() {
           ) : null}
 
           {!isOwner && !isMember && hasRequestedJoin ? (
-            <Text style={styles.membershipPendingText}>El organizador todavía no aprobó tu solicitud.</Text>
+            <>
+              <Text style={styles.membershipPendingText}>El organizador todavía no aprobó tu solicitud.</Text>
+              <PressScale
+                accessibilityLabel="Cancelar solicitud"
+                accessibilityRole="button"
+                disabled={isCancelingJoinRequest}
+                onPress={confirmCancelJoinRequest}
+                style={[styles.cancelRequestButton, isCancelingJoinRequest && styles.primaryButtonDisabled]}
+                scaleTo={0.97}
+              >
+                {isCancelingJoinRequest ? <ActivityIndicator color="#B63232" /> : <X color="#B63232" size={20} strokeWidth={2.6} />}
+                <Text style={styles.cancelRequestButtonText}>Cancelar solicitud</Text>
+              </PressScale>
+            </>
           ) : null}
 
           {!isOwner && isMember ? (
@@ -935,10 +992,10 @@ export default function GroupDetailScreen() {
                       ]}
                     >
                       {pendingRequestAction === `accept:${request.id}` ? (
-                        <ActivityIndicator color="#FFFFFF" />
+                        <ActivityIndicator color="#006A32" />
                       ) : (
                         <>
-                          <Check color="#FFFFFF" size={17} strokeWidth={2.8} />
+                          <Check color="#006A32" size={17} strokeWidth={2.8} />
                           <Text style={styles.acceptRequestText}>Aceptar</Text>
                         </>
                       )}
@@ -1342,6 +1399,25 @@ const styles = StyleSheet.create({
     lineHeight: 20,
     marginTop: -2,
   },
+  cancelRequestButton: {
+    alignItems: 'center',
+    alignSelf: 'stretch',
+    backgroundColor: '#FFF4F4',
+    borderColor: '#D95454',
+    borderRadius: 14,
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: 8,
+    justifyContent: 'center',
+    minHeight: 48,
+    paddingHorizontal: 16,
+  },
+  cancelRequestButtonText: {
+    color: '#B63232',
+    fontSize: 15,
+    fontWeight: '900',
+    letterSpacing: 0,
+  },
   leaveGroupButton: {
     alignItems: 'center',
     alignSelf: 'stretch',
@@ -1440,11 +1516,11 @@ const styles = StyleSheet.create({
     letterSpacing: 0,
   },
   acceptRequestButton: {
-    backgroundColor: '#006A32',
+    backgroundColor: '#EEF8F0',
     borderColor: '#006A32',
   },
   acceptRequestText: {
-    color: '#FFFFFF',
+    color: '#006A32',
     fontSize: 13,
     fontWeight: '900',
     letterSpacing: 0,
