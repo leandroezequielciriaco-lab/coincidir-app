@@ -35,6 +35,37 @@ async function getBlobFromUri(uri: string, timeoutMs = 20000) {
   }
 }
 
+function getBlobFromUriWithXhr(uri: string, timeoutMs = 20000) {
+  return new Promise<Blob>((resolve, reject) => {
+    const request = new XMLHttpRequest()
+
+    request.responseType = 'blob'
+    request.timeout = timeoutMs
+    request.onload = () => {
+      const blob = request.response as Blob | null
+      if (!blob || blob.size <= 0) {
+        reject(new Error('group-photo-empty-xhr-blob'))
+        return
+      }
+
+      resolve(blob)
+    }
+    request.onerror = () => reject(new Error('group-photo-xhr-failed'))
+    request.ontimeout = () => reject(new Error('group-photo-xhr-timeout'))
+    request.open('GET', uri)
+    request.send()
+  })
+}
+
+async function readGroupPhotoBlob(uri: string) {
+  try {
+    return await getBlobFromUri(uri)
+  } catch (error) {
+    if (__DEV__) console.warn('[GROUP IMAGE FETCH FALLBACK]', error)
+    return getBlobFromUriWithXhr(uri)
+  }
+}
+
 export async function uploadGroupPhoto(groupId: string, asset: ImagePicker.ImagePickerAsset) {
   if (!groupId) throw new Error('group-photo-missing-group-id')
   if (!asset.uri) throw new Error('group-photo-missing-uri')
@@ -44,14 +75,22 @@ export async function uploadGroupPhoto(groupId: string, asset: ImagePicker.Image
   if (!authUid) throw new Error('group-photo-auth-required')
 
   const contentType = asset.mimeType?.startsWith('image/') ? asset.mimeType : 'image/jpeg'
+  const storagePath = `groups/${authUid}/${groupId}/cover.jpg`
   let blob: Blob | null = null
 
   try {
-    blob = await getBlobFromUri(asset.uri)
+    blob = await readGroupPhotoBlob(asset.uri)
     const uploadBlob = blob.type?.startsWith('image/')
       ? blob
       : new Blob([blob], { type: contentType })
-    const storageRef = ref(storage, `groups/${groupId}/cover.jpg`)
+    const storageRef = ref(storage, storagePath)
+
+    if (__DEV__) {
+      console.log('[GROUP PHOTO AUTH]', auth.currentUser?.uid)
+      console.log('[GROUP PHOTO BUCKET]', storage.app.options.storageBucket)
+      console.log('[GROUP PHOTO PATH]', storagePath)
+      console.log('[GROUP PHOTO UPLOAD START]')
+    }
 
     await Promise.race([
       uploadBytes(storageRef, uploadBlob, {
@@ -67,7 +106,15 @@ export async function uploadGroupPhoto(groupId: string, asset: ImagePicker.Image
       }),
     ])
 
-    return getDownloadURL(storageRef)
+    const downloadURL = await getDownloadURL(storageRef)
+    if (!/^https?:\/\//i.test(downloadURL)) throw new Error('group-photo-invalid-download-url')
+
+    if (__DEV__) console.log('[GROUP IMAGE UPLOAD OK]', downloadURL)
+
+    return downloadURL
+  } catch (error) {
+    console.error('[GROUP IMAGE UPLOAD ERROR]', error)
+    throw error
   } finally {
     const close = (blob as Blob & { close?: () => void } | null)?.close
     if (typeof close === 'function') close.call(blob)

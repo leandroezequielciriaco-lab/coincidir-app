@@ -8,22 +8,25 @@ import {
   StyleSheet,
   Text,
   TextInput,
+  ToastAndroid,
   View,
 } from 'react-native'
 import * as ImagePicker from 'expo-image-picker'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { useLocalSearchParams, useRouter } from 'expo-router'
 import { onAuthStateChanged } from 'firebase/auth'
-import { arrayUnion, collection, deleteDoc, deleteField, doc, getDoc, increment, onSnapshot, serverTimestamp, updateDoc } from 'firebase/firestore'
+import { arrayRemove, arrayUnion, collection, deleteDoc, deleteField, doc, getDoc, increment, onSnapshot, serverTimestamp, updateDoc } from 'firebase/firestore'
 import {
   ArrowLeft,
   CalendarDays,
+  Check,
   Image as ImageIcon,
   MapPin,
   Sprout,
   Trash2,
   UserRound,
   UsersRound,
+  X,
 } from 'lucide-react-native'
 
 import { PressScale } from '../../components/home/PressScale'
@@ -171,6 +174,15 @@ function hasPendingRequest(data: GroupData, userId: string | null) {
   return hasUserInValue(data.membershipRequests, userId) || hasUserInValue(data.pendingMembers, userId)
 }
 
+function showGroupRequestFeedback(message: string) {
+  if (Platform.OS === 'android') {
+    ToastAndroid.show(message, ToastAndroid.SHORT)
+    return
+  }
+
+  Alert.alert(message)
+}
+
 export default function GroupDetailScreen() {
   const router = useRouter()
   const { groupId, groupName } = useLocalSearchParams<{ groupId?: string; groupName?: string }>()
@@ -188,6 +200,7 @@ export default function GroupDetailScreen() {
   const [hostName, setHostName] = useState('Anfitrión no disponible')
   const [isLoading, setIsLoading] = useState(true)
   const [isJoining, setIsJoining] = useState(false)
+  const [isLeavingGroup, setIsLeavingGroup] = useState(false)
   const [isDeletingGroup, setIsDeletingGroup] = useState(false)
   const [pendingRequestAction, setPendingRequestAction] = useState<string | null>(null)
   const [isEditingGroup, setIsEditingGroup] = useState(false)
@@ -403,6 +416,9 @@ export default function GroupDetailScreen() {
       if (detail.ownerId) {
         await createNotification({
           body: `${userName} quiere sumarse al grupo ${detail.title}.`,
+          groupId,
+          groupName: detail.title,
+          requesterId: userId,
           senderId: userId,
           title: 'Nueva solicitud de grupo',
           type: 'group_join_request',
@@ -414,6 +430,64 @@ export default function GroupDetailScreen() {
     } finally {
       setIsJoining(false)
     }
+  }
+
+  const leaveGroup = async () => {
+    if (!groupId || !userId || !group || isOwner || !isMember || isLeavingGroup) return
+
+    setIsLeavingGroup(true)
+    try {
+      const { db } = getFirebaseServices()
+      const groupData = group ?? {}
+      const updates: Record<string, unknown> = {
+        [`joinedUsers.${userId}`]: deleteField(),
+        [`memberProfiles.${userId}`]: deleteField(),
+        [`membershipRequests.${userId}`]: deleteField(),
+        [`pendingMembers.${userId}`]: deleteField(),
+        updatedAt: serverTimestamp(),
+      }
+
+      if (Array.isArray(groupData.memberIds)) {
+        updates.memberIds = arrayRemove(userId)
+      } else if (groupData.memberIds && typeof groupData.memberIds === 'object') {
+        updates[`memberIds.${userId}`] = deleteField()
+      }
+
+      if (Array.isArray(groupData.members)) {
+        updates.members = arrayRemove(userId)
+      } else if (groupData.members && typeof groupData.members === 'object') {
+        updates[`members.${userId}`] = deleteField()
+      }
+
+      if (readNumber(groupData.memberCount, -1) > 0) updates.memberCount = increment(-1)
+      if (readNumber(groupData.membersCount, -1) > 0) updates.membersCount = increment(-1)
+
+      await updateDoc(doc(db, 'groups', groupId), updates)
+      showGroupRequestFeedback('Saliste del grupo')
+    } catch {
+      Alert.alert('No pudimos actualizar el grupo', 'Intentá dejar el grupo nuevamente en unos segundos.')
+    } finally {
+      setIsLeavingGroup(false)
+    }
+  }
+
+  const confirmLeaveGroup = () => {
+    if (isOwner || !isMember || isLeavingGroup) return
+
+    Alert.alert(
+      '¿Querés dejar este grupo?',
+      'Vas a dejar de figurar como miembro y podrás pedir sumarte nuevamente más adelante.',
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        {
+          text: 'Dejar grupo',
+          style: 'destructive',
+          onPress: () => {
+            void leaveGroup()
+          },
+        },
+      ],
+    )
   }
 
   const acceptRequest = async (request: PendingRequest) => {
@@ -439,11 +513,14 @@ export default function GroupDetailScreen() {
       })
       await createNotification({
         body: `Ya sos miembro de ${detail.title}.`,
+        groupId,
+        groupName: detail.title,
         senderId: userId ?? undefined,
         title: 'Te aceptaron en un grupo',
         type: 'group_join_accepted',
         userId: request.id,
       })
+      showGroupRequestFeedback('Miembro agregado correctamente')
     } catch {
       Alert.alert('No pudimos aceptar', 'Intentá aceptar la solicitud nuevamente.')
     } finally {
@@ -462,6 +539,7 @@ export default function GroupDetailScreen() {
         [`pendingMembers.${request.id}`]: deleteField(),
         updatedAt: serverTimestamp(),
       })
+      showGroupRequestFeedback('Solicitud rechazada')
     } catch {
       Alert.alert('No pudimos rechazar', 'Intentá rechazar la solicitud nuevamente.')
     } finally {
@@ -570,11 +648,6 @@ export default function GroupDetailScreen() {
     )
   }
 
-  const joinButtonText = hasRequestedJoin
-    ? 'Solicitud enviada'
-    : isMember
-      ? 'Ya sos miembro'
-      : 'Ser miembro'
   const nextActivityTitle = nextActivity
     ? readString(nextActivity.data.name, readString(nextActivity.data.title, 'Actividad sin título'))
     : ''
@@ -584,7 +657,13 @@ export default function GroupDetailScreen() {
 
   const displayedMemberCount = isOwner ? Math.max(detail.members, 1) : detail.members
   const displayHostName = isLegacyLocalGroup ? 'Anfitrión no disponible' : hostName
-  const roleText = isOwner ? 'Organizador' : isMember ? 'Sos miembro' : 'No sos miembro'
+  const membershipStatusText = isOwner
+    ? 'Organizador'
+    : isMember
+      ? 'Miembro'
+      : hasRequestedJoin
+        ? 'Solicitud pendiente'
+        : 'No sos miembro'
   const heroSource = detail.photoUrl
     ? { uri: detail.photoUrl }
     : getCategoryImage({ category: 'Grupales', ...(group ?? {}) })
@@ -796,19 +875,39 @@ export default function GroupDetailScreen() {
           <View style={[styles.memberStatus, isOwner ? styles.memberStatusOwner : isMember ? styles.memberStatusJoined : styles.memberStatusOpen]}>
             <UsersRound color={isOwner || isMember ? '#006A32' : '#4B348A'} size={17} strokeWidth={2.3} />
             <Text style={[styles.memberStatusText, isOwner || isMember ? styles.memberStatusTextJoined : styles.memberStatusTextOpen]}>
-              {hasRequestedJoin && !isOwner && !isMember ? 'Solicitud enviada' : roleText}
+              {membershipStatusText}
             </Text>
           </View>
 
-          {!isOwner ? (
+          {!isOwner && !isMember && !hasRequestedJoin ? (
             <PressScale
-              disabled={!userId || isMember || hasRequestedJoin || isJoining}
+              accessibilityLabel="Pedir ser miembro"
+              accessibilityRole="button"
+              disabled={!userId || isJoining}
               onPress={requestJoinGroup}
-              style={[styles.primaryButton, (!userId || isMember || hasRequestedJoin) && styles.primaryButtonDisabled]}
+              style={[styles.primaryButton, (!userId || isJoining) && styles.primaryButtonDisabled]}
               scaleTo={0.97}
             >
               {isJoining ? <ActivityIndicator color="#FFFFFF" /> : <Sprout color="#FFFFFF" size={20} strokeWidth={2.3} />}
-              <Text style={styles.primaryButtonText}>{joinButtonText}</Text>
+              <Text style={styles.primaryButtonText}>Pedir ser miembro</Text>
+            </PressScale>
+          ) : null}
+
+          {!isOwner && !isMember && hasRequestedJoin ? (
+            <Text style={styles.membershipPendingText}>El organizador todavía no aprobó tu solicitud.</Text>
+          ) : null}
+
+          {!isOwner && isMember ? (
+            <PressScale
+              accessibilityLabel="Dejar grupo"
+              accessibilityRole="button"
+              disabled={isLeavingGroup}
+              onPress={confirmLeaveGroup}
+              style={[styles.leaveGroupButton, isLeavingGroup && styles.primaryButtonDisabled]}
+              scaleTo={0.97}
+            >
+              {isLeavingGroup ? <ActivityIndicator color="#B63232" /> : <X color="#B63232" size={20} strokeWidth={2.6} />}
+              <Text style={styles.leaveGroupButtonText}>Dejar grupo</Text>
             </PressScale>
           ) : null}
 
@@ -818,15 +917,31 @@ export default function GroupDetailScreen() {
               {pendingRequests.map((request) => (
                 <View key={request.id} style={styles.requestRow}>
                   <View style={styles.requestCopy}>
-                    <Text numberOfLines={1} style={styles.requestName}>{request.name}</Text>
+                    <Text style={styles.requestName}>{request.name}</Text>
                     <Text style={styles.requestSubtitle}>Quiere sumarse al grupo</Text>
                   </View>
                   <View style={styles.requestActions}>
-                    <PressScale disabled={Boolean(pendingRequestAction)} onPress={() => rejectRequest(request)} scaleTo={0.97} style={styles.rejectRequestButton}>
-                      <Text style={styles.rejectRequestText}>Rechazar</Text>
-                    </PressScale>
-                    <PressScale disabled={Boolean(pendingRequestAction)} onPress={() => acceptRequest(request)} scaleTo={0.97} style={styles.acceptRequestButton}>
+                    <PressScale
+                      accessibilityLabel={`Aceptar solicitud de ${request.name}`}
+                      accessibilityRole="button"
+                      disabled={Boolean(pendingRequestAction)}
+                      onPress={() => acceptRequest(request)}
+                      scaleTo={0.97}
+                      style={[styles.requestButton, styles.acceptRequestButton, Boolean(pendingRequestAction) && styles.requestButtonDisabled]}
+                    >
+                      <Check color="#FFFFFF" size={17} strokeWidth={2.8} />
                       <Text style={styles.acceptRequestText}>Aceptar</Text>
+                    </PressScale>
+                    <PressScale
+                      accessibilityLabel={`Rechazar solicitud de ${request.name}`}
+                      accessibilityRole="button"
+                      disabled={Boolean(pendingRequestAction)}
+                      onPress={() => rejectRequest(request)}
+                      scaleTo={0.97}
+                      style={[styles.requestButton, styles.rejectRequestButton, Boolean(pendingRequestAction) && styles.requestButtonDisabled]}
+                    >
+                      <X color="#B63232" size={17} strokeWidth={2.8} />
+                      <Text style={styles.rejectRequestText}>Rechazar</Text>
                     </PressScale>
                   </View>
                 </View>
@@ -1196,6 +1311,33 @@ const styles = StyleSheet.create({
     fontWeight: '900',
     letterSpacing: 0,
   },
+  membershipPendingText: {
+    color: '#596A65',
+    fontSize: 14,
+    fontWeight: '700',
+    letterSpacing: 0,
+    lineHeight: 20,
+    marginTop: -2,
+  },
+  leaveGroupButton: {
+    alignItems: 'center',
+    alignSelf: 'stretch',
+    backgroundColor: '#FFF4F4',
+    borderColor: '#D95454',
+    borderRadius: 14,
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: 8,
+    justifyContent: 'center',
+    minHeight: 48,
+    paddingHorizontal: 16,
+  },
+  leaveGroupButtonText: {
+    color: '#B63232',
+    fontSize: 15,
+    fontWeight: '900',
+    letterSpacing: 0,
+  },
   requestsBlock: {
     backgroundColor: '#F8FAF6',
     borderColor: '#DDEAD7',
@@ -1228,6 +1370,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '900',
     letterSpacing: 0,
+    lineHeight: 19,
   },
   requestSubtitle: {
     color: '#596A65',
@@ -1239,38 +1382,43 @@ const styles = StyleSheet.create({
   },
   requestActions: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     gap: 8,
     width: '100%',
   },
-  rejectRequestButton: {
+  requestButton: {
     alignItems: 'center',
-    backgroundColor: '#FFF4F4',
-    borderColor: '#D95454',
     borderRadius: 10,
     borderWidth: 1,
+    flexDirection: 'row',
+    flexGrow: 1,
     flex: 1,
-    minHeight: 36,
-    paddingHorizontal: 10,
+    gap: 7,
     justifyContent: 'center',
+    minHeight: 44,
+    minWidth: 128,
+    paddingHorizontal: 12,
+  },
+  requestButtonDisabled: {
+    opacity: 0.58,
+  },
+  rejectRequestButton: {
+    backgroundColor: '#FFF4F4',
+    borderColor: '#D95454',
   },
   rejectRequestText: {
     color: '#B63232',
-    fontSize: 12,
+    fontSize: 13,
     fontWeight: '900',
     letterSpacing: 0,
   },
   acceptRequestButton: {
-    alignItems: 'center',
     backgroundColor: '#006A32',
-    borderRadius: 10,
-    flex: 1,
-    minHeight: 36,
-    paddingHorizontal: 12,
-    justifyContent: 'center',
+    borderColor: '#006A32',
   },
   acceptRequestText: {
     color: '#FFFFFF',
-    fontSize: 12,
+    fontSize: 13,
     fontWeight: '900',
     letterSpacing: 0,
   },

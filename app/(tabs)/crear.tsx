@@ -1140,12 +1140,14 @@ export default function CrearScreen() {
     if (groupPhotoAsset) {
       try {
         remoteGroupPhotoUrl = await uploadGroupPhoto(createdGroupId, groupPhotoAsset)
+        if (__DEV__) {
+          console.log('[GROUP IMAGE UPLOAD OK]', {
+            groupId: createdGroupId,
+            url: remoteGroupPhotoUrl,
+          })
+        }
       } catch (error) {
-        if (__DEV__) console.warn('[CrearActividad] error subiendo foto de grupo', error)
-        Alert.alert(
-          'No pudimos subir la foto',
-          'El grupo se va a crear sin foto guardada por ahora. La vista previa queda solo en esta sesión.',
-        )
+        console.error('[GROUP IMAGE UPLOAD ERROR]', error)
       }
     }
 
@@ -1590,23 +1592,34 @@ export default function CrearScreen() {
             />
 
             <Text style={styles.createFieldLabel}>Foto</Text>
-            <Pressable accessibilityRole="button" onPress={chooseGroupPhotoFromLibrary} style={styles.groupPhotoPicker}>
+            <Pressable
+              accessibilityRole="button"
+              onPress={chooseGroupPhotoFromLibrary}
+              style={[styles.groupPhotoPicker, groupPhotoPreviewUri && styles.groupPhotoPickerWithImage]}
+            >
               {groupPhotoPreviewUri ? (
                 <Image resizeMode="cover" source={{ uri: groupPhotoPreviewUri }} style={styles.groupPhotoPreview} />
-              ) : null}
-              <View style={[styles.groupPhotoPickerContent, groupPhotoPreviewUri && styles.groupPhotoPickerContentOverlay]}>
-                <View style={styles.groupPhotoIcon}>
-                  <ImageIcon color="#4B348A" size={24} strokeWidth={2.4} />
+              ) : (
+                <View style={styles.groupPhotoPickerContent}>
+                  <View style={styles.groupPhotoIcon}>
+                    <ImageIcon color="#4B348A" size={24} strokeWidth={2.4} />
+                  </View>
+                  <Text style={styles.groupPhotoTitle}>Agregar foto del grupo</Text>
+                  <Text style={styles.groupPhotoActionText}>Elegir de la galería</Text>
                 </View>
-                <Text style={styles.createMapEmptyText}>Foto del grupo</Text>
-                <Text style={styles.groupPhotoActionText}>{groupPhotoPreviewUri ? 'Cambiar foto' : 'Elegir de la galería'}</Text>
-              </View>
+              )}
             </Pressable>
             {groupPhotoPreviewUri ? (
-              <Pressable accessibilityRole="button" onPress={removeGroupPhoto} style={styles.groupPhotoRemoveButton}>
-                <Trash2 color="#B42318" size={17} strokeWidth={2.4} />
-                <Text style={styles.groupPhotoRemoveText}>Eliminar foto</Text>
-              </Pressable>
+              <View style={styles.groupPhotoActions}>
+                <Pressable accessibilityRole="button" onPress={chooseGroupPhotoFromLibrary} style={styles.groupPhotoChangeButton}>
+                  <ImageIcon color="#4B348A" size={17} strokeWidth={2.4} />
+                  <Text style={styles.groupPhotoChangeText}>Cambiar foto</Text>
+                </Pressable>
+                <Pressable accessibilityRole="button" onPress={removeGroupPhoto} style={styles.groupPhotoRemoveButton}>
+                  <Trash2 color="#B42318" size={17} strokeWidth={2.4} />
+                  <Text style={styles.groupPhotoRemoveText}>Eliminar foto</Text>
+                </Pressable>
+              </View>
             ) : null}
           </View>
 
@@ -2928,8 +2941,14 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     borderWidth: 1,
     justifyContent: 'center',
-    minHeight: 168,
+    minHeight: 172,
     overflow: 'hidden',
+    width: '100%',
+  },
+  groupPhotoPickerWithImage: {
+    aspectRatio: 16 / 9,
+    backgroundColor: '#F0F4EF',
+    minHeight: 0,
   },
   groupPhotoPreview: {
     ...StyleSheet.absoluteFillObject,
@@ -2942,11 +2961,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 18,
     paddingVertical: 18,
   },
-  groupPhotoPickerContentOverlay: {
-    backgroundColor: 'rgba(255,255,255,0.82)',
-    borderRadius: 16,
-    margin: 14,
-  },
   groupPhotoIcon: {
     alignItems: 'center',
     backgroundColor: '#EFE7FA',
@@ -2957,6 +2971,15 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     width: 54,
   },
+  groupPhotoTitle: {
+    color: '#193F37',
+    fontSize: 14,
+    fontWeight: '900',
+    letterSpacing: 0,
+    lineHeight: 18,
+    marginTop: 10,
+    textAlign: 'center',
+  },
   groupPhotoActionText: {
     color: '#4B348A',
     fontSize: 13,
@@ -2964,14 +2987,45 @@ const styles = StyleSheet.create({
     letterSpacing: 0,
     lineHeight: 17,
     marginTop: 4,
+    textAlign: 'center',
+  },
+  groupPhotoActions: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginTop: 10,
+  },
+  groupPhotoChangeButton: {
+    alignItems: 'center',
+    backgroundColor: '#F5F0FF',
+    borderColor: '#D9CBF6',
+    borderRadius: 12,
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: 7,
+    justifyContent: 'center',
+    minHeight: 40,
+    paddingHorizontal: 12,
+  },
+  groupPhotoChangeText: {
+    color: '#4B348A',
+    fontSize: 13,
+    fontWeight: '900',
+    letterSpacing: 0,
+    lineHeight: 17,
   },
   groupPhotoRemoveButton: {
     alignItems: 'center',
-    alignSelf: 'flex-start',
+    backgroundColor: '#FFF4F4',
+    borderColor: '#F2B8B5',
+    borderRadius: 12,
+    borderWidth: 1,
     flexDirection: 'row',
     gap: 7,
+    justifyContent: 'center',
     minHeight: 40,
-    paddingTop: 8,
+    paddingHorizontal: 12,
   },
   groupPhotoRemoveText: {
     color: '#B42318',

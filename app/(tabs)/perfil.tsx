@@ -2,7 +2,7 @@ import * as ImagePicker from 'expo-image-picker'
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router'
 import { onAuthStateChanged, updateProfile } from 'firebase/auth'
-import { collection, deleteField, doc, onSnapshot, serverTimestamp, setDoc } from 'firebase/firestore'
+import { arrayRemove, collection, deleteField, doc, increment, onSnapshot, serverTimestamp, setDoc, updateDoc } from 'firebase/firestore'
 import { getDownloadURL, ref, uploadBytes } from 'firebase/storage'
 import type { LucideIcon } from 'lucide-react-native'
 import {
@@ -78,6 +78,7 @@ import {
 } from '../../constants/localGroups'
 import { canonicalUserInterests, expandUserInterests } from '../../constants/userInterests'
 import { getFirebaseServices } from '../../firebaseConfig'
+import { createNotification } from '../../lib/notifications'
 import { applyGroupNameToActivity, getActivityGroupMeta } from '../../utils/activityGroups'
 import { isOwnActivity } from '../../utils/activityOwnership'
 import { defaultActivityImage, getCategoryImage } from '../../utils/categoryImages'
@@ -203,11 +204,13 @@ function resolveProfilePhoto(userData: Record<string, unknown> | null, authUser:
 
 type ProfileGroup = LocalGroup & {
   activityCount: number
+  data?: Record<string, unknown>
   description?: string
   nextActivityAt?: number
   memberCount?: number
+  ownerId?: string
   source: 'activity' | 'firestore' | 'local'
-  status: 'host' | 'member' | 'none'
+  status: 'host' | 'member' | 'none' | 'pending'
 }
 
 function isCancelled(data: Record<string, unknown>) {
@@ -322,15 +325,28 @@ function isJoined(record: FirestoreRecord, userId: string | null) {
   return false
 }
 
+function hasPendingGroupRequest(data: Record<string, unknown>, userId: string | null) {
+  if (!userId) return false
+  const requests = data.membershipRequests ?? data.pendingMembers
+
+  if (Array.isArray(requests)) return requests.includes(userId)
+  if (typeof requests === 'object' && requests) return userId in requests
+
+  return false
+}
+
 function getGroupStatus(data: Record<string, unknown> | undefined, userId: string | null): ProfileGroup['status'] {
   if (!data || !userId) return 'none'
   if (readString(data.ownerId) === userId) return 'host'
-  return isJoined({ id: '', data }, userId) ? 'member' : 'none'
+  if (isJoined({ id: '', data }, userId)) return 'member'
+  if (hasPendingGroupRequest(data, userId)) return 'pending'
+  return 'none'
 }
 
 function getGroupStatusText(status: ProfileGroup['status']) {
   if (status === 'host') return 'Organizador'
   if (status === 'member') return 'Miembro'
+  if (status === 'pending') return 'Solicitud enviada'
   return 'No sos miembro'
 }
 
@@ -503,17 +519,19 @@ export default function PerfilScreen() {
           .sort((left, right) => left - right)
 
         return {
+          data: firestoreGroup.data,
           id: firestoreGroup.id,
           name: groupName,
           description: readString(firestoreGroup.data.description, readString(firestoreGroup.data.summary)),
           memberCount: getGroupMemberCount(firestoreGroup.data),
           activityCount: upcomingTimes.length,
           nextActivityAt: upcomingTimes[0],
+          ownerId: readString(firestoreGroup.data.ownerId),
           source: 'firestore' as const,
           status: getGroupStatus(firestoreGroup.data, userId),
         }
       }).sort((left, right) => {
-      const rank = { host: 0, member: 1, none: 2 }
+      const rank = { host: 0, member: 1, pending: 2, none: 3 }
       const statusDiff = rank[left.status] - rank[right.status]
       if (statusDiff !== 0) return statusDiff
 
@@ -755,6 +773,8 @@ export default function PerfilScreen() {
         />
 
         <ProfileGroupsSection
+          currentUserId={userId}
+          currentUserName={profile.fullName}
           groups={myGroups}
           onOpen={(group) => router.push({ pathname: '/group/[groupId]', params: { groupId: group.id, groupName: group.name } })}
         />
@@ -872,6 +892,8 @@ function ProfileListSection({ currentUserId = null, emptyText, items, localGroup
 }
 
 type ProfileGroupsSectionProps = {
+  currentUserId: string | null
+  currentUserName: string
   groups: ProfileGroup[]
   onOpen: (group: ProfileGroup) => void
 }
@@ -885,11 +907,103 @@ function getProfileGroupActivityText(group: ProfileGroup) {
   return group.activityCount === 1 ? '1 próxima' : `${group.activityCount} próximas`
 }
 
-function ProfileGroupsSection({ groups, onOpen }: ProfileGroupsSectionProps) {
+function ProfileGroupsSection({ currentUserId, currentUserName, groups, onOpen }: ProfileGroupsSectionProps) {
   const groupColors = getGroupTheme()
+  const [pendingGroupAction, setPendingGroupAction] = useState<string | null>(null)
   const hostedGroups = groups.filter((group) => group.status === 'host')
   const memberGroups = groups.filter((group) => group.status === 'member')
-  const discoverGroups = groups.filter((group) => group.status === 'none')
+  const discoverGroups = groups.filter((group) => group.status === 'none' || group.status === 'pending')
+
+  const requestGroupMembership = async (group: ProfileGroup) => {
+    if (!currentUserId || !group.ownerId || group.ownerId === currentUserId || group.status !== 'none' || pendingGroupAction) return
+
+    setPendingGroupAction(`join:${group.id}`)
+    try {
+      const { db } = getFirebaseServices()
+      const requesterName = currentUserName.trim() || 'Participante'
+
+      await updateDoc(doc(db, 'groups', group.id), {
+        [`membershipRequests.${currentUserId}`]: {
+          name: requesterName,
+          requestedAt: serverTimestamp(),
+          status: 'pending',
+        },
+        updatedAt: serverTimestamp(),
+      })
+
+      await createNotification({
+        body: `${requesterName} quiere sumarse al grupo ${group.name}.`,
+        groupId: group.id,
+        groupName: group.name,
+        requesterId: currentUserId,
+        senderId: currentUserId,
+        title: 'Nueva solicitud de grupo',
+        type: 'group_join_request',
+        userId: group.ownerId,
+      })
+    } catch (error) {
+      if (__DEV__) console.warn('[PROFILE GROUP JOIN REQUEST ERROR]', error)
+      Alert.alert('No pudimos enviar la solicitud', 'Intentá pedir sumarte nuevamente en unos segundos.')
+    } finally {
+      setPendingGroupAction(null)
+    }
+  }
+
+  const leaveGroup = async (group: ProfileGroup) => {
+    if (!currentUserId || group.status !== 'member' || pendingGroupAction) return
+
+    setPendingGroupAction(`leave:${group.id}`)
+    try {
+      const { db } = getFirebaseServices()
+      const groupData = group.data ?? {}
+      const updates: Record<string, unknown> = {
+        [`joinedUsers.${currentUserId}`]: deleteField(),
+        [`memberProfiles.${currentUserId}`]: deleteField(),
+        [`membershipRequests.${currentUserId}`]: deleteField(),
+        [`pendingMembers.${currentUserId}`]: deleteField(),
+        updatedAt: serverTimestamp(),
+      }
+
+      if (Array.isArray(groupData.memberIds)) {
+        updates.memberIds = arrayRemove(currentUserId)
+      } else if (groupData.memberIds && typeof groupData.memberIds === 'object') {
+        updates[`memberIds.${currentUserId}`] = deleteField()
+      }
+
+      if (Array.isArray(groupData.members)) {
+        updates.members = arrayRemove(currentUserId)
+      } else if (groupData.members && typeof groupData.members === 'object') {
+        updates[`members.${currentUserId}`] = deleteField()
+      }
+
+      if (typeof groupData.memberCount === 'number' && groupData.memberCount > 0) updates.memberCount = increment(-1)
+      if (typeof groupData.membersCount === 'number' && groupData.membersCount > 0) updates.membersCount = increment(-1)
+
+      await updateDoc(doc(db, 'groups', group.id), updates)
+    } catch (error) {
+      if (__DEV__) console.warn('[PROFILE GROUP LEAVE ERROR]', error)
+      Alert.alert('No pudimos actualizar el grupo', 'Intentá dejar el grupo nuevamente en unos segundos.')
+    } finally {
+      setPendingGroupAction(null)
+    }
+  }
+
+  const confirmLeaveGroup = (group: ProfileGroup) => {
+    Alert.alert(
+      '¿Querés dejar este grupo?',
+      'Vas a dejar de figurar como miembro y podés pedir sumarte nuevamente más adelante.',
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        {
+          text: 'Dejar de ser miembro',
+          style: 'destructive',
+          onPress: () => {
+            void leaveGroup(group)
+          },
+        },
+      ],
+    )
+  }
 
   const renderGroupCard = (group: ProfileGroup) => (
     <PressScale accessibilityRole="button" key={group.id} onPress={() => onOpen(group)} scaleTo={0.985} style={[styles.profileGroupRow, { borderColor: groupColors.borderColor }]}>
@@ -918,6 +1032,36 @@ function ProfileGroupsSection({ groups, onOpen }: ProfileGroupsSectionProps) {
           <ChevronRight color={groupColors.color} size={18} strokeWidth={2.5} />
         </View>
       </View>
+      {group.status === 'none' ? (
+        <PressScale
+          accessibilityLabel={`Ser miembro de ${group.name}`}
+          accessibilityRole="button"
+          disabled={!currentUserId || Boolean(pendingGroupAction)}
+          onPress={(event) => {
+            event.stopPropagation()
+            void requestGroupMembership(group)
+          }}
+          scaleTo={0.97}
+          style={[styles.profileGroupJoinButton, (!currentUserId || Boolean(pendingGroupAction)) && styles.profileGroupActionDisabled]}
+        >
+          <Text style={styles.profileGroupJoinButtonText}>+ Ser miembro</Text>
+        </PressScale>
+      ) : null}
+      {group.status === 'member' ? (
+        <PressScale
+          accessibilityLabel={`Dejar de ser miembro de ${group.name}`}
+          accessibilityRole="button"
+          disabled={Boolean(pendingGroupAction)}
+          onPress={(event) => {
+            event.stopPropagation()
+            confirmLeaveGroup(group)
+          }}
+          scaleTo={0.97}
+          style={[styles.profileGroupLeaveButton, Boolean(pendingGroupAction) && styles.profileGroupActionDisabled]}
+        >
+          <Text style={styles.profileGroupLeaveButtonText}>Dejar de ser miembro</Text>
+        </PressScale>
+      ) : null}
     </PressScale>
   )
 
@@ -941,7 +1085,7 @@ function ProfileGroupsSection({ groups, onOpen }: ProfileGroupsSectionProps) {
       ) : (
         <View style={styles.profileGroupBlocks}>
           {renderGroupBlock(0x1F451, 'Mis grupos creados', hostedGroups)}
-          {renderGroupBlock(0x1F465, 'Mis grupos', memberGroups)}
+          {renderGroupBlock(0x1F465, 'Mi comunidad', memberGroups)}
           {renderGroupBlock(0x1F30E, 'Descubrir grupos', discoverGroups)}
         </View>
       )}
@@ -2010,6 +2154,41 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     flexDirection: 'row',
     justifyContent: 'space-between',
+  },
+  profileGroupJoinButton: {
+    alignItems: 'center',
+    alignSelf: 'stretch',
+    backgroundColor: '#006A32',
+    borderRadius: 12,
+    minHeight: 42,
+    justifyContent: 'center',
+    paddingHorizontal: 14,
+  },
+  profileGroupJoinButtonText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '900',
+    letterSpacing: 0,
+  },
+  profileGroupLeaveButton: {
+    alignItems: 'center',
+    alignSelf: 'stretch',
+    backgroundColor: '#FFF4F4',
+    borderColor: '#D95454',
+    borderRadius: 12,
+    borderWidth: 1,
+    minHeight: 42,
+    justifyContent: 'center',
+    paddingHorizontal: 14,
+  },
+  profileGroupLeaveButtonText: {
+    color: '#B63232',
+    fontSize: 14,
+    fontWeight: '900',
+    letterSpacing: 0,
+  },
+  profileGroupActionDisabled: {
+    opacity: 0.58,
   },
   profileRow: {
     alignItems: 'center',

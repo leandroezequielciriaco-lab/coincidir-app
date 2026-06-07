@@ -10,288 +10,216 @@ const yogaImages = [
   require('../assets/images/activities/yoga/yoga-3.jpg'),
 ]
 
-const yogaImage =
-  yogaImages[Math.floor(Math.random() * yogaImages.length)]
 const runningImages = [
   require('../assets/images/activities/running/running-1.jpg'),
   require('../assets/images/activities/running/running-2.jpg'),
   require('../assets/images/activities/running/running-3.jpg'),
 ]
 
-const runningImage =
-  runningImages[Math.floor(Math.random() * runningImages.length)]
 const supImages = [
   require('../assets/images/activities/sup/sup-1.jpg'),
   require('../assets/images/activities/sup/sup-2.jpg'),
   require('../assets/images/activities/sup/sup-3.jpg'),
 ]
 
-const supImage =
-  supImages[Math.floor(Math.random() * supImages.length)]
 const cafeImages = [
   require('../assets/images/activities/cafe/cafe-1.jpg'),
   require('../assets/images/activities/cafe/cafe-2.jpg'),
   require('../assets/images/activities/cafe/cafe-3.jpg'),
 ]
 
-const cafeImage =
-  cafeImages[Math.floor(Math.random() * cafeImages.length)]
 const musicaImages = [
   require('../assets/images/activities/musica/musica-1.jpg'),
   require('../assets/images/activities/musica/musica-2.jpg'),
   require('../assets/images/activities/musica/musica-3.jpg'),
 ]
 
-const musicaImage =
-  musicaImages[Math.floor(Math.random() * musicaImages.length)]
 const senderismoImages = [
   require('../assets/images/activities/senderismo/senderismo-1.jpg'),
   require('../assets/images/activities/senderismo/senderismo-2.jpg'),
   require('../assets/images/activities/senderismo/senderismo-3.jpg'),
 ]
 
-const senderismoImage =
-  senderismoImages[Math.floor(Math.random() * senderismoImages.length)]
 const equitacionImages = [
   require('../assets/images/activities/equitacion/equitacion-1.jpg'),
   require('../assets/images/activities/equitacion/equitacion-2.jpg'),
   require('../assets/images/activities/equitacion/equitacion-3.jpg'),
 ]
 
-const equitacionImage =
-  equitacionImages[Math.floor(Math.random() * equitacionImages.length)]
 const futbolImages = [
   require('../assets/images/activities/futbol/futbol-1.jpg'),
   require('../assets/images/activities/futbol/futbol-2.png'),
   require('../assets/images/activities/futbol/futbol-3.jpg'),
 ]
 
-const futbolImage =
-  futbolImages[Math.floor(Math.random() * futbolImages.length)]
 const tenisImages = [
   require('../assets/images/activities/tenis/tenis-1.jpg'),
   require('../assets/images/activities/tenis/tenis-2.jpg'),
   require('../assets/images/activities/tenis/tenis-3.jpg'),
 ]
 
-const tenisImage =
-  tenisImages[Math.floor(Math.random() * tenisImages.length)]
 const basquetImages = [
   require('../assets/images/activities/basquet/basquet-1.jpg'),
   require('../assets/images/activities/basquet/basquet-2.jpg'),
   require('../assets/images/activities/basquet/basquet-3.jpg'),
 ]
 
-const basquetImage =
-  basquetImages[Math.floor(Math.random() * basquetImages.length)]
 const beachvoleyImages = [
   require('../assets/images/activities/beachvoley/beachvoley-1.jpg'),
   require('../assets/images/activities/beachvoley/beachvoley-2.jpg'),
   require('../assets/images/activities/beachvoley/beachvoley-3.jpg'),
 ]
 
-const beachvoleyImage =
-  beachvoleyImages[Math.floor(Math.random() * beachvoleyImages.length)]
 const newcomImages = [
   require('../assets/images/activities/newcom/newcom-1.jpg'),
   require('../assets/images/activities/newcom/newcom-2.jpg'),
   require('../assets/images/activities/newcom/newcom-3.jpg'),
 ]
 
-const newcomImage =
-  newcomImages[Math.floor(Math.random() * newcomImages.length)]
 const padelImages = [
   require('../assets/images/activities/padel/padel-1.jpg'),
   require('../assets/images/activities/padel/padel-2.jpg'),
   require('../assets/images/activities/padel/padel-3.jpg'),
 ]
 
-const padelImage =
-  padelImages[Math.floor(Math.random() * padelImages.length)]
 const pescaImages = [
   require('../assets/images/activities/pesca/pesca-1.jpg'),
   require('../assets/images/activities/pesca/pesca-2.jpg'),
   require('../assets/images/activities/pesca/pesca-3.jpg'),
 ]
 
-const pescaImage =
-  pescaImages[Math.floor(Math.random() * pescaImages.length)]
 const cocinaImages = [
   require('../assets/images/activities/cocina/cocina-1.jpg'),
   require('../assets/images/activities/cocina/cocina-2.jpg'),
   require('../assets/images/activities/cocina/cocina-3.jpg'),
 ]
 
-const cocinaImage =
-  cocinaImages[Math.floor(Math.random() * cocinaImages.length)]
 const juegosdemesaImages = [
   require('../assets/images/activities/juegosdemesa/juegosdemesa-1.jpg'),
   require('../assets/images/activities/juegosdemesa/juegosdemesa-2.jpg'),
   require('../assets/images/activities/juegosdemesa/juegosdemesa-3.jpg'),
 ]
 
-const juegosdemesaImage =
-  juegosdemesaImages[Math.floor(Math.random() * juegosdemesaImages.length)]
 const idiomasImages = [
   require('../assets/images/activities/idiomas/idiomas-1.jpg'),
   require('../assets/images/activities/idiomas/idiomas-2.jpg'),
   require('../assets/images/activities/idiomas/idiomas-3.jpg'),
 ]
 
-const idiomasImage =
-  idiomasImages[Math.floor(Math.random() * idiomasImages.length)]
 const meditacionImages = [
   require('../assets/images/activities/meditacion/meditacion-1.jpg'),
   require('../assets/images/activities/meditacion/meditacion-2.jpg'),
   require('../assets/images/activities/meditacion/meditacion-3.jpg'),
 ]
 
-const meditacionImage =
-  meditacionImages[Math.floor(Math.random() * meditacionImages.length)]
 const kayakImages = [
   require('../assets/images/activities/kayak/kayak-1.jpg'),
   require('../assets/images/activities/kayak/kayak-2.jpg'),
   require('../assets/images/activities/kayak/kayak-3.jpg'),
 ]
 
-const kayakImage =
-  kayakImages[Math.floor(Math.random() * kayakImages.length)]
 const natacionImages = [
   require('../assets/images/activities/natacion/natacion-1.jpg'),
   require('../assets/images/activities/natacion/natacion-2.jpg'),
   require('../assets/images/activities/natacion/natacion-3.jpg'),
 ]
 
-const natacionImage =
-  natacionImages[Math.floor(Math.random() * natacionImages.length)]
 const natacionAguasAbiertasImages = [
   require('../assets/images/activities/natacionaguasabiertas/natacionaguasabiertas-1.jpg'),
   require('../assets/images/activities/natacionaguasabiertas/natacionaguasabiertas-2.jpg'),
   require('../assets/images/activities/natacionaguasabiertas/natacionaguasabiertas-3.jpg'),
 ]
 
-const natacionAguasAbiertasImage =
-  natacionAguasAbiertasImages[Math.floor(Math.random() * natacionAguasAbiertasImages.length)]
 const snorkelingImages = [
   require('../assets/images/activities/snorkeling/snorkeling-1.png'),
   require('../assets/images/activities/snorkeling/snorkeling-2.png'),
   require('../assets/images/activities/snorkeling/snorkeling-3.png'),
 ]
 
-const snorkelingImage =
-  snorkelingImages[Math.floor(Math.random() * snorkelingImages.length)]
 const buceoImages = [
   require('../assets/images/activities/buceo/buceo-1.png'),
   require('../assets/images/activities/buceo/buceo-2.png'),
   require('../assets/images/activities/buceo/buceo-3.png'),
 ]
 
-const buceoImage =
-  buceoImages[Math.floor(Math.random() * buceoImages.length)]
 const kitesurfImages = [
   require('../assets/images/activities/kitesurf/kitesurf-1.png'),
   require('../assets/images/activities/kitesurf/kitesurf-2.png'),
   require('../assets/images/activities/kitesurf/kitesurf-3.png'),
 ]
 
-const kitesurfImage =
-  kitesurfImages[Math.floor(Math.random() * kitesurfImages.length)]
 const windsurfImages = [
   require('../assets/images/activities/windsurf/windsurf-1.png'),
   require('../assets/images/activities/windsurf/windsurf-2.png'),
   require('../assets/images/activities/windsurf/windsurf-3.png'),
 ]
 
-const windsurfImage =
-  windsurfImages[Math.floor(Math.random() * windsurfImages.length)]
 const surfImages = [
   require('../assets/images/activities/surf/surf-1.jpg'),
   require('../assets/images/activities/surf/surf-2.jpg'),
   require('../assets/images/activities/surf/surf-3.jpg'),
 ]
 
-const surfImage =
-  surfImages[Math.floor(Math.random() * surfImages.length)]
 const pilatesImages = [
   require('../assets/images/activities/pilates/pilates-1.jpg'),
   require('../assets/images/activities/pilates/pilates-2.jpg'),
   require('../assets/images/activities/pilates/pilates-3.jpg'),
 ]
 
-const pilatesImage =
-  pilatesImages[Math.floor(Math.random() * pilatesImages.length)]
 const pinturaImages = [
   require('../assets/images/activities/pintura/pintura-1.jpg'),
   require('../assets/images/activities/pintura/pintura-2.jpg'),
   require('../assets/images/activities/pintura/pintura-3.jpg'),
 ]
 
-const pinturaImage =
-  pinturaImages[Math.floor(Math.random() * pinturaImages.length)]
 const ceramicaImages = [
   require('../assets/images/activities/ceramica/ceramica-1.jpg'),
   require('../assets/images/activities/ceramica/ceramica-2.jpg'),
   require('../assets/images/activities/ceramica/ceramica-3.jpg'),
 ]
 
-const ceramicaImage =
-  ceramicaImages[Math.floor(Math.random() * ceramicaImages.length)]
 const fotografiaImages = [
   require('../assets/images/activities/fotografia/fotografia-1.jpg'),
   require('../assets/images/activities/fotografia/fotografia-2.jpg'),
   require('../assets/images/activities/fotografia/fotografia-3.jpg'),
 ]
 
-const fotografiaImage =
-  fotografiaImages[Math.floor(Math.random() * fotografiaImages.length)]
 const tangoImages = [
   require('../assets/images/activities/tango/tango-1.jpg'),
   require('../assets/images/activities/tango/tango-2.jpg'),
   require('../assets/images/activities/tango/tango-3.jpg'),
 ]
 
-const tangoImage =
-  tangoImages[Math.floor(Math.random() * tangoImages.length)]
 const folkloreImages = [
   require('../assets/images/activities/folklore/folklore-1.jpg'),
   require('../assets/images/activities/folklore/folklore-2.jpg'),
   require('../assets/images/activities/folklore/folklore-3.jpg'),
 ]
 
-const folkloreImage =
-  folkloreImages[Math.floor(Math.random() * folkloreImages.length)]
 const motosImages = [
   require('../assets/images/activities/motos/motos-1.jpg'),
   require('../assets/images/activities/motos/motos-2.jpg'),
   require('../assets/images/activities/motos/motos-3.jpg'),
 ]
 
-const motosImage =
-  motosImages[Math.floor(Math.random() * motosImages.length)]
 const teatroImages = [
   require('../assets/images/activities/teatro/teatro-1.jpg'),
   require('../assets/images/activities/teatro/teatro-2.jpg'),
   require('../assets/images/activities/teatro/teatro-3.jpg'),
 ]
 
-const teatroImage =
-  teatroImages[Math.floor(Math.random() * teatroImages.length)]
 const astrologiaImages = [
   require('../assets/images/activities/astrologia/astrologia-1.jpg'),
   require('../assets/images/activities/astrologia/astrologia-2.jpg'),
   require('../assets/images/activities/astrologia/astrologia-3.jpg'),
 ]
 
-const astrologiaImage =
-  astrologiaImages[Math.floor(Math.random() * astrologiaImages.length)]
 const eventosImages = [
   require('../assets/images/activities/eventos/eventos-1.jpg'),
   require('../assets/images/activities/eventos/eventos-2.jpg'),
   require('../assets/images/activities/eventos/eventos-3.jpg'),
 ]
 
-const eventosImage =
-  eventosImages[Math.floor(Math.random() * eventosImages.length)]
 const gamingImage = require('../assets/images/categories/placeholder-gaming.jpg')
 const mateadaImages = [
   require('../assets/images/activities/mateada/mateada-1.jpg'),
@@ -299,117 +227,91 @@ const mateadaImages = [
   require('../assets/images/activities/mateada/mateada-3.jpg'),
 ]
 
-const mateadaImage =
-  mateadaImages[Math.floor(Math.random() * mateadaImages.length)]
 const ciclismoImages = [
   require('../assets/images/activities/ciclismo/ciclismo-1.jpg'),
   require('../assets/images/activities/ciclismo/ciclismo-2.jpg'),
   require('../assets/images/activities/ciclismo/ciclismo-3.jpg'),
 ]
 
-const ciclismoImage =
-  ciclismoImages[Math.floor(Math.random() * ciclismoImages.length)]
 const ciclismoIndoorImages = [
   require('../assets/images/activities/ciclismoindoor/ciclismoindoor-1.jpg'),
   require('../assets/images/activities/ciclismoindoor/ciclismoindoor-2.jpg'),
   require('../assets/images/activities/ciclismoindoor/ciclismoindoor-3.jpg'),
 ]
 
-const ciclismoIndoorImage =
-  ciclismoIndoorImages[Math.floor(Math.random() * ciclismoIndoorImages.length)]
 const entrenamientoImages = [
   require('../assets/images/activities/entrenamiento/entrenamiento-1.jpg'),
   require('../assets/images/activities/entrenamiento/entrenamiento-2.jpg'),
   require('../assets/images/activities/entrenamiento/entrenamiento-3.jpg'),
 ]
 
-const entrenamientoImage =
-  entrenamientoImages[Math.floor(Math.random() * entrenamientoImages.length)]
 const cantoImages = [
   require('../assets/images/activities/canto/canto-1.jpg'),
   require('../assets/images/activities/canto/canto-2.jpg'),
   require('../assets/images/activities/canto/canto-3.jpg'),
 ]
 
-const cantoImage =
-  cantoImages[Math.floor(Math.random() * cantoImages.length)]
 const salsaImages = [
   require('../assets/images/activities/salsa/salsa-1.jpg'),
   require('../assets/images/activities/salsa/salsa-2.jpg'),
   require('../assets/images/activities/salsa/salsa-3.jpg'),
 ]
 
-const salsaImage =
-  salsaImages[Math.floor(Math.random() * salsaImages.length)]
 const ritmosImages = [
   require('../assets/images/activities/ritmos/ritmos-1.jpg'),
   require('../assets/images/activities/ritmos/ritmos-2.jpg'),
   require('../assets/images/activities/ritmos/ritmos-3.jpg'),
 ]
 
-const ritmosImage =
-  ritmosImages[Math.floor(Math.random() * ritmosImages.length)]
 const lecturaImages = [
   require('../assets/images/activities/lectura/lectura-1.jpg'),
   require('../assets/images/activities/lectura/lectura-2.jpg'),
   require('../assets/images/activities/lectura/lectura-3.jpg'),
 ]
 
-const lecturaImage =
-  lecturaImages[Math.floor(Math.random() * lecturaImages.length)]
 const cursosTalleresCapacitacionesImages = [
   require('../assets/images/activities/cursostallerescapacitaciones/cursostallerescapacitaciones-1.jpg'),
   require('../assets/images/activities/cursostallerescapacitaciones/cursostallerescapacitaciones-2.jpg'),
   require('../assets/images/activities/cursostallerescapacitaciones/cursostallerescapacitaciones-3.jpg'),
 ]
 
-const cursosTalleresCapacitacionesImage =
-  cursosTalleresCapacitacionesImages[Math.floor(Math.random() * cursosTalleresCapacitacionesImages.length)]
 const ajedrezImages = [
   require('../assets/images/activities/ajedrez/ajedrez-1.jpg'),
   require('../assets/images/activities/ajedrez/ajedrez-2.jpg'),
   require('../assets/images/activities/ajedrez/ajedrez-3.jpg'),
 ]
 
-const ajedrezImage =
-  ajedrezImages[Math.floor(Math.random() * ajedrezImages.length)]
 const mascotasImages = [
   require('../assets/images/activities/mascotas/mascotas-1.jpg'),
   require('../assets/images/activities/mascotas/mascotas-2.jpg'),
   require('../assets/images/activities/mascotas/mascotas-3.jpg'),
 ]
 
-const mascotasImage =
-  mascotasImages[Math.floor(Math.random() * mascotasImages.length)]
 const jardineriaImages = [
   require('../assets/images/activities/jardineria/jardineria-1.jpg'),
   require('../assets/images/activities/jardineria/jardineria-2.jpg'),
   require('../assets/images/activities/jardineria/jardineria-3.jpg'),
 ]
 
-const jardineriaImage =
-  jardineriaImages[Math.floor(Math.random() * jardineriaImages.length)]
 const mundial2026Images = [
   require('../assets/images/activities/mundial2026/mundial2026argentina-1.jpg'),
   require('../assets/images/activities/mundial2026/mundial2026argentina-2.jpg'),
   require('../assets/images/activities/mundial2026/mundial2026argentina-3.jpg'),
 ]
 
-const mundial2026Image =
-  mundial2026Images[Math.floor(Math.random() * mundial2026Images.length)]
 const grupalImage = require('../assets/images/categories/placeholder-grupal.jpg')
 
 export const categoryImages: Record<string, ImageSourcePropType> = {
-  Yoga: yogaImage,
-  Running: runningImage,
-  SUP: supImage,
-  Cafe: cafeImage,
-  Musica: musicaImage,
-  Senderismo: senderismoImage,
+  Yoga: yogaImages[0],
+  Running: runningImages[0],
+  SUP: supImages[0],
+  Cafe: cafeImages[0],
+  Musica: musicaImages[0],
+  Senderismo: senderismoImages[0],
   Gaming: gamingImage,
-  Mateada: mateadaImage,
-  Ciclismo: ciclismoImage,
-  Entrenamiento: entrenamientoImage,
+  Mateada: mateadaImages[0],
+  Ciclismo: ciclismoImages[0],
+  Entrenamiento: entrenamientoImages[0],
   Grupales: grupalImage,
 }
 
@@ -447,66 +349,110 @@ function getRemoteImage(data: Record<string, unknown>) {
   return uri ? { uri } : null
 }
 
-const imageRules: { image: ImageSourcePropType; terms: string[] }[] = [
-  { image: equitacionImage, terms: ['equitacion', 'cabalgata', 'caballo'] },
-  { image: beachvoleyImage, terms: ['beach voley', 'beach volley', 'beachvoley', 'voley playa'] },
-  { image: newcomImage, terms: ['newcom'] },
-  { image: natacionAguasAbiertasImage, terms: ['natacion aguas abiertas', 'aguas abiertas'] },
-  { image: snorkelingImage, terms: ['snorkeling'] },
-  { image: buceoImage, terms: ['buceo'] },
-  { image: kitesurfImage, terms: ['kitesurf'] },
-  { image: windsurfImage, terms: ['windsurf'] },
-  { image: surfImage, terms: ['surf'] },
-  { image: ciclismoIndoorImage, terms: ['ciclismo indoor', 'spinning'] },
-  { image: eventosImage, terms: ['eventos', 'evento'] },
-  { image: cantoImage, terms: ['canto', 'cantar', 'coral', 'coro'] },
-  { image: salsaImage, terms: ['salsa'] },
-  { image: ritmosImage, terms: ['ritmos', 'baile', 'danza'] },
-  { image: lecturaImage, terms: ['lectura', 'leer', 'libros', 'club de lectura'] },
-  { image: cursosTalleresCapacitacionesImage, terms: ['cursos/talleres/capacitaciones', 'cursos', 'talleres', 'capacitaciones', 'capacitacion', 'curso', 'taller'] },
-  { image: ajedrezImage, terms: ['ajedrez'] },
-  { image: mascotasImage, terms: ['mascotas', 'mascota', 'perros', 'gatos'] },
-  { image: jardineriaImage, terms: ['jardineria', 'jardin', 'plantas', 'huerta'] },
-  { image: mundial2026Image, terms: ['mundial 2026', 'mundial2026', 'mundial', 'argentina 2026'] },
-  { image: futbolImage, terms: ['futbol', 'futbol 5', 'fulbito'] },
-  { image: tenisImage, terms: ['tenis'] },
-  { image: basquetImage, terms: ['basquet', 'basket', 'basketball'] },
-  { image: padelImage, terms: ['padel', 'paddle'] },
-  { image: pescaImage, terms: ['pesca', 'pescar'] },
-  { image: cocinaImage, terms: ['cocina', 'cocinar', 'gastronomia', 'cocina/venue'] },
-  { image: juegosdemesaImage, terms: ['juegos de mesa', 'juego de mesa', 'board games'] },
-  { image: idiomasImage, terms: ['idiomas', 'idioma', 'intercambio cultural', 'intercambio de idiomas'] },
-  { image: meditacionImage, terms: ['meditacion', 'mindfulness', 'respiracion'] },
-  { image: kayakImage, terms: ['kayak'] },
-  { image: natacionImage, terms: ['natacion', 'nadar', 'pileta'] },
-  { image: pilatesImage, terms: ['pilates'] },
-  { image: pinturaImage, terms: ['pintura', 'pintar'] },
-  { image: ceramicaImage, terms: ['ceramica', 'alfareria'] },
-  { image: fotografiaImage, terms: ['fotografia', 'foto', 'fotos'] },
-  { image: tangoImage, terms: ['tango'] },
-  { image: folkloreImage, terms: ['folklore', 'folklore argentino'] },
-  { image: motosImage, terms: ['motos', 'moto', 'motociclismo'] },
-  { image: teatroImage, terms: ['teatro', 'actuacion'] },
-  { image: astrologiaImage, terms: ['astrologia', 'carta natal', 'zodiaco'] },
-  { image: ciclismoImage, terms: ['ciclismo/mtb', 'ciclismo', 'bicicleta', 'bici', 'bike', 'mountain bike', 'mtb'] },
-  { image: yogaImage, terms: ['yoga', 'supyoga', 'meditacion', 'mindfulness', 'respiracion', 'relax', 'stretching', 'tai chi', 'sound healing', 'bienestar', 'wellness'] },
-  { image: runningImage, terms: ['running', 'correr', 'runner'] },
-  { image: supImage, terms: ['sup', 'stand up paddle', 'kayak', 'paddleboard', 'natacion'] },
-  { image: cafeImage, terms: ['cafe', 'cafeteria', 'cocina'] },
-  { image: musicaImage, terms: ['musica', 'sala de ensayo', 'sound', 'concierto'] },
-  { image: senderismoImage, terms: ['senderismo', 'trekking/senderismo', 'sendero', 'caminata', 'caminatas', 'trekking', 'camping', 'paseos', 'picnic', 'montana', 'escalada outdoor'] },
+type ImageRule = {
+  image: ImageSourcePropType | ImageSourcePropType[]
+  terms: string[]
+}
+
+function getStableImageKey(data: Record<string, unknown>) {
+  return [
+    data.activityId,
+    data.id,
+    data.title,
+    data.name,
+    data.subcategory,
+    data.category,
+    data.categoryId,
+  ].map(readString).find(Boolean) ?? ''
+}
+
+function getStableIndex(value: string, length: number) {
+  if (length <= 1) return 0
+
+  let hash = 0
+  for (let index = 0; index < value.length; index += 1) {
+    hash = ((hash * 31) + value.charCodeAt(index)) >>> 0
+  }
+
+  return hash % length
+}
+
+function pickStableImage(
+  image: ImageSourcePropType | ImageSourcePropType[],
+  data: Record<string, unknown>,
+): ImageSourcePropType | null {
+  if (!Array.isArray(image)) return image as ImageSourcePropType
+  if (image.length === 0) return null
+
+  const key = getStableImageKey(data)
+  const index = getStableIndex(key, image.length)
+
+  return image[index] as ImageSourcePropType
+}
+
+const imageRules: ImageRule[] = [
+  { image: equitacionImages, terms: ['equitacion', 'cabalgata', 'caballo'] },
+  { image: beachvoleyImages, terms: ['beach voley', 'beach volley', 'beachvoley', 'voley playa'] },
+  { image: newcomImages, terms: ['newcom'] },
+  { image: natacionAguasAbiertasImages, terms: ['natacion aguas abiertas', 'aguas abiertas'] },
+  { image: snorkelingImages, terms: ['snorkeling'] },
+  { image: buceoImages, terms: ['buceo'] },
+  { image: kitesurfImages, terms: ['kitesurf'] },
+  { image: windsurfImages, terms: ['windsurf'] },
+  { image: surfImages, terms: ['surf'] },
+  { image: ciclismoIndoorImages, terms: ['ciclismo indoor', 'spinning'] },
+  { image: eventosImages, terms: ['eventos', 'evento'] },
+  { image: cantoImages, terms: ['canto', 'cantar', 'coral', 'coro'] },
+  { image: salsaImages, terms: ['salsa'] },
+  { image: ritmosImages, terms: ['ritmos', 'baile', 'danza'] },
+  { image: lecturaImages, terms: ['lectura', 'leer', 'libros', 'club de lectura'] },
+  { image: cursosTalleresCapacitacionesImages, terms: ['cursos/talleres/capacitaciones', 'cursos', 'talleres', 'capacitaciones', 'capacitacion', 'curso', 'taller'] },
+  { image: ajedrezImages, terms: ['ajedrez'] },
+  { image: mascotasImages, terms: ['mascotas', 'mascota', 'perros', 'gatos'] },
+  { image: jardineriaImages, terms: ['jardineria', 'jardin', 'plantas', 'huerta'] },
+  { image: mundial2026Images, terms: ['mundial 2026', 'mundial2026', 'mundial', 'argentina 2026'] },
+  { image: futbolImages, terms: ['futbol', 'futbol 5', 'fulbito'] },
+  { image: tenisImages, terms: ['tenis'] },
+  { image: basquetImages, terms: ['basquet', 'basket', 'basketball'] },
+  { image: padelImages, terms: ['padel', 'paddle'] },
+  { image: pescaImages, terms: ['pesca', 'pescar'] },
+  { image: cocinaImages, terms: ['cocina', 'cocinar', 'gastronomia', 'cocina/venue'] },
+  { image: juegosdemesaImages, terms: ['juegos de mesa', 'juego de mesa', 'board games'] },
+  { image: idiomasImages, terms: ['idiomas', 'idioma', 'intercambio cultural', 'intercambio de idiomas'] },
+  { image: meditacionImages, terms: ['meditacion', 'mindfulness', 'respiracion'] },
+  { image: kayakImages, terms: ['kayak'] },
+  { image: natacionImages, terms: ['natacion', 'nadar', 'pileta'] },
+  { image: pilatesImages, terms: ['pilates'] },
+  { image: pinturaImages, terms: ['pintura', 'pintar'] },
+  { image: ceramicaImages, terms: ['ceramica', 'alfareria'] },
+  { image: fotografiaImages, terms: ['fotografia', 'foto', 'fotos'] },
+  { image: tangoImages, terms: ['tango'] },
+  { image: folkloreImages, terms: ['folklore', 'folklore argentino'] },
+  { image: motosImages, terms: ['motos', 'moto', 'motociclismo'] },
+  { image: teatroImages, terms: ['teatro', 'actuacion'] },
+  { image: astrologiaImages, terms: ['astrologia', 'carta natal', 'zodiaco'] },
+  { image: ciclismoImages, terms: ['ciclismo/mtb', 'ciclismo', 'bicicleta', 'bici', 'bike', 'mountain bike', 'mtb'] },
+  { image: yogaImages, terms: ['yoga', 'supyoga', 'meditacion', 'mindfulness', 'respiracion', 'relax', 'stretching', 'tai chi', 'sound healing', 'bienestar', 'wellness'] },
+  { image: runningImages, terms: ['running', 'correr', 'runner'] },
+  { image: supImages, terms: ['sup', 'stand up paddle', 'kayak', 'paddleboard', 'natacion'] },
+  { image: cafeImages, terms: ['cafe', 'cafeteria', 'cocina'] },
+  { image: musicaImages, terms: ['musica', 'sala de ensayo', 'sound', 'concierto'] },
+  { image: senderismoImages, terms: ['senderismo', 'trekking/senderismo', 'sendero', 'caminata', 'caminatas', 'trekking', 'camping', 'paseos', 'picnic', 'montana', 'escalada outdoor'] },
   { image: gamingImage, terms: ['gaming', 'juegos', 'juegos de mesa', 'pool', 'bowling'] },
-  { image: mateadaImage, terms: ['mate', 'mateada', 'mateadas', 'charlas', 'after office', 'salidas grupales', 'sociales', 'sociales y comunidad'] },
-  { image: entrenamientoImage, terms: ['entrenamiento', 'entrenamiento y movimiento', 'funcional', 'crossfit', 'calistenia', 'gimnasio', 'gimnasio/estudio', 'deportes', 'sports', 'futbol', 'padel', 'paddle', 'tenis', 'basquet', 'hockey', 'voley'] },
+  { image: mateadaImages, terms: ['mate', 'mateada', 'mateadas', 'charlas', 'after office', 'salidas grupales', 'sociales', 'sociales y comunidad'] },
+  { image: entrenamientoImages, terms: ['entrenamiento', 'entrenamiento y movimiento', 'funcional', 'crossfit', 'calistenia', 'gimnasio', 'gimnasio/estudio', 'deportes', 'sports', 'futbol', 'padel', 'paddle', 'tenis', 'basquet', 'hockey', 'voley'] },
   { image: grupalImage, terms: ['grupo', 'grupos', 'grupal', 'grupales', 'clubes', 'networking', 'voluntariado', 'idiomas', 'intercambio cultural'] },
-  { image: senderismoImage, terms: ['outdoor', 'aire libre y naturaleza', 'al aire libre'] },
-  { image: musicaImage, terms: ['culture', 'cultura', 'cultura, arte y aprendizaje'] },
+  { image: senderismoImages, terms: ['outdoor', 'aire libre y naturaleza', 'al aire libre'] },
+  { image: musicaImages, terms: ['culture', 'cultura', 'cultura, arte y aprendizaje'] },
   { image: gamingImage, terms: ['hobbies', 'juegos y hobbies'] },
-  { image: yogaImage, terms: ['wellness', 'bienestar'] },
+  { image: yogaImages, terms: ['wellness', 'bienestar'] },
   { image: grupalImage, terms: ['groups'] },
 ]
 
-export function getCategoryImage(data: Record<string, unknown> = {}, fallback = defaultActivityImage) {
+export function getCategoryImage(
+  data: Record<string, unknown> = {},
+  fallback = defaultActivityImage,
+): ImageSourcePropType {
   const remoteImage = getRemoteImage(data)
   if (remoteImage) return remoteImage
 
@@ -521,7 +467,10 @@ export function getCategoryImage(data: Record<string, unknown> = {}, fallback = 
   ].filter(Boolean).join(' '))
 
   const match = imageRules.find((rule) => rule.terms.some((term) => searchable.includes(term)))
-  if (match?.image) return match.image
+  if (match?.image) {
+    const stableImage = pickStableImage(match.image, data)
+    if (stableImage) return stableImage
+  }
 
   if (__DEV__) {
     console.log('[CATEGORY IMAGE FALLBACK]', {

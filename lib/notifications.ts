@@ -22,8 +22,11 @@ export type AppNotification = {
   activityId?: string
   body: string
   createdAt: Date | null
+  groupId?: string
+  groupName?: string
   id: string
   read: boolean
+  requesterId?: string
   senderId?: string
   title: string
   type: NotificationType
@@ -33,6 +36,9 @@ export type AppNotification = {
 export type CreateNotificationInput = {
   activityId?: string
   body: string
+  groupId?: string
+  groupName?: string
+  requesterId?: string
   senderId?: string
   title: string
   type: NotificationType
@@ -118,8 +124,11 @@ function mapNotification(id: string, data: Record<string, unknown>): AppNotifica
     activityId: readString(data.activityId) || undefined,
     body: readString(data.body),
     createdAt: readDate(data.createdAt),
+    groupId: readString(data.groupId) || undefined,
+    groupName: readString(data.groupName) || undefined,
     id,
     read: readBoolean(data.read),
+    requesterId: readString(data.requesterId) || undefined,
     senderId: readString(data.senderId) || undefined,
     title: readString(data.title, 'Notificación'),
     type: readNotificationType(data.type),

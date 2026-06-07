@@ -150,6 +150,12 @@ function getNotificationBody(notification: AppNotification, activityName: string
   return notification.body
 }
 
+function getNotificationActionLabel(notification: AppNotification) {
+  if (notification.groupId) return 'Ver grupo'
+  if (notification.activityId) return 'Ver actividad'
+  return ''
+}
+
 function escapeRegExp(value: string) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 }
@@ -197,6 +203,17 @@ export default function NotificacionesScreen() {
       if (!notification.read) await markNotificationAsRead(notification.id)
     } catch (error) {
       if (__DEV__) console.warn('notification-mark-read-error', error)
+    }
+
+    if (notification.groupId) {
+      router.push({
+        pathname: '/group/[groupId]',
+        params: {
+          groupId: notification.groupId,
+          ...(notification.groupName ? { groupName: notification.groupName } : {}),
+        },
+      })
+      return
     }
 
     if (notification.activityId) {
@@ -318,7 +335,8 @@ function NotificationCard({
   const Icon = tone.Icon
   const activityName = getActivityName(notification)
   const body = getNotificationBody(notification, activityName)
-  const hasActivity = Boolean(notification.activityId)
+  const actionLabel = getNotificationActionLabel(notification)
+  const destinationName = notification.groupName || activityName
 
   return (
     <PressScale
@@ -342,9 +360,9 @@ function NotificationCard({
               <Text numberOfLines={2} style={styles.notificationTitle}>{notification.title}</Text>
               {!notification.read ? <View style={[styles.unreadDot, { backgroundColor: tone.accent }]} /> : null}
             </View>
-            {activityName ? (
+            {destinationName ? (
               <Text numberOfLines={1} style={[styles.activityName, { color: tone.accent }]}>
-                {activityName}
+                {destinationName}
               </Text>
             ) : null}
           </View>
@@ -365,9 +383,9 @@ function NotificationCard({
           </View>
         </View>
         <Text numberOfLines={2} style={styles.notificationBody}>{body}</Text>
-        {hasActivity ? (
+        {actionLabel ? (
           <View style={styles.viewActivityRow}>
-            <Text style={styles.viewActivityText}>Ver actividad</Text>
+            <Text style={styles.viewActivityText}>{actionLabel}</Text>
             <Text style={styles.viewActivityArrow}>→</Text>
           </View>
         ) : null}
