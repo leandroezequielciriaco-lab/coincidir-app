@@ -62,7 +62,7 @@ const equitacionImage =
   equitacionImages[Math.floor(Math.random() * equitacionImages.length)]
 const futbolImages = [
   require('../assets/images/activities/futbol/futbol-1.jpg'),
-  require('../assets/images/activities/futbol/futbol-2.jpg'),
+  require('../assets/images/activities/futbol/futbol-2.png'),
   require('../assets/images/activities/futbol/futbol-3.jpg'),
 ]
 
@@ -172,6 +172,38 @@ const natacionAguasAbiertasImages = [
 
 const natacionAguasAbiertasImage =
   natacionAguasAbiertasImages[Math.floor(Math.random() * natacionAguasAbiertasImages.length)]
+const snorkelingImages = [
+  require('../assets/images/activities/snorkeling/snorkeling-1.png'),
+  require('../assets/images/activities/snorkeling/snorkeling-2.png'),
+  require('../assets/images/activities/snorkeling/snorkeling-3.png'),
+]
+
+const snorkelingImage =
+  snorkelingImages[Math.floor(Math.random() * snorkelingImages.length)]
+const buceoImages = [
+  require('../assets/images/activities/buceo/buceo-1.png'),
+  require('../assets/images/activities/buceo/buceo-2.png'),
+  require('../assets/images/activities/buceo/buceo-3.png'),
+]
+
+const buceoImage =
+  buceoImages[Math.floor(Math.random() * buceoImages.length)]
+const kitesurfImages = [
+  require('../assets/images/activities/kitesurf/kitesurf-1.png'),
+  require('../assets/images/activities/kitesurf/kitesurf-2.png'),
+  require('../assets/images/activities/kitesurf/kitesurf-3.png'),
+]
+
+const kitesurfImage =
+  kitesurfImages[Math.floor(Math.random() * kitesurfImages.length)]
+const windsurfImages = [
+  require('../assets/images/activities/windsurf/windsurf-1.png'),
+  require('../assets/images/activities/windsurf/windsurf-2.png'),
+  require('../assets/images/activities/windsurf/windsurf-3.png'),
+]
+
+const windsurfImage =
+  windsurfImages[Math.floor(Math.random() * windsurfImages.length)]
 const surfImages = [
   require('../assets/images/activities/surf/surf-1.jpg'),
   require('../assets/images/activities/surf/surf-2.jpg'),
@@ -420,6 +452,10 @@ const imageRules: { image: ImageSourcePropType; terms: string[] }[] = [
   { image: beachvoleyImage, terms: ['beach voley', 'beach volley', 'beachvoley', 'voley playa'] },
   { image: newcomImage, terms: ['newcom'] },
   { image: natacionAguasAbiertasImage, terms: ['natacion aguas abiertas', 'aguas abiertas'] },
+  { image: snorkelingImage, terms: ['snorkeling'] },
+  { image: buceoImage, terms: ['buceo'] },
+  { image: kitesurfImage, terms: ['kitesurf'] },
+  { image: windsurfImage, terms: ['windsurf'] },
   { image: surfImage, terms: ['surf'] },
   { image: ciclismoIndoorImage, terms: ['ciclismo indoor', 'spinning'] },
   { image: eventosImage, terms: ['eventos', 'evento'] },

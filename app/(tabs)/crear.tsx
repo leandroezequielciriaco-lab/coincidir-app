@@ -42,6 +42,7 @@ import {
   Minus,
   PawPrint,
   Plus,
+  Search,
   ShieldCheck,
   SlidersHorizontal,
   Sparkles,
@@ -62,6 +63,7 @@ import {
   type ActivityCategory as Category,
   type ActivityCategoryId as CategoryId,
 } from '../../constants/activityCategories'
+import { legacyInterestAliases, normalizeInterestLabel } from '../../constants/userInterests'
 import {
   type LocalGroup,
   getLocalGroupId,
@@ -80,6 +82,14 @@ type PickerMode = 'category' | 'subcategory' | 'date' | 'time' | 'currency' | nu
 type CreateStep = 1 | 2 | 3 | 4 | 5
 type CreateFlowMode = 'activity' | 'choice' | 'group' | 'groupCreated'
 type ActivityKind = 'group' | 'individual'
+
+type ActivitySearchOption = {
+  category: Category
+  id: string
+  keywords: string[]
+  searchText: string
+  subcategory: string
+}
 
 type LocationSelection = {
   address: string
@@ -307,6 +317,21 @@ function normalize(value: unknown) {
     .toLowerCase()
 }
 
+function getActivitySearchKeywords(category: Category, subcategory: string) {
+  const aliases = legacyInterestAliases
+    .filter((alias) => alias.canonical.includes(subcategory))
+    .map((alias) => alias.legacy)
+
+  return Array.from(new Set([
+    subcategory,
+    category.label,
+    category.id,
+    ...(category.legacyLabels ?? []),
+    ...aliases,
+    ...subcategory.split(/[\/,]/).map((item) => item.trim()),
+  ].filter(Boolean)))
+}
+
 function readNumber(value: unknown, fallback = 0) {
   return typeof value === 'number' && Number.isFinite(value) ? value : fallback
 }
@@ -415,6 +440,8 @@ export default function CrearScreen() {
   const [name, setName] = useState('')
   const [category, setCategory] = useState<Category | null>(null)
   const [subcategory, setSubcategory] = useState('')
+  const [activitySearchQuery, setActivitySearchQuery] = useState('')
+  const [selectedActivitySearchLabel, setSelectedActivitySearchLabel] = useState('')
   const [description, setDescription] = useState('')
   const [date, setDate] = useState('')
   const [selectedDate, setSelectedDate] = useState<Date | null>(null)
@@ -454,6 +481,30 @@ export default function CrearScreen() {
     () => category?.subcategories ?? [],
     [category],
   )
+  const activitySearchOptions = useMemo<ActivitySearchOption[]>(
+    () => categories.flatMap((item) =>
+      item.subcategories.map((itemSubcategory) => {
+        const keywords = getActivitySearchKeywords(item, itemSubcategory)
+
+        return {
+          category: item,
+          id: `${item.id}:${itemSubcategory}`,
+          keywords,
+          searchText: keywords.map(normalizeInterestLabel).join(' '),
+          subcategory: itemSubcategory,
+        }
+      }),
+    ),
+    [],
+  )
+  const activitySearchResults = useMemo(() => {
+    const query = normalizeInterestLabel(activitySearchQuery)
+    if (query.length < 2) return []
+
+    return activitySearchOptions
+      .filter((option) => option.searchText.includes(query))
+      .slice(0, 10)
+  }, [activitySearchOptions, activitySearchQuery])
 
   const pickerTitle = useMemo(() => {
     if (pickerMode === 'category') return 'Elegí una categoría'
@@ -515,6 +566,8 @@ export default function CrearScreen() {
     setName(cleanGroupName)
     setCategory(groupCategory)
     setSubcategory(groupCategory?.subcategories[0] ?? '')
+    setActivitySearchQuery('')
+    setSelectedActivitySearchLabel('')
     setPrivacy('Pública')
     setCurrentStep(3)
     setMessage('')
@@ -593,6 +646,8 @@ export default function CrearScreen() {
         setName(readString(data.name))
         setCategory(existingCategory)
         setSubcategory(readString(data.subcategory))
+        setActivitySearchQuery('')
+        setSelectedActivitySearchLabel('')
         setDescription(readString(data.description))
         setSelectedDate(existingDate)
         setDate(readString(data.date, existingDate ? getDateLabel(existingDate) : ''))
@@ -922,12 +977,34 @@ export default function CrearScreen() {
     if (pickerMode === 'category' && typeof value !== 'string') {
       setCategory(value)
       setSubcategory('')
+      setActivitySearchQuery('')
+      setSelectedActivitySearchLabel('')
     }
 
-    if (pickerMode === 'subcategory' && typeof value === 'string') setSubcategory(value)
+    if (pickerMode === 'subcategory' && typeof value === 'string') {
+      setSubcategory(value)
+      setActivitySearchQuery('')
+      setSelectedActivitySearchLabel('')
+    }
     if (pickerMode === 'time' && typeof value === 'string') setTime(value)
     if (pickerMode === 'currency' && typeof value === 'string') setCurrency(value)
 
+    setPickerMode(null)
+    setMessage('')
+  }
+
+  const changeActivitySearchQuery = (value: string) => {
+    setActivitySearchQuery(value)
+    if (selectedActivitySearchLabel && value !== selectedActivitySearchLabel) {
+      setSelectedActivitySearchLabel('')
+    }
+  }
+
+  const selectActivitySearchResult = (option: ActivitySearchOption) => {
+    setCategory(option.category)
+    setSubcategory(option.subcategory)
+    setActivitySearchQuery(option.subcategory)
+    setSelectedActivitySearchLabel(option.subcategory)
     setPickerMode(null)
     setMessage('')
   }
@@ -984,6 +1061,8 @@ export default function CrearScreen() {
     setName(groupName)
     setCategory(groupCategory)
     setSubcategory(groupCategory?.subcategories[0] ?? '')
+    setActivitySearchQuery('')
+    setSelectedActivitySearchLabel('')
     setPrivacy('Pública')
     setCurrentStep(3)
     setFlowMode('activity')
@@ -993,6 +1072,8 @@ export default function CrearScreen() {
   const startCreateActivity = () => {
     setFlowMode('activity')
     setCurrentStep(1)
+    setActivitySearchQuery('')
+    setSelectedActivitySearchLabel('')
     setMessage('')
   }
 
@@ -1643,6 +1724,44 @@ export default function CrearScreen() {
             underlineColorAndroid="transparent"
             value={name}
           />
+
+          <Text style={styles.createFieldLabel}>¿Qué actividad querés crear?</Text>
+          <View style={styles.activitySearchField}>
+            <Search color="#0E5A44" size={20} strokeWidth={2.4} />
+            <TextInput
+              onChangeText={changeActivitySearchQuery}
+              placeholder="Buscar actividad: ajedrez, ciclismo, yoga..."
+              placeholderTextColor="#7A8790"
+              style={styles.activitySearchInput}
+              underlineColorAndroid="transparent"
+              value={activitySearchQuery}
+            />
+          </View>
+          {activitySearchResults.length > 0 ? (
+            <View style={styles.activitySearchResults}>
+              {activitySearchResults.map((item) => {
+                const CategoryIcon = getCategoryIcon(item.category.id)
+
+                return (
+                  <Pressable
+                    accessibilityLabel={`Seleccionar ${item.subcategory}`}
+                    accessibilityRole="button"
+                    key={item.id}
+                    onPress={() => selectActivitySearchResult(item)}
+                    style={styles.activitySearchResult}
+                  >
+                    <View style={[styles.activitySearchIcon, { backgroundColor: item.category.backgroundColor }]}>
+                      <CategoryIcon color={item.category.color} size={18} strokeWidth={2.4} />
+                    </View>
+                    <View style={styles.activitySearchCopy}>
+                      <Text numberOfLines={1} style={styles.activitySearchTitle}>{item.subcategory}</Text>
+                      <Text numberOfLines={1} style={styles.activitySearchCategory}>{item.category.label}</Text>
+                    </View>
+                  </Pressable>
+                )
+              })}
+            </View>
+          ) : null}
 
           <View style={styles.createTwoColumnRow}>
             <View style={styles.createColumn}>
@@ -2587,6 +2706,76 @@ const styles = StyleSheet.create({
     paddingVertical: 0,
     textAlignVertical: 'center',
     marginBottom: 14,
+  },
+  activitySearchField: {
+    alignItems: 'center',
+    backgroundColor: '#FCFAF8',
+    borderColor: '#E2E6E3',
+    borderRadius: 12,
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: 10,
+    marginBottom: 10,
+    minHeight: 54,
+    paddingHorizontal: 14,
+  },
+  activitySearchInput: {
+    color: '#123F38',
+    flex: 1,
+    fontSize: 15,
+    fontWeight: '700',
+    includeFontPadding: false,
+    lineHeight: 20,
+    minHeight: 52,
+    paddingVertical: 0,
+    textAlignVertical: 'center',
+  },
+  activitySearchResults: {
+    backgroundColor: '#FFFFFF',
+    borderColor: '#E2E6E3',
+    borderRadius: 14,
+    borderWidth: 1,
+    gap: 8,
+    marginBottom: 14,
+    padding: 8,
+  },
+  activitySearchResult: {
+    alignItems: 'center',
+    backgroundColor: '#FCFAF8',
+    borderColor: '#EDF0EC',
+    borderRadius: 12,
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: 10,
+    minHeight: 54,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  activitySearchIcon: {
+    alignItems: 'center',
+    borderRadius: 999,
+    height: 36,
+    justifyContent: 'center',
+    width: 36,
+  },
+  activitySearchCopy: {
+    flex: 1,
+    minWidth: 0,
+  },
+  activitySearchTitle: {
+    color: '#123F38',
+    fontSize: 15,
+    fontWeight: '900',
+    letterSpacing: 0,
+    lineHeight: 19,
+  },
+  activitySearchCategory: {
+    color: '#5B6E66',
+    fontSize: 12,
+    fontWeight: '800',
+    letterSpacing: 0,
+    lineHeight: 16,
+    marginTop: 2,
   },
   createDescriptionInput: {
     minHeight: 116,
