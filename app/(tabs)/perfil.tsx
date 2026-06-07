@@ -1024,7 +1024,16 @@ function ProfileGroupsSection({ currentUserId, currentUserName, groups, onOpen }
         </View>
       </View>
       <View style={styles.profileGroupFooter}>
-        <Text style={[styles.profileGroupStatus, group.status === 'host' ? styles.profileGroupStatusHost : group.status === 'member' ? styles.profileGroupStatusMember : styles.profileGroupStatusOpen]}>
+        <Text style={[
+          styles.profileGroupStatus,
+          group.status === 'host'
+            ? styles.profileGroupStatusHost
+            : group.status === 'member'
+              ? styles.profileGroupStatusMember
+              : group.status === 'pending'
+                ? styles.profileGroupStatusPending
+                : styles.profileGroupStatusOpen,
+        ]}>
           {getGroupStatusText(group.status)}
         </Text>
         <View style={styles.profileGroupOpen}>
@@ -1033,7 +1042,7 @@ function ProfileGroupsSection({ currentUserId, currentUserName, groups, onOpen }
         </View>
       </View>
       {group.status === 'none' ? (
-        <PressScale
+        <Pressable
           accessibilityLabel={`Ser miembro de ${group.name}`}
           accessibilityRole="button"
           disabled={!currentUserId || Boolean(pendingGroupAction)}
@@ -1041,14 +1050,17 @@ function ProfileGroupsSection({ currentUserId, currentUserName, groups, onOpen }
             event.stopPropagation()
             void requestGroupMembership(group)
           }}
-          scaleTo={0.97}
-          style={[styles.profileGroupJoinButton, (!currentUserId || Boolean(pendingGroupAction)) && styles.profileGroupActionDisabled]}
+          style={({ pressed }) => [
+            styles.profileGroupJoinButton,
+            pressed && styles.profileGroupActionPressed,
+            (!currentUserId || Boolean(pendingGroupAction)) && styles.profileGroupActionDisabled,
+          ]}
         >
-          <Text style={styles.profileGroupJoinButtonText}>+ Ser miembro</Text>
-        </PressScale>
+          {pendingGroupAction === `join:${group.id}` ? <ActivityIndicator color="#4B348A" /> : <Text style={styles.profileGroupJoinButtonText}>+ Ser miembro</Text>}
+        </Pressable>
       ) : null}
       {group.status === 'member' ? (
-        <PressScale
+        <Pressable
           accessibilityLabel={`Dejar de ser miembro de ${group.name}`}
           accessibilityRole="button"
           disabled={Boolean(pendingGroupAction)}
@@ -1056,11 +1068,14 @@ function ProfileGroupsSection({ currentUserId, currentUserName, groups, onOpen }
             event.stopPropagation()
             confirmLeaveGroup(group)
           }}
-          scaleTo={0.97}
-          style={[styles.profileGroupLeaveButton, Boolean(pendingGroupAction) && styles.profileGroupActionDisabled]}
+          style={({ pressed }) => [
+            styles.profileGroupLeaveButton,
+            pressed && styles.profileGroupActionPressed,
+            Boolean(pendingGroupAction) && styles.profileGroupActionDisabled,
+          ]}
         >
-          <Text style={styles.profileGroupLeaveButtonText}>Dejar de ser miembro</Text>
-        </PressScale>
+          {pendingGroupAction === `leave:${group.id}` ? <ActivityIndicator color="#B63232" /> : <Text style={styles.profileGroupLeaveButtonText}>Dejar de ser miembro</Text>}
+        </Pressable>
       ) : null}
     </PressScale>
   )
@@ -2135,8 +2150,11 @@ const styles = StyleSheet.create({
   profileGroupStatusMember: {
     color: '#4B348A',
   },
+  profileGroupStatusPending: {
+    color: '#B55400',
+  },
   profileGroupStatusOpen: {
-    color: '#7A8790',
+    color: '#596A65',
   },
   profileGroupOpen: {
     alignItems: 'center',
@@ -2158,14 +2176,17 @@ const styles = StyleSheet.create({
   profileGroupJoinButton: {
     alignItems: 'center',
     alignSelf: 'stretch',
-    backgroundColor: '#006A32',
+    backgroundColor: '#F1EBFF',
+    borderColor: '#D8CAF8',
     borderRadius: 12,
-    minHeight: 42,
+    borderWidth: 1,
     justifyContent: 'center',
+    minHeight: 44,
     paddingHorizontal: 14,
+    width: '100%',
   },
   profileGroupJoinButtonText: {
-    color: '#FFFFFF',
+    color: '#4B348A',
     fontSize: 14,
     fontWeight: '900',
     letterSpacing: 0,
@@ -2177,9 +2198,10 @@ const styles = StyleSheet.create({
     borderColor: '#D95454',
     borderRadius: 12,
     borderWidth: 1,
-    minHeight: 42,
     justifyContent: 'center',
+    minHeight: 44,
     paddingHorizontal: 14,
+    width: '100%',
   },
   profileGroupLeaveButtonText: {
     color: '#B63232',
@@ -2188,7 +2210,10 @@ const styles = StyleSheet.create({
     letterSpacing: 0,
   },
   profileGroupActionDisabled: {
-    opacity: 0.58,
+    opacity: 0.62,
+  },
+  profileGroupActionPressed: {
+    opacity: 0.84,
   },
   profileRow: {
     alignItems: 'center',

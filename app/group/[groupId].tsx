@@ -4,6 +4,7 @@ import {
   Alert,
   Image,
   Platform,
+  Pressable,
   ScrollView,
   StyleSheet,
   Text,
@@ -881,15 +882,15 @@ export default function GroupDetailScreen() {
 
           {!isOwner && !isMember && !hasRequestedJoin ? (
             <PressScale
-              accessibilityLabel="Pedir ser miembro"
+              accessibilityLabel="Ser miembro"
               accessibilityRole="button"
               disabled={!userId || isJoining}
               onPress={requestJoinGroup}
               style={[styles.primaryButton, (!userId || isJoining) && styles.primaryButtonDisabled]}
               scaleTo={0.97}
             >
-              {isJoining ? <ActivityIndicator color="#FFFFFF" /> : <Sprout color="#FFFFFF" size={20} strokeWidth={2.3} />}
-              <Text style={styles.primaryButtonText}>Pedir ser miembro</Text>
+              {isJoining ? <ActivityIndicator color="#006A32" /> : <Sprout color="#006A32" size={20} strokeWidth={2.3} />}
+              <Text style={styles.primaryButtonText}>+ Ser miembro</Text>
             </PressScale>
           ) : null}
 
@@ -921,28 +922,48 @@ export default function GroupDetailScreen() {
                     <Text style={styles.requestSubtitle}>Quiere sumarse al grupo</Text>
                   </View>
                   <View style={styles.requestActions}>
-                    <PressScale
+                    <Pressable
                       accessibilityLabel={`Aceptar solicitud de ${request.name}`}
                       accessibilityRole="button"
                       disabled={Boolean(pendingRequestAction)}
                       onPress={() => acceptRequest(request)}
-                      scaleTo={0.97}
-                      style={[styles.requestButton, styles.acceptRequestButton, Boolean(pendingRequestAction) && styles.requestButtonDisabled]}
+                      style={({ pressed }) => [
+                        styles.requestButton,
+                        styles.acceptRequestButton,
+                        pressed && styles.requestButtonPressed,
+                        Boolean(pendingRequestAction) && styles.requestButtonDisabled,
+                      ]}
                     >
-                      <Check color="#FFFFFF" size={17} strokeWidth={2.8} />
-                      <Text style={styles.acceptRequestText}>Aceptar</Text>
-                    </PressScale>
-                    <PressScale
+                      {pendingRequestAction === `accept:${request.id}` ? (
+                        <ActivityIndicator color="#FFFFFF" />
+                      ) : (
+                        <>
+                          <Check color="#FFFFFF" size={17} strokeWidth={2.8} />
+                          <Text style={styles.acceptRequestText}>Aceptar</Text>
+                        </>
+                      )}
+                    </Pressable>
+                    <Pressable
                       accessibilityLabel={`Rechazar solicitud de ${request.name}`}
                       accessibilityRole="button"
                       disabled={Boolean(pendingRequestAction)}
                       onPress={() => rejectRequest(request)}
-                      scaleTo={0.97}
-                      style={[styles.requestButton, styles.rejectRequestButton, Boolean(pendingRequestAction) && styles.requestButtonDisabled]}
+                      style={({ pressed }) => [
+                        styles.requestButton,
+                        styles.rejectRequestButton,
+                        pressed && styles.requestButtonPressed,
+                        Boolean(pendingRequestAction) && styles.requestButtonDisabled,
+                      ]}
                     >
-                      <X color="#B63232" size={17} strokeWidth={2.8} />
-                      <Text style={styles.rejectRequestText}>Rechazar</Text>
-                    </PressScale>
+                      {pendingRequestAction === `reject:${request.id}` ? (
+                        <ActivityIndicator color="#B63232" />
+                      ) : (
+                        <>
+                          <X color="#B63232" size={17} strokeWidth={2.8} />
+                          <Text style={styles.rejectRequestText}>Rechazar</Text>
+                        </>
+                      )}
+                    </Pressable>
                   </View>
                 </View>
               ))}
@@ -1294,8 +1315,10 @@ const styles = StyleSheet.create({
   },
   primaryButton: {
     alignItems: 'center',
-    backgroundColor: '#006A32',
+    backgroundColor: '#EAF7E7',
+    borderColor: '#B7DC9D',
     borderRadius: 14,
+    borderWidth: 1,
     flexDirection: 'row',
     gap: 8,
     height: 52,
@@ -1303,10 +1326,10 @@ const styles = StyleSheet.create({
     marginTop: 22,
   },
   primaryButtonDisabled: {
-    backgroundColor: '#7CA68B',
+    opacity: 0.62,
   },
   primaryButtonText: {
-    color: '#FFFFFF',
+    color: '#006A32',
     fontSize: 16,
     fontWeight: '900',
     letterSpacing: 0,
@@ -1390,6 +1413,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     borderRadius: 10,
     borderWidth: 1,
+    flexBasis: 0,
     flexDirection: 'row',
     flexGrow: 1,
     flex: 1,
@@ -1401,6 +1425,9 @@ const styles = StyleSheet.create({
   },
   requestButtonDisabled: {
     opacity: 0.58,
+  },
+  requestButtonPressed: {
+    opacity: 0.84,
   },
   rejectRequestButton: {
     backgroundColor: '#FFF4F4',
