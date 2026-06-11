@@ -39,6 +39,14 @@ import { createNotification, deletePendingGroupJoinRequestNotifications } from '
 import { getActivityGroupMeta } from '../../utils/activityGroups'
 import { requireVerifiedParticipation } from '../../utils/authParticipation'
 import { getCategoryImage } from '../../utils/categoryImages'
+import {
+  formatGroupMemberCount,
+  getGroupMemberCount,
+  getGroupMemberIds,
+  getGroupOwnerId,
+  hasPendingGroupRequest,
+  isGroupMember as isGroupMemberByData,
+} from '../../utils/groupMembership'
 
 type GroupData = Record<string, unknown>
 type ActivityRecord = {
@@ -89,62 +97,7 @@ function getActivityStartTime(data: Record<string, unknown>) {
 }
 
 function getOwnerId(data: GroupData) {
-  return readString(data.ownerId)
-}
-
-function getUserIdsFromValue(value: unknown) {
-  if (Array.isArray(value)) {
-    return value
-      .map((item) => {
-        if (typeof item === 'string') return item.trim()
-        if (typeof item === 'object' && item) {
-          const record = item as Record<string, unknown>
-          return readString(record.uid, readString(record.userId, readString(record.id)))
-        }
-        return ''
-      })
-      .filter(Boolean)
-  }
-
-  if (typeof value === 'object' && value) {
-    return Object.keys(value).filter(Boolean)
-  }
-
-  return []
-}
-
-function getGroupMemberIds(data: GroupData) {
-  const ids = new Set<string>()
-
-  getUserIdsFromValue(data.members).forEach((id) => ids.add(id))
-  getUserIdsFromValue(data.memberProfiles).forEach((id) => ids.add(id))
-  getUserIdsFromValue(data.memberIds).forEach((id) => ids.add(id))
-  getUserIdsFromValue(data.joinedUsers).forEach((id) => ids.add(id))
-  getUserIdsFromValue(data.participants).forEach((id) => ids.add(id))
-  getUserIdsFromValue(data.confirmedParticipants).forEach((id) => ids.add(id))
-
-  const ownerId = getOwnerId(data)
-  if (ownerId) ids.add(ownerId)
-
-  return Array.from(ids)
-}
-
-function getMemberCount(data: GroupData) {
-  const normalizedMemberIds = getGroupMemberIds(data)
-  if (normalizedMemberIds.length > 0) return normalizedMemberIds.length
-
-  const memberCount = readNumber(data.memberCount, -1)
-  if (memberCount >= 0) return getOwnerId(data) ? Math.max(memberCount, 1) : memberCount
-
-  const membersCount = readNumber(data.membersCount, -1)
-  if (membersCount >= 0) return getOwnerId(data) ? Math.max(membersCount, 1) : membersCount
-
-  return 0
-}
-
-function hasUserInValue(value: unknown, userId: string | null) {
-  if (!userId) return false
-  return getUserIdsFromValue(value).includes(userId)
+  return getGroupOwnerId(data)
 }
 
 function isGroupOwner(data: GroupData, userId: string | null) {
@@ -153,9 +106,7 @@ function isGroupOwner(data: GroupData, userId: string | null) {
 }
 
 function isGroupMember(data: GroupData, userId: string | null) {
-  if (isGroupOwner(data, userId)) return true
-  if (!userId) return false
-  return getGroupMemberIds(data).includes(userId)
+  return isGroupMemberByData(data, userId)
 }
 
 function getPendingRequests(data: GroupData) {
@@ -173,8 +124,7 @@ function getPendingRequests(data: GroupData) {
 }
 
 function hasPendingRequest(data: GroupData, userId: string | null) {
-  if (!userId) return false
-  return hasUserInValue(data.membershipRequests, userId) || hasUserInValue(data.pendingMembers, userId)
+  return hasPendingGroupRequest(data, userId)
 }
 
 function showGroupRequestFeedback(message: string) {
@@ -277,7 +227,7 @@ export default function GroupDetailScreen() {
       category: readString(data.category, 'Grupo'),
       description: readString(data.description, readString(data.summary, 'Comunidad para organizar actividades compartidas.')),
       location: readString(data.location, 'Ubicación a definir'),
-      members: getMemberCount(data),
+      members: getGroupMemberCount(data),
       baseLocation: readString(data.locationName, readString(data.address, readString(data.location, 'Ubicación a definir'))),
       ownerId: getOwnerId(data),
       nextDate: readString(data.date, readString(data.schedule, 'Próximo encuentro a definir')),
@@ -707,6 +657,7 @@ export default function GroupDetailScreen() {
     : ''
 
   const displayedMemberCount = isOwner ? Math.max(detail.members, 1) : detail.members
+  const displayedMemberText = formatGroupMemberCount(displayedMemberCount)
   const displayHostName = isLegacyLocalGroup ? 'Anfitrión no disponible' : hostName
   const membershipStatusText = isOwner
     ? 'Organizador'
@@ -821,13 +772,16 @@ export default function GroupDetailScreen() {
             <GroupAvatar groupName={detail.title} imageUrl={detail.photoUrl} size={66} />
             <View style={styles.titleCopy}>
               <Text style={styles.title}>{detail.title}</Text>
+              <View style={styles.titleMembersRow}>
+                <UsersRound color="#17803C" size={16} strokeWidth={2.4} />
+                <Text style={styles.titleMembersText}>{displayedMemberText}</Text>
+              </View>
               <Text style={styles.subtitle}>{detail.category}</Text>
             </View>
           </View>
 
           <InfoRow Icon={MapPin} label={detail.baseLocation} />
           <InfoRow Icon={CalendarDays} label={nextActivity ? `Próximo encuentro: ${nextActivityTitle}` : 'Sin encuentros próximos'} secondary={nextActivityDate} />
-          <InfoRow Icon={UsersRound} label={`${displayedMemberCount} miembros`} />
           <InfoRow Icon={CalendarDays} label={`${groupActivities.length} actividades asociadas`} />
           <InfoRow Icon={UserRound} label={`Anfitrión: ${displayHostName}`} />
 
@@ -1161,6 +1115,19 @@ const styles = StyleSheet.create({
   },
   titleCopy: {
     flex: 1,
+  },
+  titleMembersRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 6,
+    marginTop: 6,
+  },
+  titleMembersText: {
+    color: '#2F6B58',
+    fontSize: 14,
+    fontWeight: '900',
+    letterSpacing: 0,
+    lineHeight: 18,
   },
   title: {
     color: '#071D19',

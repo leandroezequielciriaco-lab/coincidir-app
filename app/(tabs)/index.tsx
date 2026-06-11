@@ -51,6 +51,7 @@ import {
 
 import CoincidirLogo from '../../components/CoincidirLogo'
 import { InviteFriendsSheet, type InviteShareTarget } from '../../components/InviteFriendsSheet'
+import { ActivityQuickCategoryRow } from '../../components/home/ActivityQuickCategoryRow'
 import { ActivityCard } from '../../components/home/HomeCards'
 import { CategoryButton } from '../../components/home/CategoryButton'
 import { PressScale } from '../../components/home/PressScale'
@@ -69,6 +70,13 @@ import { notifyActivityInterest, useUnreadNotificationsCount } from '../../lib/n
 import { getActivityGroupMeta } from '../../utils/activityGroups'
 import { isOwnActivity } from '../../utils/activityOwnership'
 import { requireVerifiedParticipation } from '../../utils/authParticipation'
+import {
+  compareActivitiesForDiscovery,
+  getActivityVisualState,
+  matchesActivityQuickCategory,
+  shouldShowActivityInDiscovery,
+  type ActivityQuickCategoryId,
+} from '../../utils/activityDiscovery'
 import { getCategoryImage } from '../../utils/categoryImages'
 
 type CategoryId = 'culture' | 'groups' | 'hobbies' | 'outdoor' | 'sports' | 'training' | 'wellness'
@@ -279,53 +287,9 @@ function getRecordTime(record: CreatedRecord) {
     : 0
 }
 
-function getTimeMinutes(data: Record<string, unknown>) {
-  const match = readString(data.time).match(/^(\d{1,2}):(\d{2})/)
-  if (!match) return 0
-
-  const hours = Number(match[1])
-  const minutes = Number(match[2])
-  return Number.isFinite(hours) && Number.isFinite(minutes) ? (hours * 60) + minutes : 0
-}
-
-function applyActivityTime(baseTime: number, data: Record<string, unknown>) {
-  if (!Number.isFinite(baseTime)) return Number.POSITIVE_INFINITY
-
-  const date = new Date(baseTime)
-  date.setHours(0, getTimeMinutes(data), 0, 0)
-  return date.getTime()
-}
-
-function getActivityTime(record: CreatedRecord) {
-  const isoDate = readString(record.data.activityDateISO)
-  const parsedIsoDate = isoDate ? Date.parse(isoDate) : Number.NaN
-
-  if (Number.isFinite(parsedIsoDate)) return applyActivityTime(parsedIsoDate, record.data)
-
-  const activityDate = record.data.activityDate
-  if (typeof activityDate === 'object' && activityDate && 'toMillis' in activityDate && typeof activityDate.toMillis === 'function') {
-    return applyActivityTime(activityDate.toMillis(), record.data)
-  }
-
-  const dateParts = readString(record.data.date).match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/)
-  if (dateParts) {
-    return applyActivityTime(new Date(Number(dateParts[3]), Number(dateParts[2]) - 1, Number(dateParts[1])).getTime(), record.data)
-  }
-
-  return Number.POSITIVE_INFINITY
-}
-
 function compareHomeActivities(left: CreatedRecord, right: CreatedRecord) {
-  const leftCancelled = isCancelled(left.data)
-  const rightCancelled = isCancelled(right.data)
-
-  if (leftCancelled !== rightCancelled) return leftCancelled ? 1 : -1
-
-  const leftTime = getActivityTime(left)
-  const rightTime = getActivityTime(right)
-
-  if (leftTime !== rightTime) return leftTime < rightTime ? -1 : 1
-
+  const activityDiff = compareActivitiesForDiscovery(left.data, right.data)
+  if (activityDiff !== 0) return activityDiff
   return getRecordTime(right) - getRecordTime(left)
 }
 
@@ -492,6 +456,7 @@ function mapActivityCard(
     action,
     isCancelled: cancelled,
     isOrganizer,
+    visualState: getActivityVisualState(data),
     Icon: getIcon(data),
   }
 }
@@ -581,6 +546,7 @@ function filterRecordsByCategory(records: CreatedRecord[], category: string) {
 export default function HomeScreen() {
   const router = useRouter()
   const [activeCategory, setActiveCategory] = useState('Todas')
+  const [activeQuickCategory, setActiveQuickCategory] = useState<ActivityQuickCategoryId>('all')
   const [currentUserId, setCurrentUserId] = useState<string | null>(null)
   const [userName, setUserName] = useState<string | null>(null)
   const [userNamesById, setUserNamesById] = useState<UserNamesById>({})
@@ -788,8 +754,12 @@ export default function HomeScreen() {
 
   const greeting = useMemo(() => (userName ? `¡Hola, ${userName}! 👋` : '¡Hola! 👋'), [userName])
   const cityActivities = useMemo(
-    () => createdActivities.filter((item) => matchesSelectedCity(item, selectedCity)),
-    [createdActivities, selectedCity],
+    () => createdActivities.filter((item) =>
+      matchesSelectedCity(item, selectedCity)
+      && shouldShowActivityInDiscovery(item.data, currentUserId)
+      && matchesActivityQuickCategory(item.data, activeQuickCategory),
+    ),
+    [activeQuickCategory, createdActivities, currentUserId, selectedCity],
   )
   const searchedActivities = useMemo(
     () => filterRecordsBySearch(cityActivities, debouncedSearchQuery, 'activity'),
@@ -1018,6 +988,7 @@ export default function HomeScreen() {
   )
   const hasSearch = debouncedSearchQuery.trim().length > 0
   const hasCategoryFilter = activeCategory !== 'Todas'
+  const hasQuickCategoryFilter = activeQuickCategory !== 'all'
   const hasVisibleResults = nearbyMeetups.length > 0
   const activityRecordsById = useMemo(
     () => new Map(filteredActivities.map((item) => [item.id, item])),
@@ -1189,6 +1160,10 @@ export default function HomeScreen() {
           </Pressable>
         </Modal>
 
+        <View style={styles.quickCategoryBlock}>
+          <ActivityQuickCategoryRow activeId={activeQuickCategory} onChange={setActiveQuickCategory} />
+        </View>
+
         <FlatList
           contentContainerStyle={styles.categoryList}
           data={categories}
@@ -1206,7 +1181,7 @@ export default function HomeScreen() {
           showsHorizontalScrollIndicator={false}
         />
 
-        {(hasSearch || hasCategoryFilter) && !hasVisibleResults ? (
+        {(hasSearch || hasCategoryFilter || hasQuickCategoryFilter) && !hasVisibleResults ? (
           <EmptyState
             subtitle={hasSearch ? 'Probá con otra búsqueda' : undefined}
             title={hasSearch ? 'No encontramos actividades' : 'No hay actividades en esta categoría'}
@@ -1621,7 +1596,10 @@ const styles = StyleSheet.create({
   categoryList: {
     gap: 14,
     paddingBottom: 2,
-    paddingTop: 24,
+    paddingTop: 14,
+  },
+  quickCategoryBlock: {
+    marginTop: 22,
   },
   section: {
     marginTop: 26,

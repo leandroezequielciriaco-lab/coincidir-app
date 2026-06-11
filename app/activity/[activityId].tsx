@@ -60,6 +60,7 @@ import { readRemoteGroupPhotoUrl } from '../../lib/groupPhotos'
 import { notifyActivityCancelled, notifyActivityConfirmed, notifyActivityInterest, notifyActivityRejected } from '../../lib/notifications'
 import { getActivityGroupMeta } from '../../utils/activityGroups'
 import { requireVerifiedParticipation } from '../../utils/authParticipation'
+import { getActivityVisualState } from '../../utils/activityDiscovery'
 import { getCategoryImage } from '../../utils/categoryImages'
 import { savePendingExternalReturnRoute } from '../../utils/externalReturnRoute'
 import { getJsInstanceId } from '../../utils/jsInstance'
@@ -660,6 +661,7 @@ export default function ActivityDetailScreen() {
       subcategory: readString(data.subcategory),
       time: readString(data.time, 'Horario a definir'),
       title: readString(data.name, 'Actividad sin título'),
+      visualState: getActivityVisualState(data),
     }
   }, [activity, activityGroupMeta, associatedGroupPhotoUrl, currentUserId, optimisticInterested, optimisticJoined, organizerProfile])
 
@@ -1213,9 +1215,17 @@ export default function ActivityDetailScreen() {
               <detail.Icon color="#4B348A" size={28} strokeWidth={2.2} />
             </View>
             <View style={styles.titleCopy}>
-              {detail.isCancelled ? (
-                <View style={styles.cancelledBadge}>
-                  <Text style={styles.cancelledBadgeText}>Actividad cancelada</Text>
+              {detail.visualState ? (
+                <View
+                  style={[
+                    styles.statusBadge,
+                    {
+                      backgroundColor: detail.visualState.backgroundColor,
+                      borderColor: detail.visualState.borderColor,
+                    },
+                  ]}
+                >
+                  <Text style={[styles.statusBadgeText, { color: detail.visualState.color }]}>{detail.visualState.label}</Text>
                 </View>
               ) : null}
               <Text style={styles.title}>{detail.title}</Text>
@@ -1569,7 +1579,7 @@ const styles = StyleSheet.create({
     flex: 1,
     minWidth: 0,
   },
-  cancelledBadge: {
+  statusBadge: {
     alignSelf: 'flex-start',
     backgroundColor: '#FFF2CC',
     borderColor: '#F5C84B',
@@ -1579,7 +1589,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 5,
   },
-  cancelledBadgeText: {
+  statusBadgeText: {
     color: '#7A4A00',
     fontSize: 12,
     fontWeight: '900',

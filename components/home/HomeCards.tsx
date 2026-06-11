@@ -65,9 +65,17 @@ export function ActivityCard({ item, onCtaPress, onPress, onSharePress }: Activi
         <View style={styles.dateBadge}>
           <Text style={styles.dateBadgeText}>{item.dateBadge}</Text>
         </View>
-        {item.isCancelled ? (
-          <View style={styles.cancelledBadge}>
-            <Text style={styles.cancelledBadgeText}>Cancelada</Text>
+        {item.visualState ? (
+          <View
+            style={[
+              styles.statusBadge,
+              {
+                backgroundColor: item.visualState.backgroundColor,
+                borderColor: item.visualState.borderColor,
+              },
+            ]}
+          >
+            <Text style={[styles.statusBadgeText, { color: item.visualState.color }]}>{item.visualState.label}</Text>
           </View>
         ) : null}
       </View>
@@ -297,7 +305,7 @@ const styles = StyleSheet.create({
     fontWeight: '900',
     letterSpacing: 0,
   },
-  cancelledBadge: {
+  statusBadge: {
     backgroundColor: '#FFF2CC',
     borderColor: '#F5C84B',
     borderRadius: 999,
@@ -308,7 +316,7 @@ const styles = StyleSheet.create({
     position: 'absolute',
     top: 52,
   },
-  cancelledBadgeText: {
+  statusBadgeText: {
     color: '#7A4A00',
     fontSize: 11,
     fontWeight: '900',

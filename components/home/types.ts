@@ -1,6 +1,8 @@
 import type { LucideIcon } from 'lucide-react-native'
 import type { ImageSourcePropType } from 'react-native'
 
+import type { ActivityVisualState } from '../../utils/activityDiscovery'
+
 export type ThemeTone = 'green' | 'violet'
 
 export type ActivityCardItem = {
@@ -23,6 +25,7 @@ export type ActivityCardItem = {
   action: 'join' | 'interest'
   isCancelled?: boolean
   isOrganizer?: boolean
+  visualState?: ActivityVisualState
   Icon: LucideIcon
 }
 

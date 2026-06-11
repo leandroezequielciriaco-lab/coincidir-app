@@ -85,8 +85,15 @@ import { createNotification, deletePendingGroupJoinRequestNotifications } from '
 import { applyGroupNameToActivity, getActivityGroupMeta } from '../../utils/activityGroups'
 import { isOwnActivity } from '../../utils/activityOwnership'
 import { canParticipate, resendEmailVerification, requireVerifiedParticipation } from '../../utils/authParticipation'
+import { compareActivitiesForDiscovery, getActivityVisualState } from '../../utils/activityDiscovery'
 import { defaultActivityImage, getCategoryImage } from '../../utils/categoryImages'
 import { savePendingExternalReturnRoute } from '../../utils/externalReturnRoute'
+import {
+  formatGroupMemberCount,
+  getGroupMemberCount,
+  hasPendingGroupRequest as hasPendingGroupRequestByData,
+  isGroupMember as isGroupMemberByData,
+} from '../../utils/groupMembership'
 
 type FirestoreRecord = {
   id: string
@@ -277,35 +284,6 @@ function getParticipantCount(data: Record<string, unknown>) {
   return Array.isArray(participants) ? participants.length : 0
 }
 
-function getGroupMemberCount(data: Record<string, unknown>) {
-  const memberCount = typeof data.memberCount === 'number' ? data.memberCount : -1
-  const ownerId = readString(data.ownerId)
-  if (memberCount >= 0) return ownerId ? Math.max(memberCount, 1) : memberCount
-
-  const membersCount = typeof data.membersCount === 'number' ? data.membersCount : -1
-  if (membersCount >= 0) return ownerId ? Math.max(membersCount, 1) : membersCount
-
-  const ids = new Set<string>()
-  ;[data.members, data.memberProfiles, data.memberIds, data.joinedUsers, data.participants].forEach((value) => {
-    if (Array.isArray(value)) {
-      value.forEach((item) => {
-        const id = typeof item === 'string' ? item.trim() : ''
-        if (id) ids.add(id)
-      })
-      return
-    }
-
-    if (typeof value === 'object' && value) {
-      Object.keys(value).forEach((id) => {
-        if (id) ids.add(id)
-      })
-    }
-  })
-
-  const count = ids.size
-  return ownerId ? Math.max(count, 1) : count
-}
-
 function getRecordTime(record: FirestoreRecord) {
   const value = record.data.createdAt ?? record.data.updatedAt
   return typeof value === 'object' && value && 'toMillis' in value && typeof value.toMillis === 'function'
@@ -315,30 +293,18 @@ function getRecordTime(record: FirestoreRecord) {
 
 function isJoined(record: FirestoreRecord, userId: string | null) {
   if (!userId) return false
+  if (isGroupMemberByData(record.data, userId)) return true
   const joinedUsers = record.data.joinedUsers
   const participants = record.data.participants
-  const members = record.data.members
-  const memberProfiles = record.data.memberProfiles
-  const memberIds = record.data.memberIds
 
   if (typeof joinedUsers === 'object' && joinedUsers && userId in joinedUsers) return true
   if (typeof participants === 'object' && participants && userId in participants) return true
-  if (typeof members === 'object' && members && userId in members) return true
-  if (typeof memberProfiles === 'object' && memberProfiles && userId in memberProfiles) return true
-  if (Array.isArray(members) && members.includes(userId)) return true
-  if (Array.isArray(memberIds) && memberIds.includes(userId)) return true
 
   return false
 }
 
 function hasPendingGroupRequest(data: Record<string, unknown>, userId: string | null) {
-  if (!userId) return false
-  const requests = data.membershipRequests ?? data.pendingMembers
-
-  if (Array.isArray(requests)) return requests.includes(userId)
-  if (typeof requests === 'object' && requests) return userId in requests
-
-  return false
+  return hasPendingGroupRequestByData(data, userId)
 }
 
 function getGroupStatus(data: Record<string, unknown> | undefined, userId: string | null): ProfileGroup['status'] {
@@ -380,6 +346,12 @@ function getActivityStartTime(data: Record<string, unknown>) {
   const parsed = Date.parse(`${normalized}${rawTime ? `T${rawTime}` : ''}`)
 
   return Number.isFinite(parsed) ? parsed : getRecordTime({ id: '', data })
+}
+
+function compareProfileActivities(left: FirestoreRecord, right: FirestoreRecord) {
+  const activityDiff = compareActivitiesForDiscovery(left.data, right.data)
+  if (activityDiff !== 0) return activityDiff
+  return getRecordTime(right) - getRecordTime(left)
 }
 
 function buildProfile(data: Record<string, unknown> | null, authName?: string | null, authUser: AuthPhotoSource = null): UserProfile {
@@ -511,11 +483,11 @@ export default function PerfilScreen() {
   )
 
   const createdActivities = useMemo(
-    () => activities.filter((item) => isOwnActivity(item.data, userId)),
+    () => activities.filter((item) => isOwnActivity(item.data, userId)).sort(compareProfileActivities),
     [activities, userId],
   )
   const joinedActivities = useMemo(
-    () => activities.filter((item) => isJoined(item, userId) && !isOwnActivity(item.data, userId)),
+    () => activities.filter((item) => isJoined(item, userId) && !isOwnActivity(item.data, userId)).sort(compareProfileActivities),
     [activities, userId],
   )
   const myGroups = useMemo<ProfileGroup[]>(() => {
@@ -940,7 +912,7 @@ function ProfileListSection({ currentUserId = null, emptyText, groupImageUrlsByK
         <EmptyBlock text={emptyText} />
       ) : (
         <View style={styles.list}>
-          {items.slice(0, 4).map((item) => (
+          {items.map((item) => (
             <ProfileRow currentUserId={currentUserId} groupImageUrlsByKey={groupImageUrlsByKey} item={item} key={item.id} localGroups={localGroups} onPress={() => onPress(item)} variant={variant} />
           ))}
         </View>
@@ -958,7 +930,7 @@ type ProfileGroupsSectionProps = {
 
 function getProfileGroupMemberText(group: ProfileGroup) {
   const memberCount = typeof group.memberCount === 'number' ? group.memberCount : 0
-  return memberCount === 1 ? '1 miembro' : `${memberCount} miembros`
+  return formatGroupMemberCount(memberCount)
 }
 
 function getProfileGroupActivityText(group: ProfileGroup) {
@@ -1300,7 +1272,7 @@ function ProfileRow({
   const location = readString(item.data.location, variant === 'group' ? 'Grupo de amigos' : 'Ubicación a definir')
   const date = readString(item.data.date, readString(item.data.schedule, variant === 'group' ? 'Próximo encuentro' : 'Fecha a definir'))
   const participants = getParticipantCount(item.data)
-  const cancelled = variant === 'activity' && isCancelled(item.data)
+  const visualState = variant === 'activity' ? getActivityVisualState(item.data) : null
   const ownActivity = variant === 'activity' && isOwnActivity(item.data, currentUserId)
   const groupMeta = variant === 'activity' ? getActivityGroupMeta(item.data, localGroups) : { groupColor: '', groupId: '', groupName: '' }
   const groupImageUrl = getGroupImageUrl(groupMeta, groupImageUrlsByKey)
@@ -1341,9 +1313,17 @@ function ProfileRow({
       <View style={styles.rowCopy}>
         <View style={styles.rowTitleLine}>
           <Text ellipsizeMode="tail" numberOfLines={1} style={styles.rowTitle}>{title}</Text>
-          {cancelled ? (
-            <View style={styles.rowCancelledBadge}>
-              <Text style={styles.rowCancelledBadgeText}>Cancelada</Text>
+          {visualState ? (
+            <View
+              style={[
+                styles.rowStatusBadge,
+                {
+                  backgroundColor: visualState.backgroundColor,
+                  borderColor: visualState.borderColor,
+                },
+              ]}
+            >
+              <Text style={[styles.rowStatusBadgeText, { color: visualState.color }]}>{visualState.label}</Text>
             </View>
           ) : null}
           {ownActivity ? (
@@ -2438,7 +2418,7 @@ const styles = StyleSheet.create({
     fontWeight: '900',
     letterSpacing: 0,
   },
-  rowCancelledBadge: {
+  rowStatusBadge: {
     backgroundColor: '#FFF2CC',
     borderColor: '#F5C84B',
     borderRadius: 999,
@@ -2447,7 +2427,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     paddingVertical: 4,
   },
-  rowCancelledBadgeText: {
+  rowStatusBadgeText: {
     color: '#7A4A00',
     fontSize: 10,
     fontWeight: '900',

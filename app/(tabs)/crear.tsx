@@ -71,6 +71,7 @@ import { getFirebaseServices } from '../../firebaseConfig'
 import { uploadGroupPhoto } from '../../lib/groupPhotos'
 import { notifyActivityUpdated } from '../../lib/notifications'
 import { requireVerifiedParticipation } from '../../utils/authParticipation'
+import { formatGroupMemberCount, getGroupMemberCount } from '../../utils/groupMembership'
 
 type PickerMode = 'category' | 'subcategory' | 'date' | 'time' | 'currency' | null
 type CreateStep = 1 | 2 | 3 | 4 | 5
@@ -81,6 +82,7 @@ type ActivityKind = 'group' | 'individual'
 
 type AvailableGroup = {
   id: string
+  memberCount?: number
   name: string
 }
 
@@ -433,7 +435,7 @@ function mergeAvailableGroups(...groupLists: AvailableGroup[][]) {
     const id = group.id.trim()
     const name = group.name.trim()
     if (!id || !name || groupsById.has(id)) return
-    groupsById.set(id, { id, name })
+    groupsById.set(id, { id, memberCount: group.memberCount, name })
   })
 
   return Array.from(groupsById.values()).sort((left, right) => left.name.localeCompare(right.name))
@@ -579,13 +581,14 @@ export default function CrearScreen() {
             return {
               data,
               id: item.id,
+              memberCount: getGroupMemberCount(data),
               name: getFirestoreGroupName(data),
             }
           })
           .filter((group) => isActiveFirestoreGroup(group.id, group.data))
           .filter((group) => isUserFirestoreGroup(group.data, currentUserId))
           .filter((group) => Boolean(group.name))
-          .map(({ id, name }) => ({ id, name }))
+          .map(({ id, memberCount, name }) => ({ id, memberCount, name }))
           .sort((left, right) => left.name.localeCompare(right.name))
 
         setAvailableGroups(nextGroups)
@@ -1249,7 +1252,7 @@ export default function CrearScreen() {
         status: 'active',
         updatedAt: serverTimestamp(),
       }, { merge: true })
-      setAvailableGroups((current) => mergeAvailableGroups(current, [{ id: createdGroupId, name: cleanName }]))
+      setAvailableGroups((current) => mergeAvailableGroups(current, [{ id: createdGroupId, memberCount: 1, name: cleanName }]))
       if (__DEV__) {
         console.log('[GROUP CREATE OWNERSHIP DEBUG]', {
           currentUserUid: user.uid,
@@ -1324,7 +1327,7 @@ export default function CrearScreen() {
         updatedAt: serverTimestamp(),
       }, { merge: true })
 
-      setAvailableGroups((current) => mergeAvailableGroups(current, [{ id: createdGroupId, name: cleanName }]))
+      setAvailableGroups((current) => mergeAvailableGroups(current, [{ id: createdGroupId, memberCount: 1, name: cleanName }]))
       setSelectedGroup(cleanName)
       setSelectedGroupId(createdGroupId)
       setIsCreateGroupVisible(false)
@@ -1600,24 +1603,36 @@ export default function CrearScreen() {
             </View>
             <Text style={styles.createScreenTitle}>¿Qué querés crear?</Text>
           </View>
-          <Text style={styles.createSubtitle}>Elegí cómo querés empezar en COINCIDIR.</Text>
+          <Text style={styles.createSubtitle}>Elegí la opción que mejor se adapte a lo que tenés en mente.</Text>
 
-          <View style={styles.createCard}>
-            <View style={styles.additionalGrid}>
-              <AdditionalChoiceCard
-                active={false}
-                description="Creá una actividad individual o para un grupo existente."
-                Icon={Sparkles}
-                label="Crear actividad"
-                onPress={startCreateActivity}
-              />
-              <AdditionalChoiceCard
-                active={false}
-                description="Creá un grupo nuevo y luego una actividad para ese grupo."
-                Icon={UsersRound}
-                label="Crear grupo"
-                onPress={startCreateGroup}
-              />
+          <View style={styles.createChoiceStack}>
+            <Pressable accessibilityRole="button" onPress={startCreateActivity} style={styles.createChoiceCard}>
+              <View style={styles.createChoiceIcon}>
+                <Sparkles color="#0E5A44" size={27} strokeWidth={2.4} />
+              </View>
+              <View style={styles.createChoiceCopy}>
+                <Text style={styles.createChoiceTitle}>Actividad</Text>
+                <Text style={styles.createChoiceDescription}>Organizá un encuentro puntual con fecha, hora y lugar.</Text>
+                <Text style={styles.createChoiceExamples}>Ejemplos: caminata, salida en bici, partido, mateada.</Text>
+              </View>
+              <ChevronRight color="#0E5A44" size={24} strokeWidth={2.4} />
+            </Pressable>
+
+            <Pressable accessibilityRole="button" onPress={startCreateGroup} style={[styles.createChoiceCard, styles.createChoiceCardGroup]}>
+              <View style={[styles.createChoiceIcon, styles.createChoiceIconGroup]}>
+                <UsersRound color="#4B348A" size={27} strokeWidth={2.4} />
+              </View>
+              <View style={styles.createChoiceCopy}>
+                <Text style={styles.createChoiceTitle}>Grupo</Text>
+                <Text style={styles.createChoiceDescription}>Creá una comunidad para reunir personas con un interés en común.</Text>
+                <Text style={styles.createChoiceExamples}>Ejemplos: Running Tandil, Yoga Integral, Grupo de motos.</Text>
+              </View>
+              <ChevronRight color="#4B348A" size={24} strokeWidth={2.4} />
+            </Pressable>
+
+            <View style={styles.createChoiceTip}>
+              <Lightbulb color="#0E5A44" size={20} strokeWidth={2.3} />
+              <Text style={styles.createChoiceTipText}>Podés crear un grupo y luego agregarle actividades, o crear actividades sin necesidad de tener un grupo.</Text>
             </View>
           </View>
         </ScrollView>
@@ -1958,7 +1973,15 @@ export default function CrearScreen() {
                 {availableGroups.map((group) => (
                   <Pressable accessibilityRole="button" key={group.id} onPress={() => selectFirestoreGroup(group)} style={[styles.groupOptionCard, selectedGroupId === group.id && styles.groupOptionCardActive]}>
                     <UsersRound color={selectedGroupId === group.id ? '#0E5A44' : '#7A8790'} size={21} strokeWidth={2.2} />
-                    <Text style={[styles.groupOptionText, selectedGroupId === group.id && styles.groupOptionTextActive]}>{group.name}</Text>
+                    <View style={styles.groupOptionCopy}>
+                      <Text style={[styles.groupOptionText, selectedGroupId === group.id && styles.groupOptionTextActive]}>{group.name}</Text>
+                      <View style={styles.groupOptionMembersRow}>
+                        <UsersRound color={selectedGroupId === group.id ? '#0E5A44' : '#7A8790'} size={14} strokeWidth={2.3} />
+                        <Text style={[styles.groupOptionMembersText, selectedGroupId === group.id && styles.groupOptionTextActive]}>
+                          {formatGroupMemberCount(group.memberCount ?? 0)}
+                        </Text>
+                      </View>
+                    </View>
                     {selectedGroupId === group.id ? <View style={styles.additionalCheck}><Text style={styles.additionalCheckText}>✓</Text></View> : null}
                   </Pressable>
                 ))}
@@ -2777,6 +2800,90 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 8 },
     elevation: 2,
   },
+  createChoiceStack: {
+    gap: 14,
+    marginTop: 4,
+  },
+  createChoiceCard: {
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    borderColor: '#DCE8E1',
+    borderRadius: 18,
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: 14,
+    minHeight: 132,
+    paddingHorizontal: 16,
+    paddingVertical: 16,
+    shadowColor: '#0E5A44',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.06,
+    shadowRadius: 14,
+    elevation: 2,
+  },
+  createChoiceCardGroup: {
+    borderColor: '#E2D9F3',
+  },
+  createChoiceCopy: {
+    flex: 1,
+    minWidth: 0,
+  },
+  createChoiceDescription: {
+    color: '#34445F',
+    fontSize: 14,
+    fontWeight: '800',
+    letterSpacing: 0,
+    lineHeight: 20,
+    marginTop: 5,
+  },
+  createChoiceExamples: {
+    color: '#6A756F',
+    fontSize: 13,
+    fontWeight: '700',
+    letterSpacing: 0,
+    lineHeight: 19,
+    marginTop: 6,
+  },
+  createChoiceIcon: {
+    alignItems: 'center',
+    backgroundColor: '#EAF6E8',
+    borderColor: '#CFE8CA',
+    borderRadius: 999,
+    borderWidth: 1,
+    height: 58,
+    justifyContent: 'center',
+    width: 58,
+  },
+  createChoiceIconGroup: {
+    backgroundColor: '#F3EEFF',
+    borderColor: '#DFD2F6',
+  },
+  createChoiceTitle: {
+    color: '#0E5A44',
+    fontSize: 19,
+    fontWeight: '900',
+    letterSpacing: 0,
+    lineHeight: 24,
+  },
+  createChoiceTip: {
+    alignItems: 'flex-start',
+    backgroundColor: '#F3F8EF',
+    borderColor: '#D9EAD2',
+    borderRadius: 16,
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 13,
+  },
+  createChoiceTipText: {
+    color: '#2F5148',
+    flex: 1,
+    fontSize: 14,
+    fontWeight: '800',
+    letterSpacing: 0,
+    lineHeight: 20,
+  },
   groupCreatedCard: {
     alignItems: 'center',
     backgroundColor: '#FFFFFF',
@@ -2963,8 +3070,24 @@ const styles = StyleSheet.create({
     borderColor: '#168A37',
     backgroundColor: '#F2FAF3',
   },
-  groupOptionText: {
+  groupOptionCopy: {
     flex: 1,
+    minWidth: 0,
+  },
+  groupOptionMembersRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 5,
+    marginTop: 4,
+  },
+  groupOptionMembersText: {
+    color: '#6A756F',
+    fontSize: 12,
+    fontWeight: '800',
+    letterSpacing: 0,
+    lineHeight: 16,
+  },
+  groupOptionText: {
     color: '#34445F',
     fontSize: 15,
     lineHeight: 20,

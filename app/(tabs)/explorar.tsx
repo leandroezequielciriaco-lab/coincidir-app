@@ -38,6 +38,7 @@ import {
 import type { LucideIcon } from 'lucide-react-native'
 
 import { GroupAvatar } from '../../components/groups/GroupAvatar'
+import { ActivityQuickCategoryRow } from '../../components/home/ActivityQuickCategoryRow'
 import { PressScale } from '../../components/home/PressScale'
 import { activityCategories, type ActivityCategoryId } from '../../constants/activityCategories'
 import { getGroupTheme } from '../../constants/groupTheme'
@@ -50,7 +51,16 @@ import { getFirebaseServices } from '../../firebaseConfig'
 import { readRemoteGroupPhotoUrl } from '../../lib/groupPhotos'
 import { getActivityRecommendationScore, getActivityRecommendationTerms } from '../../lib/recommendations'
 import { getActivityGroupMeta } from '../../utils/activityGroups'
+import {
+  compareActivitiesForDiscovery,
+  getActivityVisualState,
+  matchesActivityQuickCategory,
+  shouldShowActivityInDiscovery,
+  type ActivityQuickCategoryId,
+  type ActivityVisualState,
+} from '../../utils/activityDiscovery'
 import { defaultActivityImage, getCategoryImage } from '../../utils/categoryImages'
+import { formatGroupMemberCount, getGroupMemberCount, isDeletedGroup } from '../../utils/groupMembership'
 
 type RecordItem = {
   id: string
@@ -88,6 +98,7 @@ type ExploreCardItem = {
   cta: string
   image: ImageSourcePropType
   isCancelled?: boolean
+  visualState?: ActivityVisualState
   Icon: LucideIcon
 }
 
@@ -226,6 +237,10 @@ function matchesSearch(item: RecordItem, query: string) {
 
 function matchesDate(item: RecordItem, filter: string) {
   if (filter === 'Todas') return true
+  if (item.source === 'activity' && filter === 'Hoy') {
+    const state = getActivityVisualState(item.data)
+    return state.key === 'today' || state.key === 'inProgress'
+  }
   const date = normalize(item.data.date)
   if (filter === 'Hoy') return date.includes('hoy')
   return date.includes('semana') || date.includes('sab') || date.includes('dom') || date.includes('manana')
@@ -296,7 +311,20 @@ function matchesQuickFilter(item: RecordItem, filter: QuickFilterItem) {
 
 function sortRecords(items: RecordItem[], sort: SortMode, userInterests: unknown[] = []) {
   return [...items].sort((left, right) => {
-    if (sort === 'popular') return getParticipantCount(right.data) - getParticipantCount(left.data)
+    if (left.source === 'activity' && right.source === 'activity') {
+      const activityDiff = compareActivitiesForDiscovery(left.data, right.data)
+      if (activityDiff !== 0) return activityDiff
+    }
+    if (left.source !== right.source) {
+      if (left.source === 'activity') return -1
+      if (right.source === 'activity') return 1
+    }
+
+    if (sort === 'popular') {
+      const leftCount = left.source === 'group' ? getGroupMemberCount(left.data) : getParticipantCount(left.data)
+      const rightCount = right.source === 'group' ? getGroupMemberCount(right.data) : getParticipantCount(right.data)
+      return rightCount - leftCount
+    }
     if (sort === 'recommended') {
       const scoreDiff =
         getActivityRecommendationScore(right.data, userInterests)
@@ -336,9 +364,9 @@ function getQuickIcon(filter: QuickFilterItem): LucideIcon {
 
 function mapExploreCard(item: RecordItem, localGroups: LocalGroup[] = [], groupImageUrlsByKey: GroupImageUrlsByKey = {}): ExploreCardItem {
   const data = item.data
+  const isGroup = item.source === 'group'
   const count = getParticipantCount(data)
   const max = getMaxParticipants(data)
-  const isGroup = item.source === 'group'
   const cancelled = item.source === 'activity' && isCancelled(data)
   const groupMeta = isGroup ? { groupColor: '', groupId: '', groupName: '' } : getGroupMeta(data, localGroups)
 
@@ -347,7 +375,7 @@ function mapExploreCard(item: RecordItem, localGroups: LocalGroup[] = [], groupI
     recordId: item.id,
     source: item.source,
     title: readString(data.name, readString(data.title, isGroup ? 'Grupo sin título' : 'Actividad sin título')),
-    capacity: `${count}/${max}`,
+    capacity: isGroup ? formatGroupMemberCount(getGroupMemberCount(data)) : `${count}/${max}`,
     location: readString(data.location, readString(data.city, 'Ubicación a definir')),
     schedule: isGroup
       ? readString(data.schedule, 'Próximo encuentro a definir')
@@ -359,6 +387,7 @@ function mapExploreCard(item: RecordItem, localGroups: LocalGroup[] = [], groupI
     cta: cancelled ? 'Cancelada' : isGroup ? 'Ver grupo' : 'Ver encuentro',
     image: getCardImage(item),
     isCancelled: cancelled,
+    visualState: item.source === 'activity' ? getActivityVisualState(data) : undefined,
     Icon: getIcon(item),
   }
 }
@@ -375,7 +404,9 @@ export default function ExplorarScreen() {
   const [draftFilters, setDraftFilters] = useState<AdvancedFilters>(initialAdvancedFilters)
   const [isFilterVisible, setIsFilterVisible] = useState(false)
   const [activeCardIndex, setActiveCardIndex] = useState(0)
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null)
   const [userInterests, setUserInterests] = useState<unknown[]>([])
+  const [activeQuickCategory, setActiveQuickCategory] = useState<ActivityQuickCategoryId>('all')
   const [localGroups, setLocalGroups] = useState<LocalGroup[]>([])
   const carouselCardWidth = Math.min(300, Math.max(236, width - 104))
   const carouselSnapInterval = carouselCardWidth + 14
@@ -405,9 +436,12 @@ export default function ExplorarScreen() {
         if (!mounted) return
 
         if (!user) {
+          setCurrentUserId(null)
           setUserInterests([])
           return
         }
+
+        setCurrentUserId(user.uid)
 
         try {
           const profileSnap = await getDoc(doc(db, 'users', user.uid))
@@ -442,7 +476,9 @@ export default function ExplorarScreen() {
         publish()
       }, () => setIsLoading(false))
       const unsubscribeGroups = onSnapshot(collection(db, 'groups'), (snapshot) => {
-        groups = snapshot.docs.map((item) => ({ id: item.id, source: 'group', data: item.data() as Record<string, unknown> }))
+        groups = snapshot.docs
+          .map((item) => ({ id: item.id, source: 'group' as const, data: item.data() as Record<string, unknown> }))
+          .filter((item) => !isDeletedGroup(item.data))
         publish()
       }, () => setIsLoading(false))
 
@@ -464,6 +500,8 @@ export default function ExplorarScreen() {
   const filteredRecords = useMemo(() => {
     const filtered = records.filter((item) =>
       matchesSearch(item, debouncedQuery)
+      && (activeQuickCategory === 'all' || matchesActivityQuickCategory(item.data, activeQuickCategory))
+      && (item.source !== 'activity' || shouldShowActivityInDiscovery(item.data, currentUserId))
       && matchesQuickFilter(item, quickFilter)
       && matchesDate(item, filters.date)
       && matchesPrice(item, filters.price)
@@ -472,7 +510,7 @@ export default function ExplorarScreen() {
     )
 
     return sortRecords(filtered, filters.sort, userInterests)
-  }, [debouncedQuery, filters, quickFilter, records, userInterests])
+  }, [activeQuickCategory, currentUserId, debouncedQuery, filters, quickFilter, records, userInterests])
 
   const groupImageUrlsByKey = useMemo(() => {
     const nextImages: GroupImageUrlsByKey = {}
@@ -538,6 +576,10 @@ export default function ExplorarScreen() {
             style={styles.searchInput}
             value={query}
           />
+        </View>
+
+        <View style={styles.activityQuickBlock}>
+          <ActivityQuickCategoryRow activeId={activeQuickCategory} onChange={setActiveQuickCategory} />
         </View>
 
         <FlatList
@@ -692,9 +734,17 @@ function ExploreCard({ cardWidth, item, onPress }: { cardWidth: number; item: Ex
             style={[styles.cardImage, StyleSheet.absoluteFillObject]}
           />
         ) : null}
-        {item.isCancelled ? (
-          <View style={styles.cancelledBadge}>
-            <Text style={styles.cancelledBadgeText}>Cancelada</Text>
+        {item.visualState ? (
+          <View
+            style={[
+              styles.statusBadge,
+              {
+                backgroundColor: item.visualState.backgroundColor,
+                borderColor: item.visualState.borderColor,
+              },
+            ]}
+          >
+            <Text style={[styles.statusBadgeText, { color: item.visualState.color }]}>{item.visualState.label}</Text>
           </View>
         ) : null}
         <View style={styles.cardIcon}>
@@ -889,7 +939,10 @@ const styles = StyleSheet.create({
   quickList: {
     gap: 10,
     paddingBottom: 6,
-    paddingTop: 18,
+    paddingTop: 12,
+  },
+  activityQuickBlock: {
+    marginTop: 18,
   },
   quickChip: {
     alignItems: 'center',
@@ -1043,7 +1096,7 @@ const styles = StyleSheet.create({
     top: 84,
     width: 58,
   },
-  cancelledBadge: {
+  statusBadge: {
     backgroundColor: '#FFF2CC',
     borderColor: '#F5C84B',
     borderRadius: 999,
@@ -1054,7 +1107,7 @@ const styles = StyleSheet.create({
     right: 12,
     top: 12,
   },
-  cancelledBadgeText: {
+  statusBadgeText: {
     color: '#7A4A00',
     fontSize: 11,
     fontWeight: '900',
