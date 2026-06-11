@@ -5,6 +5,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context'
 import { onAuthStateChanged } from 'firebase/auth'
 import '../global.css'
 import { getFirebaseServices } from '../firebaseConfig'
+import { AuthContext } from '../utils/authContext'
 import { consumePendingExternalReturnRoute } from '../utils/externalReturnRoute'
 import { getJsInstanceId } from '../utils/jsInstance'
 import { reloadAuthUser } from '../utils/authParticipation'
@@ -25,6 +26,8 @@ export default function RootLayout() {
   const [authState, setAuthState] = useState({ checked: false, user: null })
   const instanceId = getJsInstanceId()
   const externalRouteRestoreAttemptedRef = useRef(false)
+  const lastAuthenticatedAtRef = useRef(0)
+  const redirectTimerRef = useRef(null)
 
   useEffect(() => {
     console.log('[ROOT MOUNT]', { instanceId })
@@ -54,6 +57,7 @@ export default function RootLayout() {
       const { auth } = getFirebaseServices()
       return onAuthStateChanged(auth, async (user) => {
         if (user) {
+          lastAuthenticatedAtRef.current = Date.now()
           try {
             await reloadAuthUser(user)
           } catch (error) {
@@ -79,6 +83,11 @@ export default function RootLayout() {
   }, [instanceId])
 
   useEffect(() => {
+    if (redirectTimerRef.current) {
+      clearTimeout(redirectTimerRef.current)
+      redirectTimerRef.current = null
+    }
+
     if (!authState.checked) {
       console.log('[ROUTE GUARD REDIRECT BLOCKED AUTH LOADING]', { path: pathname })
       return
@@ -114,8 +123,37 @@ export default function RootLayout() {
 
     const isPublicRoute = PUBLIC_ROUTES.has(pathname)
     if (!isPublicRoute) {
-      console.log('[ROUTE GUARD REDIRECT]', { from: pathname, to: '/login' })
-      router.replace('/login')
+      const elapsedSinceUser = Date.now() - lastAuthenticatedAtRef.current
+      const redirectToLogin = () => {
+        try {
+          const { auth } = getFirebaseServices()
+          if (auth.currentUser) {
+            console.log('[ROUTE GUARD REDIRECT CANCELLED]', {
+              path: pathname,
+              reason: 'auth_current_user_restored',
+              uid: auth.currentUser.uid,
+            })
+            setAuthState({ checked: true, user: auth.currentUser })
+            return
+          }
+        } catch (error) {
+          console.error('[ROUTE GUARD AUTH CHECK ERROR]', error)
+        }
+
+        console.log('[ROUTE GUARD REDIRECT]', { from: pathname, to: '/login' })
+        router.replace('/login')
+      }
+
+      if (elapsedSinceUser >= 0 && elapsedSinceUser < 1500) {
+        console.log('[ROUTE GUARD REDIRECT DELAYED AFTER USER]', {
+          path: pathname,
+          elapsedSinceUser,
+        })
+        redirectTimerRef.current = setTimeout(redirectToLogin, 1500 - elapsedSinceUser)
+        return
+      }
+
+      redirectToLogin()
       return
     }
 
@@ -123,15 +161,24 @@ export default function RootLayout() {
       path: pathname,
       reason: 'public_route_without_user',
     })
+
+    return () => {
+      if (redirectTimerRef.current) {
+        clearTimeout(redirectTimerRef.current)
+        redirectTimerRef.current = null
+      }
+    }
   }, [authState.checked, authState.user, instanceId, pathname, router])
 
   return (
-    <SafeAreaProvider>
-      <Stack
-        screenOptions={{
-          headerShown: false,
-        }}
-      />
-    </SafeAreaProvider>
+    <AuthContext.Provider value={authState}>
+      <SafeAreaProvider>
+        <Stack
+          screenOptions={{
+            headerShown: false,
+          }}
+        />
+      </SafeAreaProvider>
+    </AuthContext.Provider>
   )
 }

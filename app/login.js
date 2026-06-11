@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import {
   ActivityIndicator,
   Alert,
@@ -13,8 +13,6 @@ import {
 import { useRouter } from 'expo-router'
 import {
   GoogleAuthProvider,
-  onAuthStateChanged,
-  signOut,
   signInWithCredential,
   signInWithEmailAndPassword,
 } from 'firebase/auth'
@@ -197,34 +195,6 @@ export default function LoginScreen() {
     [email, password],
   )
 
-  useEffect(() => {
-    try {
-      console.log('[AUTH RESTORE START]', { screen: 'login' })
-      const { auth, db } = getFirebaseServices()
-      return onAuthStateChanged(auth, async (user) => {
-        console.log(user ? '[AUTH RESTORE USER]' : '[AUTH RESTORE NULL]', {
-          screen: 'login',
-          uid: user?.uid ?? null,
-        })
-
-        if (user) {
-          const profileSnap = await getDoc(doc(db, 'users', user.uid)).catch(() => null)
-          const profile = profileSnap?.exists() ? profileSnap.data() : null
-          if (!hasAcceptedCurrentLegal(profile)) {
-            await signOut(auth).catch(() => {})
-            setError('Para continuar necesitás aceptar los Términos y Condiciones y la Política de Privacidad.')
-            return
-          }
-          console.log('[ROUTE GUARD REDIRECT]', { from: 'login', to: '/home' })
-          router.replace('/home')
-        }
-      })
-    } catch (authRestoreError) {
-      console.error('[AUTH RESTORE ERROR]', authRestoreError)
-      return undefined
-    }
-  }, [router])
-
   const completeGoogleLogin = async (idToken) => {
     if (!idToken) {
       console.error('Error login Google', {
@@ -254,7 +224,6 @@ export default function LoginScreen() {
 
       const profileResult = await saveGoogleProfile(user, { acceptLegal: hasAcceptedLegal })
       if (profileResult.requiresLegalAcceptance) {
-        await signOut(auth).catch(() => {})
         setError('Para continuar con Google necesitás aceptar los Términos y Condiciones y la Política de Privacidad.')
         return
       }
@@ -273,6 +242,11 @@ export default function LoginScreen() {
       return
     }
 
+    if (!hasAcceptedLegal) {
+      setError('Para continuar necesitás aceptar los Términos y Condiciones y la Política de Privacidad.')
+      return
+    }
+
     setIsSubmitting(true)
     setError('')
 
@@ -288,11 +262,6 @@ export default function LoginScreen() {
       const profileSnap = await getDoc(profileRef)
       const profile = profileSnap.exists() ? profileSnap.data() : null
       if (!hasAcceptedCurrentLegal(profile)) {
-        if (!hasAcceptedLegal) {
-          await signOut(auth).catch(() => {})
-          setError('Para continuar necesitás aceptar los Términos y Condiciones y la Política de Privacidad.')
-          return
-        }
         await setDoc(profileRef, getLegalAcceptanceFields(serverTimestamp()), { merge: true })
       }
 
@@ -306,6 +275,11 @@ export default function LoginScreen() {
 
   const handleGoogleLogin = async () => {
     if (isSubmitting || isGoogleSubmitting) {
+      return
+    }
+
+    if (!hasAcceptedLegal) {
+      setError('Para continuar con Google necesitás aceptar los Términos y Condiciones y la Política de Privacidad.')
       return
     }
 

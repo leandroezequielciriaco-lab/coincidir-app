@@ -2,38 +2,24 @@ import { useEffect } from 'react'
 import { useRouter } from 'expo-router'
 import { ImageBackground, Pressable, View } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
-import { onAuthStateChanged } from 'firebase/auth'
 
 import { styles } from './OnboardingScreen.styles'
-import { getFirebaseServices } from '../firebaseConfig'
+import { useGlobalAuth } from '../utils/authContext'
 
 const onboardingImage = require('../assets/images/onboarding-fullscreen.png')
 
 export default function OnboardingScreen() {
   const router = useRouter()
   const insets = useSafeAreaInsets()
+  const { checked: authChecked, user } = useGlobalAuth()
   const safeLoginStyle = { bottom: Math.max(insets.bottom + 12, 24), top: undefined }
 
   useEffect(() => {
-    try {
-      console.log('[AUTH RESTORE START]', { screen: 'onboarding' })
-      const { auth } = getFirebaseServices()
-      return onAuthStateChanged(auth, (user) => {
-        console.log(user ? '[AUTH RESTORE USER]' : '[AUTH RESTORE NULL]', {
-          screen: 'onboarding',
-          uid: user?.uid ?? null,
-        })
+    if (!authChecked || !user) return
 
-        if (user) {
-          console.log('[ROUTE GUARD REDIRECT]', { from: 'onboarding', to: '/home' })
-          router.replace('/home')
-        }
-      })
-    } catch (error) {
-      console.error('[AUTH RESTORE ERROR]', error)
-      return undefined
-    }
-  }, [router])
+    console.log('[ROUTE GUARD REDIRECT]', { from: 'onboarding', to: '/home' })
+    router.replace('/home')
+  }, [authChecked, router, user])
 
   return (
     <View style={styles.screen}>

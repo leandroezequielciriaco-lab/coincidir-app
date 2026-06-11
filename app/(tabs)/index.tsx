@@ -195,13 +195,21 @@ function getMaxParticipants(data: Record<string, unknown>) {
 
 function formatDateBadge(date: string) {
   const normalizedDate = normalize(date)
+  const dateParts = date.trim().match(/^(\d{1,2})\/(\d{1,2})\/(\d{2}|\d{4})$/)
 
   if (normalizedDate.includes('hoy')) return 'HOY'
   if (normalizedDate.includes('manana') || normalizedDate.includes('ma')) return 'MANANA'
   if (normalizedDate.includes('sab')) return 'SAB'
   if (normalizedDate.includes('dom')) return 'DOM'
+  if (dateParts) {
+    const day = dateParts[1].padStart(2, '0')
+    const month = dateParts[2].padStart(2, '0')
+    const rawYear = dateParts[3]
+    const year = rawYear.length === 2 ? `20${rawYear}` : rawYear
+    return `${day}/${month}/${year}`
+  }
 
-  return date ? date.toUpperCase().slice(0, 8) : 'FECHA'
+  return date ? date.toUpperCase() : 'FECHA'
 }
 
 function formatSchedule(data: Record<string, unknown>) {

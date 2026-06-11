@@ -310,11 +310,11 @@ const styles = StyleSheet.create({
     borderColor: '#F5C84B',
     borderRadius: 999,
     borderWidth: 1,
+    bottom: 10,
     left: 12,
     paddingHorizontal: 11,
     paddingVertical: 7,
     position: 'absolute',
-    top: 52,
   },
   statusBadgeText: {
     color: '#7A4A00',

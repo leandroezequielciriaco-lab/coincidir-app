@@ -1,10 +1,9 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Animated, Image, Text, View, useWindowDimensions } from 'react-native'
 import { useRouter } from 'expo-router'
-import { onAuthStateChanged } from 'firebase/auth'
 
 import { styles } from './SplashScreen.styles'
-import { getFirebaseServices } from '../firebaseConfig'
+import { useGlobalAuth } from '../utils/authContext'
 
 const SPLASH_LOGO_SOURCE = require('../assets/images/coincidir-splash-logo.png')
 
@@ -15,6 +14,8 @@ export default function SplashScreen() {
   const router = useRouter()
   const { width } = useWindowDimensions()
   const entrance = useRef(new Animated.Value(0)).current
+  const [displayReady, setDisplayReady] = useState(false)
+  const { checked: authChecked, user } = useGlobalAuth()
 
   const logoWidth = Math.min(Math.max(width * 0.44, 150), 180)
 
@@ -24,49 +25,26 @@ export default function SplashScreen() {
       duration: FADE_DURATION,
       useNativeDriver: true,
     })
-    let authResolved = false
-    let displayResolved = false
-    let nextRoute = null
-    let unsubscribeAuth
-
-    const finishIfReady = () => {
-      if (!authResolved || !displayResolved || !nextRoute) return
-
-      console.log('[ROUTE GUARD REDIRECT]', { from: 'splash', to: nextRoute })
-      router.replace(nextRoute)
-    }
 
     const timeout = setTimeout(() => {
-      displayResolved = true
-      finishIfReady()
+      setDisplayReady(true)
     }, DISPLAY_TIME)
 
     animation.start()
 
-    try {
-      console.log('[AUTH RESTORE START]')
-      const { auth } = getFirebaseServices()
-      unsubscribeAuth = onAuthStateChanged(auth, (user) => {
-        authResolved = true
-        nextRoute = user ? '/home' : '/onboarding'
-        console.log(user ? '[AUTH RESTORE USER]' : '[AUTH RESTORE NULL]', {
-          uid: user?.uid ?? null,
-        })
-        finishIfReady()
-      })
-    } catch (error) {
-      authResolved = true
-      nextRoute = '/onboarding'
-      console.error('[AUTH RESTORE ERROR]', error)
-      finishIfReady()
-    }
-
     return () => {
       clearTimeout(timeout)
       animation.stop()
-      if (unsubscribeAuth) unsubscribeAuth()
     }
-  }, [entrance, router])
+  }, [entrance])
+
+  useEffect(() => {
+    if (!displayReady || !authChecked) return
+
+    const nextRoute = user ? '/home' : '/onboarding'
+    console.log('[ROUTE GUARD REDIRECT]', { from: 'splash', to: nextRoute })
+    router.replace(nextRoute)
+  }, [authChecked, displayReady, router, user])
 
   const animatedStyle = {
     opacity: entrance,
