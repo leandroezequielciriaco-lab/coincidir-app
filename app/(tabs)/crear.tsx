@@ -70,6 +70,7 @@ import {
 import { getFirebaseServices } from '../../firebaseConfig'
 import { uploadGroupPhoto } from '../../lib/groupPhotos'
 import { notifyActivityUpdated } from '../../lib/notifications'
+import { requireVerifiedParticipation } from '../../utils/authParticipation'
 
 type PickerMode = 'category' | 'subcategory' | 'date' | 'time' | 'currency' | null
 type CreateStep = 1 | 2 | 3 | 4 | 5
@@ -950,6 +951,8 @@ export default function CrearScreen() {
         throw authError
       }
 
+      if (!(await requireVerifiedParticipation(auth))) return
+
       const payload = buildActivityPayload()
       if (!payload) return
 
@@ -1193,6 +1196,7 @@ export default function CrearScreen() {
       setMessage('Necesitás iniciar sesión para crear un grupo.')
       return
     }
+    if (!(await requireVerifiedParticipation(auth))) return
 
     const cleanLocation = groupDraftLocation.trim()
     const createdGroupId = getLocalGroupId(cleanName)
@@ -1293,6 +1297,7 @@ export default function CrearScreen() {
       setMessage('Necesitás iniciar sesión para crear un grupo.')
       return
     }
+    if (!(await requireVerifiedParticipation(auth))) return
 
     const createdGroupId = getLocalGroupId(cleanName)
 

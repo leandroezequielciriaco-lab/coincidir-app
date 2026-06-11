@@ -59,6 +59,7 @@ import { getFirebaseServices } from '../../firebaseConfig'
 import { readRemoteGroupPhotoUrl } from '../../lib/groupPhotos'
 import { notifyActivityCancelled, notifyActivityConfirmed, notifyActivityInterest, notifyActivityRejected } from '../../lib/notifications'
 import { getActivityGroupMeta } from '../../utils/activityGroups'
+import { requireVerifiedParticipation } from '../../utils/authParticipation'
 import { getCategoryImage } from '../../utils/categoryImages'
 import { savePendingExternalReturnRoute } from '../../utils/externalReturnRoute'
 import { getJsInstanceId } from '../../utils/jsInstance'
@@ -681,6 +682,9 @@ export default function ActivityDetailScreen() {
   const toggleJoin = async () => {
     if (!activityId || !activity || !currentUserId || detail.isCancelled || detail.isFull || isJoining) return
 
+    const { auth } = getFirebaseServices()
+    if (!(await requireVerifiedParticipation(auth))) return
+
     const nextJoined = !detail.joined
     setOptimisticJoined(nextJoined)
     setIsJoining(true)
@@ -731,6 +735,9 @@ export default function ActivityDetailScreen() {
 
   const toggleInterest = async () => {
     if (!activityId || !activity || !currentUserId || isOrganizer || detail.isCancelled || isMarkingInterest) return
+
+    const { auth } = getFirebaseServices()
+    if (!(await requireVerifiedParticipation(auth))) return
 
     const nextInterested = !detail.interested
     setOptimisticInterested(nextInterested)
@@ -810,7 +817,8 @@ export default function ActivityDetailScreen() {
 
     setInterestedActionPending(user.uid, 'confirm', true)
     try {
-      const { db } = getFirebaseServices()
+      const { auth, db } = getFirebaseServices()
+      if (!(await requireVerifiedParticipation(auth))) return
       const targetRef = doc(db, 'activities', activityId)
 
       const result = await runTransaction(db, async (transaction) => {

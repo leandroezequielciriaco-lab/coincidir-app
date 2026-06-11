@@ -84,6 +84,7 @@ import { readRemoteGroupPhotoUrl } from '../../lib/groupPhotos'
 import { createNotification, deletePendingGroupJoinRequestNotifications } from '../../lib/notifications'
 import { applyGroupNameToActivity, getActivityGroupMeta } from '../../utils/activityGroups'
 import { isOwnActivity } from '../../utils/activityOwnership'
+import { canParticipate, resendEmailVerification, requireVerifiedParticipation } from '../../utils/authParticipation'
 import { defaultActivityImage, getCategoryImage } from '../../utils/categoryImages'
 import { savePendingExternalReturnRoute } from '../../utils/externalReturnRoute'
 
@@ -400,6 +401,7 @@ export default function PerfilScreen() {
   const [userId, setUserId] = useState<string | null>(null)
   const [authName, setAuthName] = useState<string | null>(null)
   const [authPhotoURL, setAuthPhotoURL] = useState<string | null>(null)
+  const [canCurrentUserParticipate, setCanCurrentUserParticipate] = useState(true)
   const [profile, setProfile] = useState<UserProfile>(buildProfile(null))
   const [activities, setActivities] = useState<FirestoreRecord[]>([])
   const [groups, setGroups] = useState<FirestoreRecord[]>([])
@@ -426,6 +428,7 @@ export default function PerfilScreen() {
         setUserId(user?.uid ?? null)
         setAuthName(user?.displayName ?? null)
         setAuthPhotoURL(user?.photoURL ?? null)
+        setCanCurrentUserParticipate(!user || canParticipate(user))
         if (!user) setIsLoading(false)
       })
     } catch {
@@ -672,6 +675,9 @@ export default function PerfilScreen() {
   const toggleProfileInterest = async (interest: string) => {
     if (!userId || pendingInterest) return
 
+    const { auth } = getFirebaseServices()
+    if (!(await requireVerifiedParticipation(auth))) return
+
     const previousInterests = selectedInterests
     const nextInterests = previousInterests.includes(interest)
       ? previousInterests.filter((item) => item !== interest)
@@ -694,6 +700,16 @@ export default function PerfilScreen() {
     }
   }
 
+  const handleResendVerification = async () => {
+    try {
+      const { auth } = getFirebaseServices()
+      await resendEmailVerification(auth)
+      setCanCurrentUserParticipate(canParticipate(auth.currentUser))
+    } catch {
+      Alert.alert('No pudimos reenviar el correo', 'Intentá nuevamente en unos segundos.')
+    }
+  }
+
   if (isLoading) {
     return (
       <SafeAreaView style={styles.safeArea}>
@@ -710,6 +726,16 @@ export default function PerfilScreen() {
         <View style={styles.headerRow}>
           <Text style={styles.screenTitle}>Mi perfil</Text>
         </View>
+
+        {!canCurrentUserParticipate ? (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Verificación de email</Text>
+            <Text style={styles.emptyText}>Confirmá tu email para poder participar en COINCIDIR.</Text>
+            <PressScale onPress={handleResendVerification} scaleTo={0.97} style={styles.profileGroupJoinButton}>
+              <Text style={styles.profileGroupJoinButtonText}>Reenviar correo de verificación</Text>
+            </PressScale>
+          </View>
+        ) : null}
 
         <View style={styles.profileHeader}>
           <View style={styles.avatarStage}>
@@ -951,7 +977,8 @@ function ProfileGroupsSection({ currentUserId, currentUserName, groups, onOpen }
 
     setPendingGroupAction(`join:${group.id}`)
     try {
-      const { db } = getFirebaseServices()
+      const { auth, db } = getFirebaseServices()
+      if (!(await requireVerifiedParticipation(auth))) return
       const requesterName = currentUserName.trim() || 'Participante'
 
       await updateDoc(doc(db, 'groups', group.id), {
@@ -1595,6 +1622,7 @@ function EditProfileModal({ authPhotoURL, onClose, profile, userId, visible }: E
         Alert.alert('Sesión requerida', 'Iniciá sesión nuevamente para guardar tu foto de perfil.')
         return
       }
+      if (!(await requireVerifiedParticipation(auth))) return
       if (userId && authUid !== userId && __DEV__) {
         console.warn('profile-save-auth-user-mismatch-ignored', { authUid, userId })
       }

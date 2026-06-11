@@ -7,6 +7,7 @@ import '../global.css'
 import { getFirebaseServices } from '../firebaseConfig'
 import { consumePendingExternalReturnRoute } from '../utils/externalReturnRoute'
 import { getJsInstanceId } from '../utils/jsInstance'
+import { reloadAuthUser } from '../utils/authParticipation'
 
 const PUBLIC_ROUTES = new Set([
   '/',
@@ -49,7 +50,14 @@ export default function RootLayout() {
     try {
       console.log('[AUTH RESTORE START]', { screen: 'root' })
       const { auth } = getFirebaseServices()
-      return onAuthStateChanged(auth, (user) => {
+      return onAuthStateChanged(auth, async (user) => {
+        if (user) {
+          try {
+            await reloadAuthUser(user)
+          } catch (error) {
+            if (__DEV__) console.warn('[AUTH RELOAD ERROR]', error)
+          }
+        }
         console.log(user ? '[AUTH RESTORE USER]' : '[AUTH RESTORE NULL]', {
           screen: 'root',
           uid: user?.uid ?? null,

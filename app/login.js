@@ -26,6 +26,7 @@ import { getFirebaseServices } from '../firebaseConfig'
 import CoincidirLogo from '../components/CoincidirLogo'
 import GoogleLogo from '../components/GoogleLogo'
 import { styles } from '../components/LoginScreen.styles'
+import { reloadAuthUser } from '../utils/authParticipation'
 
 const googleWebClientId = process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID
 const googleIosClientId = process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID
@@ -256,11 +257,12 @@ export default function LoginScreen() {
 
     try {
       const { auth } = getFirebaseServices()
-      await signInWithEmailAndPassword(
+      const credential = await signInWithEmailAndPassword(
         auth,
         email.trim(),
         password,
       )
+      await reloadAuthUser(credential.user)
 
       router.replace('/home')
     } catch (loginError) {

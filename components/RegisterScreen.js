@@ -15,6 +15,7 @@ import { useRouter } from 'expo-router'
 import {
   createUserWithEmailAndPassword,
   GoogleAuthProvider,
+  sendEmailVerification,
   signInWithCredential,
   updateProfile,
 } from 'firebase/auth'
@@ -34,6 +35,7 @@ import CoincidirLogo from './CoincidirLogo'
 import GoogleLogo from './GoogleLogo'
 import { styles } from './RegisterScreen.styles'
 import { getFirebaseServices } from '../firebaseConfig'
+import { EMAIL_VERIFICATION_SENT_MESSAGE } from '../utils/authParticipation'
 
 const googleWebClientId = process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID
 const googleIosClientId = process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID
@@ -347,9 +349,12 @@ export default function RegisterScreen() {
       const { user } = credential
       const fullName = form.fullName.trim()
 
-      saveRegistrationProfile(user, form, fullName)
+      await saveRegistrationProfile(user, form, fullName)
+      await sendEmailVerification(user)
 
-      router.replace('/home')
+      Alert.alert('Verificá tu email', EMAIL_VERIFICATION_SENT_MESSAGE, [
+        { text: 'OK', onPress: () => router.replace('/home') },
+      ])
     } catch (submitError) {
       setError(getFriendlyAuthError(submitError))
     } finally {

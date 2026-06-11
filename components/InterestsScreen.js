@@ -7,6 +7,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { getFirebaseServices } from '../firebaseConfig'
 import { canonicalUserInterests } from '../constants/userInterests'
 import { styles } from './InterestsScreen.styles'
+import { requireVerifiedParticipation } from '../utils/authParticipation'
 
 const interestsImage = require('../assets/images/interests-fullscreen.png')
 
@@ -93,6 +94,8 @@ export default function InterestsScreen() {
         throw authError
       }
 
+      if (!(await requireVerifiedParticipation(auth))) return
+
       await setDoc(
         doc(db, 'users', user.uid),
         {
@@ -120,6 +123,7 @@ export default function InterestsScreen() {
       const user = auth.currentUser
 
       if (user) {
+        if (!(await requireVerifiedParticipation(auth))) return
         await setDoc(
           doc(db, 'users', user.uid),
           {

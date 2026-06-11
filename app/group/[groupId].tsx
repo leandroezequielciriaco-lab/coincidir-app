@@ -37,6 +37,7 @@ import { getFirebaseServices } from '../../firebaseConfig'
 import { readRemoteGroupPhotoUrl, uploadGroupPhoto } from '../../lib/groupPhotos'
 import { createNotification, deletePendingGroupJoinRequestNotifications } from '../../lib/notifications'
 import { getActivityGroupMeta } from '../../utils/activityGroups'
+import { requireVerifiedParticipation } from '../../utils/authParticipation'
 import { getCategoryImage } from '../../utils/categoryImages'
 
 type GroupData = Record<string, unknown>
@@ -407,7 +408,8 @@ export default function GroupDetailScreen() {
 
     setIsJoining(true)
     try {
-      const { db } = getFirebaseServices()
+      const { auth, db } = getFirebaseServices()
+      if (!(await requireVerifiedParticipation(auth))) return
       await updateDoc(doc(db, 'groups', groupId), {
         [`membershipRequests.${userId}`]: {
           name: userName,
@@ -542,7 +544,8 @@ export default function GroupDetailScreen() {
 
     setPendingRequestAction(`accept:${request.id}`)
     try {
-      const { db } = getFirebaseServices()
+      const { auth, db } = getFirebaseServices()
+      if (!(await requireVerifiedParticipation(auth))) return
       await updateDoc(doc(db, 'groups', groupId), {
         [`joinedUsers.${request.id}`]: true,
         [`memberProfiles.${request.id}`]: {
@@ -639,7 +642,8 @@ export default function GroupDetailScreen() {
 
     setIsSavingGroupEdits(true)
     try {
-      const { db } = getFirebaseServices()
+      const { auth, db } = getFirebaseServices()
+      if (!(await requireVerifiedParticipation(auth))) return
       const payload: Record<string, unknown> = {
         description: draftDescription.trim(),
         locationName: draftLocation.trim(),

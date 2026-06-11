@@ -38,6 +38,7 @@ import type { LucideIcon } from 'lucide-react-native'
 
 import { PressScale } from '../components/home/PressScale'
 import { getFirebaseServices } from '../firebaseConfig'
+import { requireVerifiedParticipation } from '../utils/authParticipation'
 
 const LOGIN_ROUTE = '/login'
 const googleWebClientId = process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID
@@ -278,6 +279,8 @@ export default function MiCuentaScreen() {
         setPasswordError('Necesitamos un email asociado a tu cuenta para cambiar la contrasena.')
         return
       }
+
+      if (!(await requireVerifiedParticipation(auth))) return
 
       const credential = EmailAuthProvider.credential(user.email, currentPassword)
       await reauthenticateWithCredential(user, credential)

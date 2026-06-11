@@ -32,6 +32,7 @@ import { ArrowLeft, Send, UsersRound } from 'lucide-react-native'
 
 import { PressScale } from '../../components/home/PressScale'
 import { getFirebaseServices } from '../../firebaseConfig'
+import { requireVerifiedParticipation } from '../../utils/authParticipation'
 import {
   type ChatSource,
   formatChatTime,
@@ -189,7 +190,11 @@ export default function ChatScreen() {
     setText('')
 
     try {
-      const { db } = getFirebaseServices()
+      const { auth, db } = getFirebaseServices()
+      if (!(await requireVerifiedParticipation(auth))) {
+        setText(cleanText)
+        return
+      }
       const chatCollection = getChatCollection(chatSource)
       const participantIds = Array.from(new Set([...getParticipantIds(sourceData), userId]))
       const unreadBy = participantIds.reduce<Record<string, unknown>>((updates, participantId) => {

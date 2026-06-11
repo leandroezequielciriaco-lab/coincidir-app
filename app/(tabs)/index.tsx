@@ -68,6 +68,7 @@ import { readRemoteGroupPhotoUrl } from '../../lib/groupPhotos'
 import { notifyActivityInterest, useUnreadNotificationsCount } from '../../lib/notifications'
 import { getActivityGroupMeta } from '../../utils/activityGroups'
 import { isOwnActivity } from '../../utils/activityOwnership'
+import { requireVerifiedParticipation } from '../../utils/authParticipation'
 import { getCategoryImage } from '../../utils/categoryImages'
 
 type CategoryId = 'culture' | 'groups' | 'hobbies' | 'outdoor' | 'sports' | 'training' | 'wellness'
@@ -863,6 +864,9 @@ export default function HomeScreen() {
     if (isActivityOrganizer(record.data, currentUserId)) return
     if (isCancelled(record.data)) return
 
+    const { auth } = getFirebaseServices()
+    if (!(await requireVerifiedParticipation(auth))) return
+
     const key = getJoinKey(collectionName, record.id)
     if (pendingJoinKeys.includes(key)) return
 
@@ -923,6 +927,9 @@ export default function HomeScreen() {
     if (!currentUserId) return
     if (isActivityOrganizer(record.data, currentUserId)) return
     if (isCancelled(record.data)) return
+
+    const { auth } = getFirebaseServices()
+    if (!(await requireVerifiedParticipation(auth))) return
 
     const key = getInterestKey(record.id)
     if (pendingInterestKeys.includes(key)) return
