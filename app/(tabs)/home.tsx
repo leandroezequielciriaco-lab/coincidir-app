@@ -583,12 +583,6 @@ export default function HomeScreen() {
       const storedValue = await AsyncStorage.getItem(LOCAL_GROUPS_STORAGE_KEY)
       const storedGroups = readStoredLocalGroups(storedValue)
       setLocalGroups(storedGroups)
-      if (__DEV__) {
-        console.log('[Home] grupos locales leidos', {
-          count: storedGroups.length,
-          groups: storedGroups,
-        })
-      }
     } catch (error) {
       if (__DEV__) console.warn('[Home] error leyendo grupos locales', error)
     }

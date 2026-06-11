@@ -13,9 +13,9 @@ export function getActivityGroupMeta(data: Record<string, unknown>, localGroups:
   const groupColor = readString(data.groupColor, readString(additionalSettings.groupColor))
   const groupId = readString(data.groupId, readString(additionalSettings.groupId))
   const localGroupName = groupId ? localGroups.find((group) => group.id === groupId)?.name ?? '' : ''
-  const groupName = localGroupName
-    || readString(data.groupName)
+  const groupName = readString(data.groupName)
     || readString(additionalSettings.groupName)
+    || localGroupName
 
   return { groupColor, groupId, groupName }
 }

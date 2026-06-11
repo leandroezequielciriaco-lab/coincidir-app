@@ -1,5 +1,4 @@
 import * as ImagePicker from 'expo-image-picker'
-import AsyncStorage from '@react-native-async-storage/async-storage'
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router'
 import { onAuthStateChanged, updateProfile } from 'firebase/auth'
 import { arrayRemove, collection, deleteField, doc, increment, onSnapshot, serverTimestamp, setDoc, updateDoc } from 'firebase/firestore'
@@ -69,20 +68,12 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { PressScale } from '../../components/home/PressScale'
 import { GroupAvatar } from '../../components/groups/GroupAvatar'
 import { getGroupTheme } from '../../constants/groupTheme'
-import {
-  type LocalGroup,
-  getLocalGroupId,
-  LOCAL_GROUPS_STORAGE_KEY,
-  mergeLocalGroups,
-  readDeletedLocalGroupIds,
-  readStoredLocalGroups,
-  serializeLocalGroups,
-} from '../../constants/localGroups'
+import { getLocalGroupId } from '../../constants/localGroups'
 import { canonicalUserInterests, expandUserInterests } from '../../constants/userInterests'
 import { getFirebaseServices } from '../../firebaseConfig'
 import { readRemoteGroupPhotoUrl } from '../../lib/groupPhotos'
 import { createNotification, deletePendingGroupJoinRequestNotifications } from '../../lib/notifications'
-import { applyGroupNameToActivity, getActivityGroupMeta } from '../../utils/activityGroups'
+import { getActivityGroupMeta } from '../../utils/activityGroups'
 import { isOwnActivity } from '../../utils/activityOwnership'
 import { canParticipate, resendEmailVerification, requireVerifiedParticipation } from '../../utils/authParticipation'
 import { compareActivitiesForDiscovery, getActivityVisualState } from '../../utils/activityDiscovery'
@@ -214,15 +205,17 @@ function resolveProfilePhoto(userData: Record<string, unknown> | null, authUser:
   }
 }
 
-type ProfileGroup = LocalGroup & {
+type ProfileGroup = {
   activityCount: number
   data?: Record<string, unknown>
   description?: string
+  id: string
   nextActivityAt?: number
   memberCount?: number
+  name: string
   ownerId?: string
   photoUrl?: string
-  source: 'activity' | 'firestore' | 'local'
+  source: 'firestore'
   status: 'host' | 'member' | 'none' | 'pending'
 }
 
@@ -377,9 +370,6 @@ export default function PerfilScreen() {
   const [profile, setProfile] = useState<UserProfile>(buildProfile(null))
   const [activities, setActivities] = useState<FirestoreRecord[]>([])
   const [groups, setGroups] = useState<FirestoreRecord[]>([])
-  const [localGroups, setLocalGroups] = useState<LocalGroup[]>([])
-  const [deletedLocalGroupIds, setDeletedLocalGroupIds] = useState<string[]>([])
-  const [editingGroup, setEditingGroup] = useState<ProfileGroup | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [isEditing, setIsEditing] = useState(false)
   const [optimisticInterests, setOptimisticInterests] = useState<string[] | null>(null)
@@ -455,33 +445,6 @@ export default function PerfilScreen() {
     }
   }, [])
 
-  const loadLocalGroups = useCallback(async () => {
-    try {
-      const storedValue = await AsyncStorage.getItem(LOCAL_GROUPS_STORAGE_KEY)
-      const storedGroups = readStoredLocalGroups(storedValue)
-      const storedDeletedGroupIds = readDeletedLocalGroupIds(storedValue)
-      setLocalGroups(storedGroups)
-      setDeletedLocalGroupIds(storedDeletedGroupIds)
-
-      if (__DEV__) {
-        console.log('[Perfil] grupos leidos de AsyncStorage', {
-          count: storedGroups.length,
-          deletedGroupIds: storedDeletedGroupIds,
-          groups: storedGroups,
-          key: LOCAL_GROUPS_STORAGE_KEY,
-        })
-      }
-    } catch (error) {
-      if (__DEV__) console.warn('[Perfil] error leyendo grupos locales', error)
-    }
-  }, [])
-
-  useFocusEffect(
-    useCallback(() => {
-      void loadLocalGroups()
-    }, [loadLocalGroups]),
-  )
-
   const createdActivities = useMemo(
     () => activities.filter((item) => isOwnActivity(item.data, userId)).sort(compareProfileActivities),
     [activities, userId],
@@ -491,15 +454,13 @@ export default function PerfilScreen() {
     [activities, userId],
   )
   const myGroups = useMemo<ProfileGroup[]>(() => {
-    const deletedIds = new Set(deletedLocalGroupIds)
     const now = Date.now()
     const groupsWithCounts = groups
-      .filter((group) => !deletedIds.has(group.id))
       .map((firestoreGroup) => {
         const groupName = readString(firestoreGroup.data.name, readString(firestoreGroup.data.title, 'Grupo sin título'))
         const matchingActivities = activities.filter((activity) => {
           if (isCancelled(activity.data)) return false
-          const groupMeta = getActivityGroupMeta(activity.data, localGroups)
+          const groupMeta = getActivityGroupMeta(activity.data)
           const activityGroupId = groupMeta.groupId || getLocalGroupId(groupMeta.groupName)
           return activityGroupId === firestoreGroup.id || groupMeta.groupName === groupName
         })
@@ -549,7 +510,7 @@ export default function PerfilScreen() {
     }
 
     return groupsWithCounts
-  }, [activities, deletedLocalGroupIds, groups, localGroups, userId])
+  }, [activities, groups, userId])
   const groupImageUrlsByKey = useMemo(() => {
     const nextImages: GroupImageUrlsByKey = {}
 
@@ -585,57 +546,6 @@ export default function PerfilScreen() {
       activities: ownActivities,
     })
   }, [activities, userId])
-
-  const saveProfileGroups = useCallback(async (nextGroups: LocalGroup[], nextDeletedIds = deletedLocalGroupIds) => {
-    const dedupedGroups = mergeLocalGroups(nextGroups)
-    setLocalGroups(dedupedGroups)
-    setDeletedLocalGroupIds(nextDeletedIds)
-    await AsyncStorage.setItem(LOCAL_GROUPS_STORAGE_KEY, serializeLocalGroups(dedupedGroups, nextDeletedIds))
-  }, [deletedLocalGroupIds])
-
-  const renameProfileGroup = async (group: ProfileGroup, nextName: string) => {
-    const cleanName = nextName.trim()
-    if (!cleanName) {
-      Alert.alert('Nombre requerido', 'Ingresá un nombre para el grupo.')
-      return
-    }
-
-    try {
-      const currentGroups = localGroups.some((item) => item.id === group.id)
-        ? localGroups
-        : [...localGroups, { id: group.id, name: group.name }]
-      const nextGroups = currentGroups.map((item) => item.id === group.id ? { ...item, name: cleanName } : item)
-      await saveProfileGroups(nextGroups, deletedLocalGroupIds.filter((id) => id !== group.id))
-      const matchingActivities = activities.filter((activity) => {
-        const groupMeta = getActivityGroupMeta(activity.data, localGroups)
-        return groupMeta.groupId === group.id
-      })
-      setActivities((current) => current.map((activity) => ({
-        ...activity,
-        data: applyGroupNameToActivity(activity.data, group.id, cleanName),
-      })))
-      if (__DEV__) {
-        console.log('[Perfil] grupo editado', {
-          groupId: group.id,
-          nextName: cleanName,
-          previousName: group.name,
-        })
-        console.log('[Perfil] actividades encontradas con groupId', {
-          activityIds: matchingActivities.map((activity) => activity.id),
-          count: matchingActivities.length,
-          groupId: group.id,
-        })
-        console.log('[Perfil] actividades actualizadas localmente', {
-          count: matchingActivities.length,
-          groupId: group.id,
-          groupName: cleanName,
-        })
-      }
-      setEditingGroup(null)
-    } catch {
-      Alert.alert('No pudimos guardar', 'Intentá renombrar el grupo nuevamente.')
-    }
-  }
 
   const selectedInterests = optimisticInterests ?? expandUserInterests(profile.interests)
   const visibleProfileInterestOptions = showAllProfileInterests
@@ -786,7 +696,6 @@ export default function PerfilScreen() {
           currentUserId={userId}
           groupImageUrlsByKey={groupImageUrlsByKey}
           items={createdActivities}
-          localGroups={localGroups}
           onPress={(item) => router.push({ pathname: '/activity/[activityId]', params: { activityId: item.id } })}
           title="Actividades creadas"
         />
@@ -796,7 +705,6 @@ export default function PerfilScreen() {
           currentUserId={userId}
           groupImageUrlsByKey={groupImageUrlsByKey}
           items={joinedActivities}
-          localGroups={localGroups}
           onPress={(item) => router.push({ pathname: '/activity/[activityId]', params: { activityId: item.id } })}
           title="Me sumé a"
         />
@@ -815,11 +723,6 @@ export default function PerfilScreen() {
         profile={profile}
         userId={userId}
         visible={isEditing}
-      />
-      <EditGroupModal
-        group={editingGroup}
-        onClose={() => setEditingGroup(null)}
-        onSave={renameProfileGroup}
       />
     </SafeAreaView>
   )
@@ -899,13 +802,12 @@ type ProfileListSectionProps = {
   emptyText: string
   groupImageUrlsByKey?: GroupImageUrlsByKey
   items: FirestoreRecord[]
-  localGroups?: LocalGroup[]
   onPress: (item: FirestoreRecord) => void
   title: string
   variant?: 'activity' | 'group'
 }
 
-function ProfileListSection({ currentUserId = null, emptyText, groupImageUrlsByKey = {}, items, localGroups = [], onPress, title, variant = 'activity' }: ProfileListSectionProps) {
+function ProfileListSection({ currentUserId = null, emptyText, groupImageUrlsByKey = {}, items, onPress, title, variant = 'activity' }: ProfileListSectionProps) {
   return (
     <ProfileSection title={title}>
       {items.length === 0 ? (
@@ -913,7 +815,7 @@ function ProfileListSection({ currentUserId = null, emptyText, groupImageUrlsByK
       ) : (
         <View style={styles.list}>
           {items.map((item) => (
-            <ProfileRow currentUserId={currentUserId} groupImageUrlsByKey={groupImageUrlsByKey} item={item} key={item.id} localGroups={localGroups} onPress={() => onPress(item)} variant={variant} />
+            <ProfileRow currentUserId={currentUserId} groupImageUrlsByKey={groupImageUrlsByKey} item={item} key={item.id} onPress={() => onPress(item)} variant={variant} />
           ))}
         </View>
       )}
@@ -1206,65 +1108,16 @@ function ProfileGroupsSection({ currentUserId, currentUserName, groups, onOpen }
   )
 }
 
-function EditGroupModal({
-  group,
-  onClose,
-  onSave,
-}: {
-  group: ProfileGroup | null
-  onClose: () => void
-  onSave: (group: ProfileGroup, nextName: string) => void
-}) {
-  const [draftName, setDraftName] = useState('')
-
-  useEffect(() => {
-    setDraftName(group?.name ?? '')
-  }, [group])
-
-  return (
-    <Modal animationType="fade" onRequestClose={onClose} transparent visible={Boolean(group)}>
-      <Pressable style={styles.modalBackdrop} onPress={onClose}>
-        <Pressable style={styles.groupEditModal}>
-          <Text style={styles.groupEditTitle}>Editar grupo</Text>
-          <TextInput
-            autoCapitalize="words"
-            onChangeText={setDraftName}
-            placeholder="Nombre del grupo"
-            placeholderTextColor="#8A9691"
-            style={styles.groupEditInput}
-            underlineColorAndroid="transparent"
-            value={draftName}
-          />
-          <Pressable
-            accessibilityRole="button"
-            onPress={() => {
-              if (group) void onSave(group, draftName)
-            }}
-            style={styles.groupEditPrimary}
-          >
-            <Text style={styles.groupEditPrimaryText}>Guardar</Text>
-          </Pressable>
-          <Pressable accessibilityRole="button" onPress={onClose} style={styles.groupEditSecondary}>
-            <Text style={styles.groupEditSecondaryText}>Cancelar</Text>
-          </Pressable>
-        </Pressable>
-      </Pressable>
-    </Modal>
-  )
-}
-
 function ProfileRow({
   currentUserId,
   groupImageUrlsByKey = {},
   item,
-  localGroups = [],
   onPress,
   variant,
 }: {
   currentUserId?: string | null
   groupImageUrlsByKey?: GroupImageUrlsByKey
   item: FirestoreRecord
-  localGroups?: LocalGroup[]
   onPress: () => void
   variant: 'activity' | 'group'
 }) {
@@ -1274,7 +1127,7 @@ function ProfileRow({
   const participants = getParticipantCount(item.data)
   const visualState = variant === 'activity' ? getActivityVisualState(item.data) : null
   const ownActivity = variant === 'activity' && isOwnActivity(item.data, currentUserId)
-  const groupMeta = variant === 'activity' ? getActivityGroupMeta(item.data, localGroups) : { groupColor: '', groupId: '', groupName: '' }
+  const groupMeta = variant === 'activity' ? getActivityGroupMeta(item.data) : { groupColor: '', groupId: '', groupName: '' }
   const groupImageUrl = getGroupImageUrl(groupMeta, groupImageUrlsByKey)
   const isGroupActivity = Boolean(groupMeta.groupId || groupMeta.groupName)
   const groupColors = getGroupTheme(groupMeta.groupColor)
