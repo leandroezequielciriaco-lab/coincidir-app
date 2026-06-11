@@ -12,6 +12,8 @@ import { reloadAuthUser } from '../utils/authParticipation'
 const PUBLIC_ROUTES = new Set([
   '/',
   '/forgot-password',
+  '/legal/privacy',
+  '/legal/terms',
   '/login',
   '/onboarding',
   '/register',
