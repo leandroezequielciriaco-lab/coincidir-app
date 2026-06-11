@@ -242,11 +242,6 @@ export default function LoginScreen() {
       return
     }
 
-    if (!hasAcceptedLegal) {
-      setError('Para continuar necesitás aceptar los Términos y Condiciones y la Política de Privacidad.')
-      return
-    }
-
     setIsSubmitting(true)
     setError('')
 
@@ -262,6 +257,10 @@ export default function LoginScreen() {
       const profileSnap = await getDoc(profileRef)
       const profile = profileSnap.exists() ? profileSnap.data() : null
       if (!hasAcceptedCurrentLegal(profile)) {
+        if (!hasAcceptedLegal) {
+          setError('Para continuar necesitás aceptar los Términos y Condiciones y la Política de Privacidad.')
+          return
+        }
         await setDoc(profileRef, getLegalAcceptanceFields(serverTimestamp()), { merge: true })
       }
 
@@ -275,11 +274,6 @@ export default function LoginScreen() {
 
   const handleGoogleLogin = async () => {
     if (isSubmitting || isGoogleSubmitting) {
-      return
-    }
-
-    if (!hasAcceptedLegal) {
-      setError('Para continuar con Google necesitás aceptar los Términos y Condiciones y la Política de Privacidad.')
       return
     }
 
