@@ -14,12 +14,13 @@ import { useRouter } from 'expo-router'
 import {
   GoogleAuthProvider,
   onAuthStateChanged,
+  signOut,
   signInWithCredential,
   signInWithEmailAndPassword,
 } from 'firebase/auth'
 import { doc, getDoc, serverTimestamp, setDoc } from 'firebase/firestore'
 import { FontAwesome5 } from '@expo/vector-icons'
-import { ArrowLeft, ArrowRight, Eye, EyeOff, LockKeyhole, Mail } from 'lucide-react-native'
+import { ArrowLeft, ArrowRight, Check, Eye, EyeOff, LockKeyhole, Mail } from 'lucide-react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 
 import { getFirebaseServices } from '../firebaseConfig'
@@ -27,6 +28,7 @@ import CoincidirLogo from '../components/CoincidirLogo'
 import GoogleLogo from '../components/GoogleLogo'
 import { styles } from '../components/LoginScreen.styles'
 import { reloadAuthUser } from '../utils/authParticipation'
+import { getLegalAcceptanceFields, hasAcceptedCurrentLegal } from '../constants/legal'
 
 const googleWebClientId = process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID
 const googleIosClientId = process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID
@@ -125,7 +127,7 @@ function readProfileString(profile, field) {
   return typeof value === 'string' && value.trim() ? value.trim() : ''
 }
 
-async function saveGoogleProfile(user) {
+async function saveGoogleProfile(user, { acceptLegal = false } = {}) {
   const { db } = getFirebaseServices()
   const userRef = doc(db, 'users', user.uid)
   const userSnap = await getDoc(userRef)
@@ -140,6 +142,9 @@ async function saveGoogleProfile(user) {
     readProfileString(existingProfile, 'photoUrl') ||
     readProfileString(existingProfile, 'avatar')
   const shouldUseGooglePhoto = Boolean(googlePhotoURL && !photoRemoved && !existingPhotoURL && !existingAvatarURL)
+  const requiresLegalAcceptance = !hasAcceptedCurrentLegal(existingProfile) && !acceptLegal
+  if (requiresLegalAcceptance) return { requiresLegalAcceptance: true }
+
   const profile = {
     uid: user.uid,
     fullName: user.displayName || '',
@@ -149,6 +154,7 @@ async function saveGoogleProfile(user) {
     provider: 'google',
     updatedAt: serverTimestamp(),
     lastLoginAt: serverTimestamp(),
+    ...(acceptLegal ? getLegalAcceptanceFields(serverTimestamp()) : {}),
   }
 
   if (!userSnap.exists()) {
@@ -156,7 +162,7 @@ async function saveGoogleProfile(user) {
       ...profile,
       createdAt: serverTimestamp(),
     })
-    return
+    return { requiresLegalAcceptance: false }
   }
 
   await setDoc(
@@ -167,9 +173,11 @@ async function saveGoogleProfile(user) {
       provider: 'google',
       updatedAt: serverTimestamp(),
       lastLoginAt: serverTimestamp(),
+      ...(acceptLegal ? getLegalAcceptanceFields(serverTimestamp()) : {}),
     },
     { merge: true },
   )
+  return { requiresLegalAcceptance: false }
 }
 
 export default function LoginScreen() {
@@ -182,6 +190,7 @@ export default function LoginScreen() {
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [isGoogleSubmitting, setIsGoogleSubmitting] = useState(false)
   const [error, setError] = useState('')
+  const [hasAcceptedLegal, setHasAcceptedLegal] = useState(false)
 
   const canSubmit = useMemo(
     () => email.trim().length > 0 && password.length > 0,
@@ -191,14 +200,21 @@ export default function LoginScreen() {
   useEffect(() => {
     try {
       console.log('[AUTH RESTORE START]', { screen: 'login' })
-      const { auth } = getFirebaseServices()
-      return onAuthStateChanged(auth, (user) => {
+      const { auth, db } = getFirebaseServices()
+      return onAuthStateChanged(auth, async (user) => {
         console.log(user ? '[AUTH RESTORE USER]' : '[AUTH RESTORE NULL]', {
           screen: 'login',
           uid: user?.uid ?? null,
         })
 
         if (user) {
+          const profileSnap = await getDoc(doc(db, 'users', user.uid)).catch(() => null)
+          const profile = profileSnap?.exists() ? profileSnap.data() : null
+          if (!hasAcceptedCurrentLegal(profile)) {
+            await signOut(auth).catch(() => {})
+            setError('Para continuar necesitás aceptar los Términos y Condiciones y la Política de Privacidad.')
+            return
+          }
           console.log('[ROUTE GUARD REDIRECT]', { from: 'login', to: '/home' })
           router.replace('/home')
         }
@@ -236,7 +252,12 @@ export default function LoginScreen() {
         email: user.email,
       })
 
-      await saveGoogleProfile(user)
+      const profileResult = await saveGoogleProfile(user, { acceptLegal: hasAcceptedLegal })
+      if (profileResult.requiresLegalAcceptance) {
+        await signOut(auth).catch(() => {})
+        setError('Para continuar con Google necesitás aceptar los Términos y Condiciones y la Política de Privacidad.')
+        return
+      }
       router.replace('/home')
     } catch (googleLoginError) {
       console.error('Error login Google', googleLoginError)
@@ -256,13 +277,24 @@ export default function LoginScreen() {
     setError('')
 
     try {
-      const { auth } = getFirebaseServices()
+      const { auth, db } = getFirebaseServices()
       const credential = await signInWithEmailAndPassword(
         auth,
         email.trim(),
         password,
       )
       await reloadAuthUser(credential.user)
+      const profileRef = doc(db, 'users', credential.user.uid)
+      const profileSnap = await getDoc(profileRef)
+      const profile = profileSnap.exists() ? profileSnap.data() : null
+      if (!hasAcceptedCurrentLegal(profile)) {
+        if (!hasAcceptedLegal) {
+          await signOut(auth).catch(() => {})
+          setError('Para continuar necesitás aceptar los Términos y Condiciones y la Política de Privacidad.')
+          return
+        }
+        await setDoc(profileRef, getLegalAcceptanceFields(serverTimestamp()), { merge: true })
+      }
 
       router.replace('/home')
     } catch (loginError) {
@@ -426,6 +458,32 @@ export default function LoginScreen() {
             >
               <Text style={styles.forgotPasswordText}>¿Olvidaste tu contraseña?</Text>
             </Pressable>
+
+            <View style={styles.legalAcceptanceBox}>
+              <Pressable
+                accessibilityLabel="Aceptar términos y política de privacidad"
+                accessibilityRole="checkbox"
+                accessibilityState={{ checked: hasAcceptedLegal }}
+                onPress={() => {
+                  setError('')
+                  setHasAcceptedLegal((value) => !value)
+                }}
+                style={[styles.legalCheckbox, hasAcceptedLegal && styles.legalCheckboxChecked]}
+              >
+                {hasAcceptedLegal ? <Check color="#FFFFFF" size={17} strokeWidth={3} /> : null}
+              </Pressable>
+              <Text style={styles.legalAcceptanceText}>
+                He leído y acepto los{' '}
+                <Text onPress={() => router.push('/legal/terms')} style={styles.legalLink}>
+                  Términos y Condiciones
+                </Text>
+                {' '}y la{' '}
+                <Text onPress={() => router.push('/legal/privacy')} style={styles.legalLink}>
+                  Política de Privacidad
+                </Text>
+                .
+              </Text>
+            </View>
 
             {error ? <Text style={styles.errorText}>{error}</Text> : null}
 

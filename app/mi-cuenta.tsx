@@ -316,6 +316,7 @@ export default function MiCuentaScreen() {
     setIsDeletingAccount(true)
 
     try {
+      // TODO: Centralizar este flujo con app/privacidad.tsx para que ambos caminos borren Auth y Firestore igual.
       const { auth, db } = getFirebaseServices()
       const user = auth.currentUser
       const providerId = getCurrentProviderId()

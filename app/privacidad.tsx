@@ -112,14 +112,11 @@ export default function PrivacidadScreen() {
     void saveSettings(nextSettings)
   }
 
-  const showComingSoon = () => {
-    Alert.alert('Próximamente')
-  }
-
   const goToLogin = () => {
     router.replace(LOGIN_ROUTE)
   }
 
+  // TODO: Centralizar eliminación de cuenta con app/mi-cuenta.tsx para marcar Firestore y borrar Auth de forma consistente.
   const deleteAccount = async () => {
     try {
       const { auth } = getFirebaseServices()
@@ -205,8 +202,8 @@ export default function PrivacidadScreen() {
         </View>
 
         <View style={styles.legalCard}>
-          <LegalRow Icon={LockKeyhole} label="Política de privacidad" onPress={showComingSoon} />
-          <LegalRow Icon={ShieldCheck} label="Términos y condiciones" onPress={showComingSoon} />
+          <LegalRow Icon={LockKeyhole} label="Política de privacidad" onPress={() => router.push('/legal/privacy' as Href)} />
+          <LegalRow Icon={ShieldCheck} label="Términos y condiciones" onPress={() => router.push('/legal/terms' as Href)} />
           <LegalRow destructive Icon={Trash2} isLast label="Eliminar mi cuenta" onPress={confirmDeleteAccount} />
         </View>
       </ScrollView>

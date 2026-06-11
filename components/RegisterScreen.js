@@ -23,6 +23,7 @@ import { doc, getDoc, serverTimestamp, setDoc } from 'firebase/firestore'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import {
   Calendar,
+  Check,
   Eye,
   EyeOff,
   LockKeyhole,
@@ -36,6 +37,7 @@ import GoogleLogo from './GoogleLogo'
 import { styles } from './RegisterScreen.styles'
 import { getFirebaseServices } from '../firebaseConfig'
 import { EMAIL_VERIFICATION_SENT_MESSAGE } from '../utils/authParticipation'
+import { getLegalAcceptanceFields } from '../constants/legal'
 
 const googleWebClientId = process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID
 const googleIosClientId = process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID
@@ -179,6 +181,7 @@ async function saveRegistrationProfile(user, form, fullName) {
       email: form.email.trim().toLowerCase(),
       birthDate: form.birthDate.trim(),
       city: form.city.trim(),
+      ...getLegalAcceptanceFields(serverTimestamp()),
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
     })
@@ -187,7 +190,7 @@ async function saveRegistrationProfile(user, form, fullName) {
   }
 }
 
-async function saveGoogleProfile(user) {
+async function saveGoogleProfile(user, { acceptLegal = false } = {}) {
   const { db } = getFirebaseServices()
   const userRef = doc(db, 'users', user.uid)
   const userSnap = await getDoc(userRef)
@@ -211,6 +214,7 @@ async function saveGoogleProfile(user) {
     provider: 'google',
     updatedAt: serverTimestamp(),
     lastLoginAt: serverTimestamp(),
+    ...(acceptLegal ? getLegalAcceptanceFields(serverTimestamp()) : {}),
   }
 
   if (!userSnap.exists()) {
@@ -229,6 +233,7 @@ async function saveGoogleProfile(user) {
       provider: 'google',
       updatedAt: serverTimestamp(),
       lastLoginAt: serverTimestamp(),
+      ...(acceptLegal ? getLegalAcceptanceFields(serverTimestamp()) : {}),
     },
     { merge: true },
   )
@@ -312,6 +317,7 @@ export default function RegisterScreen() {
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [isGoogleSubmitting, setIsGoogleSubmitting] = useState(false)
   const [isPasswordVisible, setIsPasswordVisible] = useState(false)
+  const [hasAcceptedLegal, setHasAcceptedLegal] = useState(false)
 
   const logoSizes = useMemo(
     () => ({
@@ -331,6 +337,11 @@ export default function RegisterScreen() {
 
     if (validationError) {
       setError(validationError)
+      return
+    }
+
+    if (!hasAcceptedLegal) {
+      setError('Para crear tu cuenta necesitás aceptar los Términos y Condiciones y la Política de Privacidad.')
       return
     }
 
@@ -374,7 +385,7 @@ export default function RegisterScreen() {
       const credential = GoogleAuthProvider.credential(idToken)
       const { user } = await signInWithCredential(auth, credential)
 
-      await saveGoogleProfile(user)
+      await saveGoogleProfile(user, { acceptLegal: hasAcceptedLegal })
       router.replace('/home')
     } catch (googleLoginError) {
       setError(getFriendlyGoogleLoginError(googleLoginError))
@@ -390,6 +401,11 @@ export default function RegisterScreen() {
 
     if (!googleWebClientId) {
       setError('Falta configurar el Web Client ID de Google.')
+      return
+    }
+
+    if (!hasAcceptedLegal) {
+      setError('Para continuar con Google necesitás aceptar los Términos y Condiciones y la Política de Privacidad.')
       return
     }
 
@@ -510,6 +526,32 @@ export default function RegisterScreen() {
                 value={form.city}
               />
 
+              <View style={styles.legalAcceptanceBox}>
+                <Pressable
+                  accessibilityLabel="Aceptar términos y política de privacidad"
+                  accessibilityRole="checkbox"
+                  accessibilityState={{ checked: hasAcceptedLegal }}
+                  onPress={() => {
+                    setError('')
+                    setHasAcceptedLegal((value) => !value)
+                  }}
+                  style={[styles.legalCheckbox, hasAcceptedLegal && styles.legalCheckboxChecked]}
+                >
+                  {hasAcceptedLegal ? <Check color="#FFFFFF" size={17} strokeWidth={3} /> : null}
+                </Pressable>
+                <Text style={styles.legalAcceptanceText}>
+                  He leído y acepto los{' '}
+                  <Text onPress={() => router.push('/legal/terms')} style={styles.termsStrong}>
+                    Términos y Condiciones
+                  </Text>
+                  {' '}y la{' '}
+                  <Text onPress={() => router.push('/legal/privacy')} style={styles.termsStrong}>
+                    Política de Privacidad
+                  </Text>
+                  .
+                </Text>
+              </View>
+
               {error ? <Text style={styles.errorText}>{error}</Text> : null}
 
               <Pressable
@@ -577,11 +619,7 @@ export default function RegisterScreen() {
               </Pressable>
             </View>
 
-            <Text style={styles.terms}>
-              Al continuar, aceptás nuestros{'\n'}
-              <Text style={styles.termsStrong}>Términos y Condiciones</Text> y la{' '}
-              <Text style={styles.termsStrong}>Política de Privacidad.</Text>
-            </Text>
+            <Text style={styles.terms}>Podés consultar los documentos legales cuando quieras desde Privacidad.</Text>
 
           </View>
         </ScrollView>
