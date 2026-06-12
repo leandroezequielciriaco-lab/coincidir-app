@@ -19,7 +19,7 @@ import * as ImagePicker from 'expo-image-picker'
 import * as Location from 'expo-location'
 import { useLocalSearchParams, useRouter } from 'expo-router'
 import { onAuthStateChanged } from 'firebase/auth'
-import { addDoc, collection, doc, getDoc, onSnapshot, serverTimestamp, setDoc, updateDoc } from 'firebase/firestore'
+import { addDoc, collection, deleteField, doc, getDoc, onSnapshot, serverTimestamp, setDoc, updateDoc } from 'firebase/firestore'
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import {
   ArrowLeft,
@@ -116,9 +116,9 @@ type ActivityFormPayload = {
   time: string
   location: string
   locationAddress: string
-  locationLatitude: number
-  locationLongitude: number
-  locationPin: LocationSelection
+  locationLatitude?: number
+  locationLongitude?: number
+  locationPin?: LocationSelection
   city: string
   groupId: string
   groupName: string
@@ -771,6 +771,10 @@ export default function CrearScreen() {
     setMessage('')
     setIsLocationPickerVisible(true)
 
+    if (Platform.OS === 'web') {
+      return
+    }
+
     if (selectedLocation) {
       const region = {
         latitude: selectedLocation.latitude,
@@ -838,12 +842,14 @@ export default function CrearScreen() {
     setIsResolvingLocation(true)
 
     if (Platform.OS === 'web') {
-      const fallbackAddress = location.trim() || formatCoordinateAddress(draftPin.latitude, draftPin.longitude)
-      setSelectedLocation({
-        address: fallbackAddress,
-        latitude: draftPin.latitude,
-        longitude: draftPin.longitude,
-      })
+      const fallbackAddress = location.trim()
+      if (!fallbackAddress) {
+        setMessage('Escribi una direccion o punto de encuentro para confirmar la ubicacion.')
+        setIsResolvingLocation(false)
+        return
+      }
+
+      setSelectedLocation(null)
       setLocation(fallbackAddress)
       setIsLocationPickerVisible(false)
       setMessage('')
@@ -883,18 +889,22 @@ export default function CrearScreen() {
   }
 
   const buildActivityPayload = (): ActivityFormPayload | null => {
-    const locationSelection = selectedLocation ?? (location.trim()
-      ? {
-        address: location.trim(),
-        latitude: draftPin.latitude,
-        longitude: draftPin.longitude,
-      }
-      : null)
+    const webLocationAddress = location.trim()
+    const locationSelection = Platform.OS === 'web'
+      ? null
+      : selectedLocation ?? (location.trim()
+        ? {
+          address: location.trim(),
+          latitude: draftPin.latitude,
+          longitude: draftPin.longitude,
+        }
+        : null)
 
-    if (!category || !selectedDate || !locationSelection) return null
+    if (!category || !selectedDate || (Platform.OS === 'web' ? !webLocationAddress : !locationSelection)) return null
     const visibility = activityKind === 'group' ? 'group' : getVisibilityFromPrivacy(privacy)
     const groupName = activityKind === 'group' ? selectedGroup : ''
     const groupId = groupName ? selectedGroupId : ''
+    const resolvedLocationAddress = Platform.OS === 'web' ? webLocationAddress : locationSelection!.address
 
     const payload: ActivityFormPayload = {
       name: name.trim(),
@@ -908,16 +918,9 @@ export default function CrearScreen() {
       activityDate: selectedDate,
       activityDateISO: selectedDate.toISOString(),
       time,
-      location: location.trim() || locationSelection.address,
-      locationAddress: locationSelection.address,
-      locationLatitude: locationSelection.latitude,
-      locationLongitude: locationSelection.longitude,
-      locationPin: {
-        address: locationSelection.address,
-        latitude: locationSelection.latitude,
-        longitude: locationSelection.longitude,
-      },
-      city: getCityFromLocation(location.trim() || locationSelection.address),
+      location: resolvedLocationAddress,
+      locationAddress: resolvedLocationAddress,
+      city: getCityFromLocation(resolvedLocationAddress),
       groupId,
       groupName,
       visibility,
@@ -934,6 +937,16 @@ export default function CrearScreen() {
         currency: cost === 'Gratis' ? '' : currency,
         quickSettings,
       },
+    }
+
+    if (Platform.OS !== 'web' && locationSelection) {
+      payload.locationLatitude = locationSelection.latitude
+      payload.locationLongitude = locationSelection.longitude
+      payload.locationPin = {
+        address: locationSelection.address,
+        latitude: locationSelection.latitude,
+        longitude: locationSelection.longitude,
+      }
     }
 
     if (__DEV__) {
@@ -974,8 +987,6 @@ export default function CrearScreen() {
           date,
           time,
           address: selectedLocation?.address ?? location.trim(),
-          latitude: selectedLocation?.latitude ?? draftPin.latitude,
-          longitude: selectedLocation?.longitude ?? draftPin.longitude,
           groupId: selectedGroupId,
           missingFields,
           errorMessage: 'missing-fields',
@@ -1021,8 +1032,6 @@ export default function CrearScreen() {
             date,
             time,
             address: selectedLocation?.address ?? location.trim(),
-            latitude: selectedLocation?.latitude ?? draftPin.latitude,
-            longitude: selectedLocation?.longitude ?? draftPin.longitude,
             groupId: selectedGroupId,
             missingFields: payloadMissingFields,
             errorMessage: 'payload-null',
@@ -1062,6 +1071,13 @@ export default function CrearScreen() {
 
         await updateDoc(targetRef, {
           ...payload,
+          ...(Platform.OS === 'web'
+            ? {
+              locationLatitude: deleteField(),
+              locationLongitude: deleteField(),
+              locationPin: deleteField(),
+            }
+            : {}),
           updatedAt: serverTimestamp(),
         })
 
@@ -2129,6 +2145,7 @@ export default function CrearScreen() {
             <MapPin color="#0E5A44" size={25} strokeWidth={2.2} />
             <Text style={styles.createSectionTitle}>Ubicación</Text>
           </View>
+          {Platform.OS !== 'web' ? (
           <Pressable
             accessibilityLabel="Seleccionar ubicación en el mapa"
             accessibilityRole="button"
@@ -2164,6 +2181,7 @@ export default function CrearScreen() {
             )}
             {selectedLocation && shouldShowMapConfigNotice ? <MapConfigNotice compact /> : null}
           </Pressable>
+          ) : null}
           <Pressable accessibilityLabel="Seleccionar ubicación" accessibilityRole="button" onPress={openLocationPicker} style={styles.createLocationField}>
             <Text numberOfLines={2} style={location ? styles.createSelectText : styles.createPlaceholder}>
               {location || 'Tocá para definir el punto de encuentro'}
@@ -2212,10 +2230,15 @@ export default function CrearScreen() {
               </Pressable>
               <View style={styles.locationPickerCopy}>
                 <Text style={styles.locationPickerTitle}>Elegí la ubicación</Text>
-                <Text style={styles.locationPickerSubtitle}>Tocá el mapa o arrastrá el pin.</Text>
+                <Text style={styles.locationPickerSubtitle}>
+                  {Platform.OS === 'web'
+                    ? 'Escribi la direccion o referencia manual para guardar la ubicacion.'
+                    : 'Tocá el mapa o arrastrá el pin.'}
+                </Text>
               </View>
             </View>
 
+            {Platform.OS !== 'web' ? (
             <View style={styles.locationPickerMapFrame}>
               {canUseNativeMap || shouldUseWebMapFallback ? (
                 <LocationPicker
@@ -2251,11 +2274,34 @@ export default function CrearScreen() {
               </View>
               {shouldShowMapConfigNotice ? <MapConfigNotice /> : null}
             </View>
+            ) : null}
 
             <View style={[styles.locationPickerFooter, { paddingBottom: Math.max(insets.bottom + 16, 24) }]}>
-              <Text numberOfLines={2} style={styles.locationPickerHint}>
-                Pin: {formatCoordinateAddress(draftPin.latitude, draftPin.longitude)}
-              </Text>
+              {Platform.OS === 'web' ? (
+                <View style={styles.locationWebAddressBlock}>
+                  <Text style={styles.locationWebAddressLabel}>Dirección o punto de encuentro</Text>
+                  <TextInput
+                    autoCapitalize="sentences"
+                    onChangeText={(value) => {
+                      setLocation(value)
+                      if (message) setMessage('')
+                    }}
+                    placeholder="Ej: Plaza Independencia, Tandil"
+                    placeholderTextColor="#7A8790"
+                    style={styles.locationWebAddressInput}
+                    underlineColorAndroid="transparent"
+                    value={location}
+                  />
+                </View>
+              ) : null}
+              {Platform.OS === 'web' && message ? (
+                <Text accessibilityRole="alert" style={styles.locationPickerError}>{message}</Text>
+              ) : null}
+              {Platform.OS !== 'web' ? (
+                <Text numberOfLines={2} style={styles.locationPickerHint}>
+                  Pin: {formatCoordinateAddress(draftPin.latitude, draftPin.longitude)}
+                </Text>
+              ) : null}
               <Pressable
                 accessibilityLabel="Confirmar ubicación"
                 accessibilityRole="button"
@@ -4203,6 +4249,43 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     textAlign: 'center',
     marginBottom: 12,
+  },
+  locationPickerError: {
+    color: '#B42318',
+    fontSize: 13,
+    fontWeight: '800',
+    lineHeight: 18,
+    marginBottom: 10,
+    textAlign: 'center',
+  },
+  locationWebAddressBlock: {
+    marginBottom: 12,
+  },
+  locationWebAddressInput: {
+    backgroundColor: '#FFFFFF',
+    borderColor: '#D8E1D8',
+    borderRadius: 16,
+    borderWidth: 1,
+    color: '#123F38',
+    fontSize: 16,
+    fontWeight: '700',
+    minHeight: 52,
+    paddingHorizontal: 16,
+  },
+  locationWebAddressLabel: {
+    color: '#0E5A44',
+    fontSize: 13,
+    fontWeight: '900',
+    lineHeight: 18,
+    marginBottom: 8,
+  },
+  locationWebReferenceText: {
+    color: '#52615C',
+    fontSize: 12,
+    fontWeight: '700',
+    lineHeight: 17,
+    marginTop: 8,
+    textAlign: 'center',
   },
   confirmLocationButton: {
     minHeight: 58,

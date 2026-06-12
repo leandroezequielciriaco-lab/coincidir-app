@@ -57,7 +57,7 @@ export default function LocationPicker({ address, markerCoordinate, style }: Loc
     <View style={[style, styles.fallback, styles.pickerFallback]}>
       <Text style={styles.title}>Mapa no disponible en Web por ahora</Text>
       <Text style={styles.copy}>
-        Podés continuar con la dirección cargada. En Android vas a poder seleccionar el punto desde el mapa.
+        Podés continuar con la dirección escrita abajo. Google Maps abre solo como referencia externa y no devuelve la ubicación a COINCIDIR.
       </Text>
       {address ? <Text numberOfLines={2} style={styles.address}>{address}</Text> : null}
       <Text style={styles.coordinates}>{formatCoordinate(markerCoordinate)}</Text>

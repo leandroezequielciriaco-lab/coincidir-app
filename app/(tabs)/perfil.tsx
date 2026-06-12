@@ -920,11 +920,26 @@ function ProfileGroupsSection({ currentUserId, currentUserName, groups, onOpen }
   }
 
   const cancelGroupMembershipRequest = async (group: ProfileGroup) => {
-    if (!currentUserId || group.status !== 'pending' || pendingGroupAction) return
+    if (!currentUserId || group.status !== 'pending' || pendingGroupAction) {
+      console.log('[GROUP REQUEST CANCEL PRESS]', {
+        groupId: group.id,
+        groupStatus: group.status,
+        pendingGroupAction,
+        platform: Platform.OS,
+        reason: !currentUserId ? 'missing_user' : group.status !== 'pending' ? 'not_pending' : 'pending_action',
+        userId: currentUserId,
+      })
+      return
+    }
 
     setPendingGroupAction(`cancel:${group.id}`)
     try {
       const { db } = getFirebaseServices()
+      console.log('[GROUP REQUEST CANCEL START]', {
+        groupId: group.id,
+        platform: Platform.OS,
+        userId: currentUserId,
+      })
       await updateDoc(doc(db, 'groups', group.id), {
         [`membershipRequests.${currentUserId}`]: deleteField(),
         [`pendingMembers.${currentUserId}`]: deleteField(),
@@ -936,7 +951,20 @@ function ProfileGroupsSection({ currentUserId, currentUserName, groups, onOpen }
         requesterId: currentUserId,
         userId: group.ownerId || undefined,
       })
+      console.log('[GROUP REQUEST CANCEL SUCCESS]', {
+        groupId: group.id,
+        platform: Platform.OS,
+        userId: currentUserId,
+      })
     } catch (error) {
+      const groupCancelError = error as { code?: string; message?: string }
+      console.warn('[GROUP REQUEST CANCEL ERROR]', {
+        errorCode: groupCancelError?.code,
+        errorMessage: groupCancelError?.message,
+        groupId: group.id,
+        platform: Platform.OS,
+        userId: currentUserId,
+      })
       if (__DEV__) console.warn('[PROFILE GROUP CANCEL REQUEST ERROR]', error)
       Alert.alert('No pudimos cancelar la solicitud', 'Intentá cancelar tu solicitud nuevamente en unos segundos.')
     } finally {
@@ -1084,12 +1112,24 @@ function ProfileGroupsSection({ currentUserId, currentUserName, groups, onOpen }
           accessibilityLabel={`Cancelar solicitud para unirte a ${group.name}`}
           accessibilityRole="button"
           disabled={Boolean(pendingGroupAction)}
-          onPress={(event) => {
-            event.stopPropagation()
+          onPress={() => {
+            console.log('[GROUP REQUEST CANCEL PRESS]', {
+              groupId: group.id,
+              groupName: group.name,
+              groupStatus: group.status,
+              pendingGroupAction,
+              platform: Platform.OS,
+              userId: currentUserId,
+            })
+            if (Platform.OS === 'web') {
+              void cancelGroupMembershipRequest(group)
+              return
+            }
             confirmCancelGroupMembershipRequest(group)
           }}
           style={({ pressed }) => [
             styles.profileGroupCancelRequestButton,
+            Platform.OS === 'web' && styles.profileGroupWebActionButton,
             pressed && styles.profileGroupActionPressed,
             Boolean(pendingGroupAction) && styles.profileGroupActionDisabled,
           ]}
@@ -2261,6 +2301,11 @@ const styles = StyleSheet.create({
     minHeight: 44,
     paddingHorizontal: 14,
     width: '100%',
+  },
+  profileGroupWebActionButton: {
+    pointerEvents: 'auto',
+    position: 'relative',
+    zIndex: 50,
   },
   profileGroupCancelRequestButtonText: {
     color: '#B63232',

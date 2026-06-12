@@ -11,6 +11,7 @@ import {
   StyleSheet,
   Text,
   TextInput,
+  type ViewStyle,
   useWindowDimensions,
   View,
 } from 'react-native'
@@ -152,6 +153,9 @@ const initialAdvancedFilters: AdvancedFilters = {
   price: 'Todos',
   sort: 'recommended',
 }
+const webHorizontalScrollStyle = Platform.OS === 'web'
+  ? ({ overflowX: 'auto', overflowY: 'hidden' } as ViewStyle & { overflowX: 'auto'; overflowY: 'hidden' })
+  : undefined
 
 function readString(value: unknown, fallback = '') {
   return typeof value === 'string' && value.trim() ? value.trim() : fallback
@@ -533,7 +537,13 @@ export default function ExplorarScreen() {
   const [optimisticInterests, setOptimisticInterests] = useState<Record<string, boolean>>({})
   const [pendingParticipationKeys, setPendingParticipationKeys] = useState<string[]>([])
   const [participationMessage, setParticipationMessage] = useState('')
-  const carouselCardWidth = Math.min(300, Math.max(236, width - 104))
+  const isWeb = Platform.OS === 'web'
+  const webCarouselGap = 16
+  const webCarouselPeek = 64
+  const webCarouselWidth = width >= 900
+    ? Math.floor((Math.min(width, 760) - webCarouselGap - webCarouselPeek) / 2)
+    : Math.min(320, Math.max(252, width - 104))
+  const carouselCardWidth = isWeb ? webCarouselWidth : Math.min(300, Math.max(236, width - 104))
   const carouselSnapInterval = carouselCardWidth + 14
 
   const loadLocalGroups = useCallback(async () => {
@@ -897,7 +907,7 @@ export default function ExplorarScreen() {
           <EmptyResults onReset={resetFilters} />
         ) : (
           <FlatList
-            contentContainerStyle={styles.resultsList}
+            contentContainerStyle={[styles.resultsList, isWeb && styles.webResultsList]}
             data={cards}
             decelerationRate="fast"
             horizontal
@@ -927,12 +937,13 @@ export default function ExplorarScreen() {
                 )}
               />
             )}
-            showsHorizontalScrollIndicator={false}
+            showsHorizontalScrollIndicator={isWeb}
             snapToAlignment="start"
-            snapToInterval={carouselSnapInterval}
+            snapToInterval={isWeb ? undefined : carouselSnapInterval}
+            style={webHorizontalScrollStyle}
           />
         )}
-        {!isLoading && cards.length > 1 ? (
+        {!isWeb && !isLoading && cards.length > 1 ? (
           <View style={styles.carouselDots}>
             {cards.slice(0, 5).map((item, index) => (
               <View key={item.id} style={[styles.carouselDot, index === Math.min(activeCardIndex, 4) && styles.carouselDotActive]} />
@@ -1429,6 +1440,11 @@ const styles = StyleSheet.create({
     paddingBottom: 8,
     paddingRight: 28,
     paddingTop: 14,
+  },
+  webResultsList: {
+    gap: 16,
+    paddingBottom: 12,
+    paddingRight: 64,
   },
   exploreCard: {
     backgroundColor: '#FFFFFF',
