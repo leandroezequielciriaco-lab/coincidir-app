@@ -185,6 +185,7 @@ export default function NotificacionesScreen() {
   const router = useRouter()
   const [userId, setUserId] = useState<string | null>(null)
   const [deletedNotificationIds, setDeletedNotificationIds] = useState<string[]>([])
+  const [deleteError, setDeleteError] = useState('')
   const { error, isLoading, notifications } = useNotifications(userId)
   const visibleNotifications = notifications.filter((notification) => !deletedNotificationIds.includes(notification.id))
 
@@ -225,6 +226,25 @@ export default function NotificacionesScreen() {
   }
 
   const confirmDeleteNotification = (notification: AppNotification) => {
+    let currentUserId: string | null = null
+    try {
+      const { auth } = getFirebaseServices()
+      currentUserId = auth.currentUser?.uid ?? null
+    } catch {
+      currentUserId = null
+    }
+
+    console.log('[NOTIFICATION DELETE PRESS]', {
+      notificationId: notification.id,
+      userId: currentUserId,
+      platform: Platform.OS,
+    })
+
+    if (Platform.OS === 'web') {
+      void removeNotification(notification)
+      return
+    }
+
     Alert.alert(
       'Eliminar notificación',
       '¿Querés eliminar esta notificación?',
@@ -242,16 +262,46 @@ export default function NotificacionesScreen() {
   }
 
   const removeNotification = async (notification: AppNotification) => {
+    const notificationId = notification.id
+    const path = `notifications/${notificationId}`
+
+    setDeleteError('')
     setDeletedNotificationIds((current) => (
-      current.includes(notification.id) ? current : [...current, notification.id]
+      current.includes(notificationId) ? current : [...current, notificationId]
     ))
 
     try {
-      await deleteNotification(notification.id)
+      console.log('[NOTIFICATION DELETE START]', {
+        notificationId,
+        path,
+      })
+
+      await deleteNotification(notificationId)
+
+      console.log('[NOTIFICATION DELETE SUCCESS]', {
+        notificationId,
+      })
     } catch (error) {
-      setDeletedNotificationIds((current) => current.filter((id) => id !== notification.id))
-      if (__DEV__) console.warn('notification-delete-error', error)
-      Alert.alert('No se pudo eliminar la notificación.')
+      const deleteException = error as { code?: string; message?: string }
+      let currentUserId: string | null = null
+
+      try {
+        const { auth } = getFirebaseServices()
+        currentUserId = auth.currentUser?.uid ?? null
+      } catch {
+        currentUserId = null
+      }
+
+      setDeletedNotificationIds((current) => current.filter((id) => id !== notificationId))
+      setDeleteError('No se pudo eliminar la notificación. Intentá nuevamente.')
+      console.warn('[NOTIFICATION DELETE ERROR]', {
+        notificationId,
+        userId: currentUserId,
+        platform: Platform.OS,
+        errorCode: deleteException?.code,
+        errorMessage: deleteException?.message,
+      })
+      if (Platform.OS !== 'web') Alert.alert('No se pudo eliminar la notificación.')
     }
   }
 
@@ -287,6 +337,7 @@ export default function NotificacionesScreen() {
           </View>
         ) : visibleNotifications.length > 0 ? (
           <View style={styles.notificationList}>
+            {deleteError ? <Text style={styles.deleteErrorText}>{deleteError}</Text> : null}
             {visibleNotifications.map((notification) => (
               <NotificationCard
                 key={notification.id}
@@ -524,6 +575,20 @@ const styles = StyleSheet.create({
   notificationList: {
     gap: 16,
   },
+  deleteErrorText: {
+    backgroundColor: '#FFF5F4',
+    borderColor: '#F4C7C2',
+    borderRadius: 14,
+    borderWidth: 1,
+    color: '#8A3A32',
+    fontSize: 14,
+    fontWeight: '800',
+    letterSpacing: 0,
+    lineHeight: 19,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    textAlign: 'center',
+  },
   notificationCard: {
     alignItems: 'flex-start',
     backgroundColor: '#FFFFFF',
@@ -543,6 +608,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: 16,
     minWidth: 0,
+    zIndex: 1,
   },
   notificationPressAreaPressed: {
     opacity: 0.86,
@@ -617,6 +683,7 @@ const styles = StyleSheet.create({
   notificationRightActions: {
     alignItems: 'flex-end',
     gap: 8,
+    zIndex: 2,
   },
   deleteButton: {
     alignItems: 'center',
@@ -627,6 +694,7 @@ const styles = StyleSheet.create({
     height: 34,
     justifyContent: 'center',
     width: 34,
+    zIndex: 3,
   },
   deleteButtonPressed: {
     opacity: 0.72,
