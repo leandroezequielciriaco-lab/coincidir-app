@@ -75,7 +75,13 @@ import { readRemoteGroupPhotoUrl } from '../../lib/groupPhotos'
 import { createNotification, deletePendingGroupJoinRequestNotifications } from '../../lib/notifications'
 import { getActivityGroupMeta } from '../../utils/activityGroups'
 import { isOwnActivity } from '../../utils/activityOwnership'
-import { canParticipate, resendEmailVerification, requireVerifiedParticipation } from '../../utils/authParticipation'
+import {
+  EMAIL_VERIFICATION_SENT_MESSAGE,
+  getEmailVerificationErrorMessage,
+  canParticipate,
+  resendEmailVerification,
+  requireVerifiedParticipation,
+} from '../../utils/authParticipation'
 import { compareActivitiesForDiscovery, getActivityVisualState } from '../../utils/activityDiscovery'
 import { defaultActivityImage, getCategoryImage } from '../../utils/categoryImages'
 import { savePendingExternalReturnRoute } from '../../utils/externalReturnRoute'
@@ -374,6 +380,8 @@ export default function PerfilScreen() {
   const [isEditing, setIsEditing] = useState(false)
   const [optimisticInterests, setOptimisticInterests] = useState<string[] | null>(null)
   const [pendingInterest, setPendingInterest] = useState<string | null>(null)
+  const [isResendingVerification, setIsResendingVerification] = useState(false)
+  const [verificationMessage, setVerificationMessage] = useState('')
   const [showAllProfileInterests, setShowAllProfileInterests] = useState(false)
 
   useEffect(() => {
@@ -391,6 +399,7 @@ export default function PerfilScreen() {
         setAuthName(user?.displayName ?? null)
         setAuthPhotoURL(user?.photoURL ?? null)
         setCanCurrentUserParticipate(!user || canParticipate(user))
+        setVerificationMessage('')
         if (!user) setIsLoading(false)
       })
     } catch {
@@ -583,12 +592,28 @@ export default function PerfilScreen() {
   }
 
   const handleResendVerification = async () => {
+    if (isResendingVerification) return
+
     try {
       const { auth } = getFirebaseServices()
-      await resendEmailVerification(auth)
+      console.log('[EMAIL VERIFY RESEND PRESS]', {
+        userId: auth.currentUser?.uid ?? null,
+        email: auth.currentUser?.email ?? null,
+        platform: Platform.OS,
+      })
+
+      setVerificationMessage('')
+      setIsResendingVerification(true)
+
+      const sent = await resendEmailVerification(auth)
       setCanCurrentUserParticipate(canParticipate(auth.currentUser))
-    } catch {
-      Alert.alert('No pudimos reenviar el correo', 'Intentá nuevamente en unos segundos.')
+      if (sent) setVerificationMessage(EMAIL_VERIFICATION_SENT_MESSAGE)
+    } catch (error) {
+      const message = getEmailVerificationErrorMessage(error)
+      setVerificationMessage(message)
+      Alert.alert('No pudimos reenviar el correo', message)
+    } finally {
+      setIsResendingVerification(false)
     }
   }
 
@@ -613,8 +638,20 @@ export default function PerfilScreen() {
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Verificación de email</Text>
             <Text style={styles.emptyText}>Confirmá tu email para poder participar en COINCIDIR.</Text>
-            <PressScale onPress={handleResendVerification} scaleTo={0.97} style={styles.profileGroupJoinButton}>
-              <Text style={styles.profileGroupJoinButtonText}>Reenviar correo de verificación</Text>
+            {verificationMessage ? (
+              <Text accessibilityRole="alert" style={styles.verificationMessage}>{verificationMessage}</Text>
+            ) : null}
+            <PressScale
+              disabled={isResendingVerification}
+              onPress={handleResendVerification}
+              scaleTo={0.97}
+              style={[styles.profileGroupJoinButton, isResendingVerification && styles.profileGroupActionDisabled]}
+            >
+              {isResendingVerification ? (
+                <ActivityIndicator color="#4B348A" />
+              ) : (
+                <Text style={styles.profileGroupJoinButtonText}>Reenviar correo de verificación</Text>
+              )}
             </PressScale>
           </View>
         ) : null}
@@ -983,8 +1020,16 @@ function ProfileGroupsSection({ currentUserId, currentUserName, groups, onOpen }
   }
 
   const renderGroupCard = (group: ProfileGroup) => (
-    <PressScale accessibilityRole="button" key={group.id} onPress={() => onOpen(group)} scaleTo={0.985} style={[styles.profileGroupRow, { borderColor: groupColors.borderColor }]}>
-      <View style={styles.profileGroupTopRow}>
+    <View
+      key={group.id}
+      style={[styles.profileGroupRow, { borderColor: groupColors.borderColor }]}
+    >
+      <View
+        accessibilityRole="button"
+        onResponderRelease={() => onOpen(group)}
+        onStartShouldSetResponder={() => true}
+        style={styles.profileGroupTopRow}
+      >
         <GroupAvatar groupName={group.name} imageUrl={group.photoUrl} size={54} />
         <View style={styles.profileGroupCopy}>
           <Text ellipsizeMode="tail" numberOfLines={1} style={[styles.profileGroupName, { color: groupColors.chipTextColor }]}>{group.name}</Text>
@@ -1077,7 +1122,7 @@ function ProfileGroupsSection({ currentUserId, currentUserName, groups, onOpen }
           {pendingGroupAction === `leave:${group.id}` ? <ActivityIndicator color="#B63232" /> : <Text style={styles.profileGroupLeaveButtonText}>Dejar de ser miembro</Text>}
         </Pressable>
       ) : null}
-    </PressScale>
+    </View>
   )
 
   const renderGroupBlock = (icon: number, title: string, blockGroups: ProfileGroup[]) => (
@@ -2041,6 +2086,19 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '700',
     lineHeight: 18,
+    textAlign: 'center',
+  },
+  verificationMessage: {
+    backgroundColor: '#F7FAF5',
+    borderColor: '#DDEBDD',
+    borderRadius: 12,
+    borderWidth: 1,
+    color: '#0E5A44',
+    fontSize: 13,
+    fontWeight: '800',
+    lineHeight: 18,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
     textAlign: 'center',
   },
   list: {

@@ -36,12 +36,13 @@ import CoincidirLogo from './CoincidirLogo'
 import GoogleLogo from './GoogleLogo'
 import { styles } from './RegisterScreen.styles'
 import { getFirebaseServices } from '../firebaseConfig'
-import { EMAIL_VERIFICATION_SENT_MESSAGE } from '../utils/authParticipation'
 import { getLegalAcceptanceFields } from '../constants/legal'
 
 const googleWebClientId = process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID
 const googleIosClientId = process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID
 const isWeb = Platform.OS === 'web'
+const REGISTRATION_EMAIL_VERIFICATION_MESSAGE =
+  'Te enviamos un correo de verificación. Confirmá tu email para poder participar en COINCIDIR.'
 let googleSignInModule = null
 
 function getGoogleSignInModule() {
@@ -364,7 +365,7 @@ export default function RegisterScreen() {
       await saveRegistrationProfile(user, form, fullName)
       await sendEmailVerification(user)
 
-      Alert.alert('Verificá tu email', EMAIL_VERIFICATION_SENT_MESSAGE, [
+      Alert.alert('Verificá tu email', REGISTRATION_EMAIL_VERIFICATION_MESSAGE, [
         { text: 'OK', onPress: () => router.replace('/home') },
       ])
     } catch (submitError) {

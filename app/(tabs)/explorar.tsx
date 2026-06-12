@@ -52,7 +52,7 @@ import { readRemoteGroupPhotoUrl } from '../../lib/groupPhotos'
 import { getActivityRecommendationScore, getActivityRecommendationTerms } from '../../lib/recommendations'
 import { getActivityGroupMeta } from '../../utils/activityGroups'
 import { isOwnActivity } from '../../utils/activityOwnership'
-import { requireVerifiedParticipation } from '../../utils/authParticipation'
+import { EMAIL_VERIFICATION_REQUIRED_MESSAGE, requireVerifiedParticipation } from '../../utils/authParticipation'
 import {
   compareActivitiesForDiscovery,
   getActivityVisualState,
@@ -256,6 +256,28 @@ function getParticipationState(
   const countDelta = active === persistedActive ? 0 : active ? 1 : -1
 
   return { active, count: Math.max(0, count + countDelta) }
+}
+
+function getCurrentAuthUserId() {
+  try {
+    const { auth } = getFirebaseServices()
+    return auth.currentUser?.uid ?? null
+  } catch {
+    return null
+  }
+}
+
+function logWebCtaStep(label: string, action: 'join' | 'interest' | 'open' | undefined, activityId: string, userId: string | null, reason?: string) {
+  if (Platform.OS !== 'web') return
+
+  console.log(label, {
+    source: 'explorar',
+    action: action ?? 'open',
+    activityId,
+    userId,
+    reason,
+    platform: Platform.OS,
+  })
 }
 
 function getMaxParticipants(data: Record<string, unknown>) {
@@ -638,23 +660,47 @@ export default function ExplorarScreen() {
   )
 
   const toggleActivityParticipation = async (item: ExploreCardItem) => {
-    if (Platform.OS === 'web') {
-      console.log('[WEB CTA PRESS]', {
-        activityId: item.recordId,
-        action: item.action ?? 'open',
-        userId: currentUserId,
-      })
+    if (!currentUserId) {
+      logWebCtaStep('[WEB CTA EARLY RETURN]', item.action, item.recordId, getCurrentAuthUserId(), 'missing_user')
+      return
     }
-    if (!currentUserId || item.source !== 'activity' || item.isCancelled || item.isOrganizer || !item.action) return
+    if (item.source !== 'activity') {
+      logWebCtaStep('[WEB CTA EARLY RETURN]', item.action, item.recordId, currentUserId, 'not_activity')
+      return
+    }
+    if (item.isCancelled) {
+      logWebCtaStep('[WEB CTA EARLY RETURN]', item.action, item.recordId, currentUserId, 'cancelled')
+      return
+    }
+    if (item.isOrganizer) {
+      logWebCtaStep('[WEB CTA EARLY RETURN]', item.action, item.recordId, currentUserId, 'organizer')
+      return
+    }
+    if (!item.action) {
+      logWebCtaStep('[WEB CTA EARLY RETURN]', item.action, item.recordId, currentUserId, 'missing_action')
+      return
+    }
 
     const record = records.find((recordItem) => recordItem.source === 'activity' && recordItem.id === item.recordId)
-    if (!record) return
+    if (!record) {
+      logWebCtaStep('[WEB CTA EARLY RETURN]', item.action, item.recordId, currentUserId, 'missing_record')
+      return
+    }
 
     const key = `${item.action}:${record.id}`
-    if (pendingParticipationKeys.includes(key)) return
+    if (pendingParticipationKeys.includes(key)) {
+      logWebCtaStep('[WEB CTA EARLY RETURN]', item.action, item.recordId, currentUserId, 'pending')
+      return
+    }
 
     const { auth } = getFirebaseServices()
-    if (!(await requireVerifiedParticipation(auth))) return
+    logWebCtaStep('[WEB CTA VERIFIED]', item.action, item.recordId, currentUserId, 'start')
+    if (!(await requireVerifiedParticipation(auth))) {
+      logWebCtaStep('[WEB CTA EARLY RETURN]', item.action, item.recordId, auth.currentUser?.uid ?? currentUserId, 'verification_failed')
+      setParticipationMessage(EMAIL_VERIFICATION_REQUIRED_MESSAGE)
+      return
+    }
+    logWebCtaStep('[WEB CTA VERIFIED]', item.action, item.recordId, auth.currentUser?.uid ?? currentUserId, 'success')
 
     const optimisticSetter = item.action === 'interest' ? setOptimisticInterests : setOptimisticJoins
     const currentState = getParticipationState(
@@ -668,17 +714,20 @@ export default function ExplorarScreen() {
     setParticipationMessage('')
     optimisticSetter((current) => ({ ...current, [key]: nextActive }))
     setPendingParticipationKeys((current) => [...current, key])
+    logWebCtaStep('[WEB CTA STATE UPDATE]', item.action, item.recordId, currentUserId, nextActive ? 'optimistic_true' : 'optimistic_false')
 
     try {
       const { db } = getFirebaseServices()
       const targetRef = doc(db, 'activities', record.id)
 
-      await runTransaction(db, async (transaction) => {
+      logWebCtaStep('[WEB CTA WRITE START]', item.action, item.recordId, currentUserId, 'activities')
+      const result = await runTransaction(db, async (transaction) => {
         const snapshot = await transaction.get(targetRef)
-        if (!snapshot.exists()) return
+        if (!snapshot.exists()) return 'missing_record'
 
         const data = snapshot.data() as Record<string, unknown>
-        if (isOwnActivity(data, currentUserId) || isCancelled(data)) return
+        if (isOwnActivity(data, currentUserId)) return 'organizer'
+        if (isCancelled(data)) return 'cancelled'
 
         if (item.action === 'interest') {
           const wasInterested = isUserInterested(data, currentUserId)
@@ -698,7 +747,7 @@ export default function ExplorarScreen() {
               interestedCount: nextCount,
               updatedAt: serverTimestamp(),
             })
-          return
+          return 'updated'
         }
 
         const wasJoined = isUserJoined(data, currentUserId)
@@ -720,14 +769,30 @@ export default function ExplorarScreen() {
             participantsCount: nextCount,
             updatedAt: serverTimestamp(),
           })
+        return 'updated'
       })
+
+      if (result === 'missing_record') {
+        logWebCtaStep('[WEB CTA EARLY RETURN]', item.action, item.recordId, currentUserId, 'missing_record_in_transaction')
+      }
+      if (result === 'organizer') {
+        logWebCtaStep('[WEB CTA EARLY RETURN]', item.action, item.recordId, currentUserId, 'organizer_in_transaction')
+      }
+      if (result === 'cancelled') {
+        logWebCtaStep('[WEB CTA EARLY RETURN]', item.action, item.recordId, currentUserId, 'cancelled_in_transaction')
+      }
+      logWebCtaStep('[WEB CTA WRITE SUCCESS]', item.action, item.recordId, currentUserId, String(result ?? 'no_result'))
     } catch (error) {
       if (Platform.OS === 'web') {
+        const ctaError = error as { code?: string; message?: string }
         console.warn('[WEB CTA ERROR]', {
-          activityId: item.recordId,
+          source: 'explorar',
           action: item.action,
-          userId: currentUserId,
-          error: error instanceof Error ? error.message : String(error),
+          activityId: item.recordId,
+          userId: getCurrentAuthUserId(),
+          platform: Platform.OS,
+          errorCode: ctaError?.code,
+          errorMessage: ctaError?.message,
         })
       }
       setParticipationMessage(
@@ -735,6 +800,7 @@ export default function ExplorarScreen() {
           ? 'No pudimos registrar tu interés. Intentá nuevamente.'
           : 'No pudimos actualizar tu participación. Intentá nuevamente.',
       )
+      logWebCtaStep('[WEB CTA STATE UPDATE]', item.action, item.recordId, getCurrentAuthUserId(), 'rollback')
       optimisticSetter((current) => ({ ...current, [key]: currentState.active }))
     } finally {
       setPendingParticipationKeys((current) => current.filter((pendingKey) => pendingKey !== key))
@@ -844,6 +910,14 @@ export default function ExplorarScreen() {
                 cardWidth={carouselCardWidth}
                 item={item}
                 onCtaPress={() => {
+                  console.log('[WEB CTA PRESS]', {
+                    source: 'explorar',
+                    action: item.action ?? 'open',
+                    activityId: item.recordId,
+                    userId: getCurrentAuthUserId(),
+                    platform: Platform.OS,
+                  })
+
                   void toggleActivityParticipation(item)
                 }}
                 onPress={() => router.push(
@@ -917,6 +991,7 @@ function ExploreCard({ cardWidth, item, onCtaPress, onPress }: { cardWidth: numb
   const [hasImageError, setHasImageError] = useState(false)
   const isGroupActivity = Boolean(item.groupId || item.groupName)
   const groupColors = getGroupTheme(item.groupColor)
+  const isWeb = Platform.OS === 'web'
 
   useEffect(() => {
     setImageSource(item.image || defaultActivityImage)
@@ -931,64 +1006,39 @@ function ExploreCard({ cardWidth, item, onCtaPress, onPress }: { cardWidth: numb
         isGroupActivity && { borderColor: groupColors.borderColor },
       ]}
     >
-      <Pressable
-        accessibilityRole="button"
-        onPress={onPress}
-        style={({ pressed }) => pressed && styles.cardPressed}
-      >
-        <View style={styles.cardImageWrap}>
-          <ExpoImage contentFit="cover" source={fallbackImage} style={styles.cardImage} />
-          {!hasImageError ? (
-            <ExpoImage
-              contentFit="cover"
-              onError={() => {
-                if (__DEV__) console.log('[CARD IMAGE ERROR]', { title: item.title, source: item.source, groupId: item.groupId })
-                setHasImageError(true)
-                setImageSource(fallbackImage)
-              }}
-              source={imageSource || fallbackImage}
-              style={[styles.cardImage, StyleSheet.absoluteFillObject]}
-            />
-          ) : null}
-          {item.visualState ? (
-            <View
-              style={[
-                styles.statusBadge,
-                {
-                  backgroundColor: item.visualState.backgroundColor,
-                  borderColor: item.visualState.borderColor,
-                },
-              ]}
-            >
-              <Text style={[styles.statusBadgeText, { color: item.visualState.color }]}>{item.visualState.label}</Text>
-            </View>
-          ) : null}
-          <View style={styles.cardIcon}>
-            {item.source === 'group' ? (
-              <GroupAvatar groupName={item.title} imageUrl={item.groupImageUrl} size={58} />
-            ) : (
-              <item.Icon color="#17803C" size={31} strokeWidth={2.2} />
-            )}
-          </View>
+      {isWeb ? (
+        <View
+          accessibilityRole="button"
+          onResponderRelease={onPress}
+          onStartShouldSetResponder={() => true}
+        >
+          <ExploreCardContent
+            fallbackImage={fallbackImage}
+            groupColors={groupColors}
+            hasImageError={hasImageError}
+            imageSource={imageSource}
+            item={item}
+            setHasImageError={setHasImageError}
+            setImageSource={setImageSource}
+          />
         </View>
-        <View style={styles.cardBody}>
-          <Text numberOfLines={2} style={styles.cardTitle}>{item.title}</Text>
-          <View style={styles.cardMetaRow}>
-            <MapPin color="#0E5A44" size={16} strokeWidth={2.2} />
-            <Text numberOfLines={2} style={styles.cardMeta}>{item.location}</Text>
-          </View>
-          <View style={styles.cardMetaRow}>
-            <CalendarCheck color="#0E5A44" size={16} strokeWidth={2.2} />
-            <Text numberOfLines={1} style={styles.cardMeta}>{item.schedule}</Text>
-          </View>
-          {item.groupName ? (
-            <View style={styles.groupIndicator}>
-              <GroupAvatar groupName={item.groupName} imageUrl={item.groupImageUrl} size={18} />
-              <Text numberOfLines={1} style={[styles.groupIndicatorText, { color: groupColors.chipTextColor }]}>{item.groupName}</Text>
-            </View>
-          ) : null}
-        </View>
-      </Pressable>
+      ) : (
+        <Pressable
+          accessibilityRole="button"
+          onPress={onPress}
+          style={({ pressed }) => pressed && styles.cardPressed}
+        >
+          <ExploreCardContent
+            fallbackImage={fallbackImage}
+            groupColors={groupColors}
+            hasImageError={hasImageError}
+            imageSource={imageSource}
+            item={item}
+            setHasImageError={setHasImageError}
+            setImageSource={setImageSource}
+          />
+        </Pressable>
+      )}
       <View style={styles.cardFooter}>
         <View style={styles.capacityBadge}>
           <UsersRound color="#006A32" size={16} strokeWidth={2.3} />
@@ -998,7 +1048,7 @@ function ExploreCard({ cardWidth, item, onCtaPress, onPress }: { cardWidth: numb
           accessibilityRole="button"
           disabled={Boolean(item.isCancelled || item.isOrganizer || item.source === 'group')}
           onPress={(event) => {
-            event.stopPropagation()
+            if (Platform.OS !== 'web') event.stopPropagation()
             onCtaPress?.()
           }}
           style={({ pressed }) => [
@@ -1013,6 +1063,81 @@ function ExploreCard({ cardWidth, item, onCtaPress, onPress }: { cardWidth: numb
         </Pressable>
       </View>
     </View>
+  )
+}
+
+function ExploreCardContent({
+  fallbackImage,
+  groupColors,
+  hasImageError,
+  imageSource,
+  item,
+  setHasImageError,
+  setImageSource,
+}: {
+  fallbackImage: ImageSourcePropType
+  groupColors: ReturnType<typeof getGroupTheme>
+  hasImageError: boolean
+  imageSource: ImageSourcePropType
+  item: ExploreCardItem
+  setHasImageError: (value: boolean) => void
+  setImageSource: (value: ImageSourcePropType) => void
+}) {
+  return (
+    <>
+      <View style={styles.cardImageWrap}>
+        <ExpoImage contentFit="cover" source={fallbackImage} style={styles.cardImage} />
+        {!hasImageError ? (
+          <ExpoImage
+            contentFit="cover"
+            onError={() => {
+              if (__DEV__) console.log('[CARD IMAGE ERROR]', { title: item.title, source: item.source, groupId: item.groupId })
+              setHasImageError(true)
+              setImageSource(fallbackImage)
+            }}
+            source={imageSource || fallbackImage}
+            style={[styles.cardImage, StyleSheet.absoluteFillObject]}
+          />
+        ) : null}
+        {item.visualState ? (
+          <View
+            style={[
+              styles.statusBadge,
+              {
+                backgroundColor: item.visualState.backgroundColor,
+                borderColor: item.visualState.borderColor,
+              },
+            ]}
+          >
+            <Text style={[styles.statusBadgeText, { color: item.visualState.color }]}>{item.visualState.label}</Text>
+          </View>
+        ) : null}
+        <View style={styles.cardIcon}>
+          {item.source === 'group' ? (
+            <GroupAvatar groupName={item.title} imageUrl={item.groupImageUrl} size={58} />
+          ) : (
+            <item.Icon color="#17803C" size={31} strokeWidth={2.2} />
+          )}
+        </View>
+      </View>
+      <View style={styles.cardBody}>
+        <Text numberOfLines={2} style={styles.cardTitle}>{item.title}</Text>
+        <View style={styles.cardMetaRow}>
+          <MapPin color="#0E5A44" size={16} strokeWidth={2.2} />
+          <Text numberOfLines={2} style={styles.cardMeta}>{item.location}</Text>
+        </View>
+        <View style={styles.cardMetaRow}>
+          <CalendarCheck color="#0E5A44" size={16} strokeWidth={2.2} />
+          <Text numberOfLines={1} style={styles.cardMeta}>{item.schedule}</Text>
+        </View>
+        {item.groupName ? (
+          <View style={styles.groupIndicator}>
+            <GroupAvatar groupName={item.groupName} imageUrl={item.groupImageUrl} size={18} />
+            <Text numberOfLines={1} style={[styles.groupIndicatorText, { color: groupColors.chipTextColor }]}>{item.groupName}</Text>
+          </View>
+        ) : null}
+      </View>
+    </>
   )
 }
 
@@ -1313,6 +1438,7 @@ const styles = StyleSheet.create({
     marginBottom: 2,
     minHeight: 292,
     overflow: 'hidden',
+    position: 'relative',
     ...shadow,
   },
   cardPressed: {
@@ -1403,6 +1529,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 10,
     marginTop: 12,
+    position: 'relative',
+    zIndex: 10,
   },
   capacityBadge: {
     alignItems: 'center',
@@ -1427,6 +1555,8 @@ const styles = StyleSheet.create({
     minHeight: 38,
     justifyContent: 'center',
     paddingHorizontal: 12,
+    position: 'relative',
+    zIndex: 11,
   },
   cardCtaDisabled: {
     backgroundColor: '#ECEBE7',

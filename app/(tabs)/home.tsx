@@ -69,7 +69,7 @@ import { readRemoteGroupPhotoUrl } from '../../lib/groupPhotos'
 import { notifyActivityInterest, useUnreadNotificationsCount } from '../../lib/notifications'
 import { getActivityGroupMeta } from '../../utils/activityGroups'
 import { isOwnActivity } from '../../utils/activityOwnership'
-import { requireVerifiedParticipation } from '../../utils/authParticipation'
+import { EMAIL_VERIFICATION_REQUIRED_MESSAGE, requireVerifiedParticipation } from '../../utils/authParticipation'
 import {
   compareActivitiesForDiscovery,
   getActivityVisualState,
@@ -425,6 +425,28 @@ function getJoinCta(joined: boolean) {
 
 function getInterestCta(interested: boolean) {
   return interested ? '✓ Te interesa' : 'Me interesa'
+}
+
+function getCurrentAuthUserId() {
+  try {
+    const { auth } = getFirebaseServices()
+    return auth.currentUser?.uid ?? null
+  } catch {
+    return null
+  }
+}
+
+function logWebCtaStep(label: string, action: 'join' | 'interest', activityId: string, userId: string | null, reason?: string) {
+  if (Platform.OS !== 'web') return
+
+  console.log(label, {
+    source: 'home',
+    action,
+    activityId,
+    userId,
+    reason,
+    platform: Platform.OS,
+  })
 }
 
 function mapActivityCard(
@@ -833,36 +855,49 @@ export default function HomeScreen() {
     setIsCitySearchVisible(true)
   }
   const toggleJoin = async (record: CreatedRecord, collectionName: JoinableCollection) => {
-    if (!currentUserId) return
-    if (isActivityOrganizer(record.data, currentUserId)) return
-    if (isCancelled(record.data)) return
+    if (!currentUserId) {
+      logWebCtaStep('[WEB CTA EARLY RETURN]', 'join', record.id, getCurrentAuthUserId(), 'missing_user')
+      return
+    }
+    if (isActivityOrganizer(record.data, currentUserId)) {
+      logWebCtaStep('[WEB CTA EARLY RETURN]', 'join', record.id, currentUserId, 'organizer')
+      return
+    }
+    if (isCancelled(record.data)) {
+      logWebCtaStep('[WEB CTA EARLY RETURN]', 'join', record.id, currentUserId, 'cancelled')
+      return
+    }
 
     const { auth } = getFirebaseServices()
-    if (!(await requireVerifiedParticipation(auth))) return
+    logWebCtaStep('[WEB CTA VERIFIED]', 'join', record.id, currentUserId, 'start')
+    if (!(await requireVerifiedParticipation(auth))) {
+      logWebCtaStep('[WEB CTA EARLY RETURN]', 'join', record.id, auth.currentUser?.uid ?? currentUserId, 'verification_failed')
+      setParticipationMessage(EMAIL_VERIFICATION_REQUIRED_MESSAGE)
+      return
+    }
+    logWebCtaStep('[WEB CTA VERIFIED]', 'join', record.id, auth.currentUser?.uid ?? currentUserId, 'success')
 
     const key = getJoinKey(collectionName, record.id)
-    if (pendingJoinKeys.includes(key)) return
+    if (pendingJoinKeys.includes(key)) {
+      logWebCtaStep('[WEB CTA EARLY RETURN]', 'join', record.id, currentUserId, 'pending')
+      return
+    }
 
     const nextJoined = !getJoinState(record, collectionName, currentUserId, optimisticJoins).joined
 
-    if (Platform.OS === 'web') {
-      console.log('[WEB CTA PRESS]', {
-        activityId: record.id,
-        action: 'join',
-        userId: currentUserId,
-      })
-    }
     setParticipationMessage('')
     setOptimisticJoins((current) => ({ ...current, [key]: nextJoined }))
     setPendingJoinKeys((current) => [...current, key])
+    logWebCtaStep('[WEB CTA STATE UPDATE]', 'join', record.id, currentUserId, nextJoined ? 'optimistic_true' : 'optimistic_false')
 
     try {
       const { db } = getFirebaseServices()
       const targetRef = doc(db, collectionName, record.id)
 
+      logWebCtaStep('[WEB CTA WRITE START]', 'join', record.id, currentUserId, collectionName)
       const result = await runTransaction(db, async (transaction) => {
         const snapshot = await transaction.get(targetRef)
-        if (!snapshot.exists()) return
+        if (!snapshot.exists()) return 'missing_record'
 
         const data = snapshot.data() as Record<string, unknown>
         if (isActivityOrganizer(data, currentUserId)) return 'organizer'
@@ -892,18 +927,27 @@ export default function HomeScreen() {
         return 'updated'
       })
 
+      if (result === 'missing_record') {
+        logWebCtaStep('[WEB CTA EARLY RETURN]', 'join', record.id, currentUserId, 'missing_record')
+      }
       if (result === 'organizer') throw new Error('activity-organizer')
       if (result === 'cancelled') throw new Error('activity-cancelled')
+      logWebCtaStep('[WEB CTA WRITE SUCCESS]', 'join', record.id, currentUserId, String(result ?? 'no_result'))
     } catch (error) {
       if (Platform.OS === 'web') {
+        const ctaError = error as { code?: string; message?: string }
         console.warn('[WEB CTA ERROR]', {
-          activityId: record.id,
+          source: 'home',
           action: 'join',
-          userId: currentUserId,
-          error: error instanceof Error ? error.message : String(error),
+          activityId: record.id,
+          userId: getCurrentAuthUserId(),
+          platform: Platform.OS,
+          errorCode: ctaError?.code,
+          errorMessage: ctaError?.message,
         })
       }
       setParticipationMessage('No pudimos actualizar tu participación. Intentá nuevamente.')
+      logWebCtaStep('[WEB CTA STATE UPDATE]', 'join', record.id, getCurrentAuthUserId(), 'rollback')
       setOptimisticJoins((current) => {
         const next = { ...current }
         delete next[key]
@@ -914,36 +958,49 @@ export default function HomeScreen() {
     }
   }
   const toggleInterest = async (record: CreatedRecord) => {
-    if (!currentUserId) return
-    if (isActivityOrganizer(record.data, currentUserId)) return
-    if (isCancelled(record.data)) return
+    if (!currentUserId) {
+      logWebCtaStep('[WEB CTA EARLY RETURN]', 'interest', record.id, getCurrentAuthUserId(), 'missing_user')
+      return
+    }
+    if (isActivityOrganizer(record.data, currentUserId)) {
+      logWebCtaStep('[WEB CTA EARLY RETURN]', 'interest', record.id, currentUserId, 'organizer')
+      return
+    }
+    if (isCancelled(record.data)) {
+      logWebCtaStep('[WEB CTA EARLY RETURN]', 'interest', record.id, currentUserId, 'cancelled')
+      return
+    }
 
     const { auth } = getFirebaseServices()
-    if (!(await requireVerifiedParticipation(auth))) return
+    logWebCtaStep('[WEB CTA VERIFIED]', 'interest', record.id, currentUserId, 'start')
+    if (!(await requireVerifiedParticipation(auth))) {
+      logWebCtaStep('[WEB CTA EARLY RETURN]', 'interest', record.id, auth.currentUser?.uid ?? currentUserId, 'verification_failed')
+      setParticipationMessage(EMAIL_VERIFICATION_REQUIRED_MESSAGE)
+      return
+    }
+    logWebCtaStep('[WEB CTA VERIFIED]', 'interest', record.id, auth.currentUser?.uid ?? currentUserId, 'success')
 
     const key = getInterestKey(record.id)
-    if (pendingInterestKeys.includes(key)) return
+    if (pendingInterestKeys.includes(key)) {
+      logWebCtaStep('[WEB CTA EARLY RETURN]', 'interest', record.id, currentUserId, 'pending')
+      return
+    }
 
     const nextInterested = !getInterestState(record, currentUserId, optimisticInterests).interested
 
-    if (Platform.OS === 'web') {
-      console.log('[WEB CTA PRESS]', {
-        activityId: record.id,
-        action: 'interest',
-        userId: currentUserId,
-      })
-    }
     setParticipationMessage('')
     setOptimisticInterests((current) => ({ ...current, [key]: nextInterested }))
     setPendingInterestKeys((current) => [...current, key])
+    logWebCtaStep('[WEB CTA STATE UPDATE]', 'interest', record.id, currentUserId, nextInterested ? 'optimistic_true' : 'optimistic_false')
 
     try {
       const { db } = getFirebaseServices()
       const targetRef = doc(db, 'activities', record.id)
 
+      logWebCtaStep('[WEB CTA WRITE START]', 'interest', record.id, currentUserId, 'activities')
       const result = await runTransaction(db, async (transaction) => {
         const snapshot = await transaction.get(targetRef)
-        if (!snapshot.exists()) return
+        if (!snapshot.exists()) return 'missing_record'
 
         const data = snapshot.data() as Record<string, unknown>
         if (isActivityOrganizer(data, currentUserId)) return 'organizer'
@@ -972,8 +1029,12 @@ export default function HomeScreen() {
         return 'updated'
       })
 
+      if (result === 'missing_record') {
+        logWebCtaStep('[WEB CTA EARLY RETURN]', 'interest', record.id, currentUserId, 'missing_record')
+      }
       if (result === 'organizer') throw new Error('activity-organizer')
       if (result === 'cancelled') throw new Error('activity-cancelled')
+      logWebCtaStep('[WEB CTA WRITE SUCCESS]', 'interest', record.id, currentUserId, String(result ?? 'no_result'))
 
       if (nextInterested) {
         Alert.alert('Te interesa', 'Le avisamos al organizador para que pueda contactarte.')
@@ -991,14 +1052,19 @@ export default function HomeScreen() {
       }
     } catch (error) {
       if (Platform.OS === 'web') {
+        const ctaError = error as { code?: string; message?: string }
         console.warn('[WEB CTA ERROR]', {
-          activityId: record.id,
+          source: 'home',
           action: 'interest',
-          userId: currentUserId,
-          error: error instanceof Error ? error.message : String(error),
+          activityId: record.id,
+          userId: getCurrentAuthUserId(),
+          platform: Platform.OS,
+          errorCode: ctaError?.code,
+          errorMessage: ctaError?.message,
         })
       }
       setParticipationMessage('No pudimos registrar tu interés. Intentá nuevamente.')
+      logWebCtaStep('[WEB CTA STATE UPDATE]', 'interest', record.id, getCurrentAuthUserId(), 'rollback')
       setOptimisticInterests((current) => {
         const next = { ...current }
         delete next[key]
@@ -1242,8 +1308,27 @@ export default function HomeScreen() {
                     params: { activityId: item.recordId },
                   })}
                   onCtaPress={() => {
+                    console.log('[WEB CTA PRESS]', {
+                      source: 'home',
+                      action: item.action,
+                      activityId: item.recordId,
+                      userId: getCurrentAuthUserId(),
+                      platform: Platform.OS,
+                    })
+
                     const record = activityRecordsById.get(item.recordId)
-                    if (!record || item.isCancelled || item.isOrganizer) return
+                    if (!record) {
+                      logWebCtaStep('[WEB CTA EARLY RETURN]', item.action, item.recordId, getCurrentAuthUserId(), 'missing_record_in_map')
+                      return
+                    }
+                    if (item.isCancelled) {
+                      logWebCtaStep('[WEB CTA EARLY RETURN]', item.action, item.recordId, getCurrentAuthUserId(), 'cancelled_card')
+                      return
+                    }
+                    if (item.isOrganizer) {
+                      logWebCtaStep('[WEB CTA EARLY RETURN]', item.action, item.recordId, getCurrentAuthUserId(), 'organizer_card')
+                      return
+                    }
                     if (item.action === 'interest') {
                       toggleInterest(record)
                     } else {

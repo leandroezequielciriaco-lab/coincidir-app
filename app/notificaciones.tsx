@@ -388,6 +388,7 @@ function NotificationCard({
   const body = getNotificationBody(notification, activityName)
   const actionLabel = getNotificationActionLabel(notification)
   const destinationName = notification.groupName || activityName
+  const isWeb = Platform.OS === 'web'
 
   return (
     <View
@@ -397,12 +398,43 @@ function NotificationCard({
         !notification.read && styles.notificationCardUnread,
       ]}
     >
-      <Pressable
-        accessibilityLabel={notification.title}
-        accessibilityRole="button"
-        onPress={onPress}
-        style={({ pressed }) => [styles.notificationPressArea, pressed && styles.notificationPressAreaPressed]}
-      >
+      {isWeb ? (
+        <View
+          accessibilityLabel={notification.title}
+          accessibilityRole="button"
+          onResponderRelease={onPress}
+          onStartShouldSetResponder={() => true}
+          style={styles.notificationPressArea}
+        >
+          <View style={[styles.notificationIcon, { backgroundColor: tone.background }]}>
+            <Icon color={tone.accent} size={28} strokeWidth={2.2} />
+          </View>
+          <View style={styles.notificationCopy}>
+            <View style={styles.notificationTitleRow}>
+              <Text numberOfLines={2} style={styles.notificationTitle}>{notification.title}</Text>
+              {!notification.read ? <View style={[styles.unreadDot, { backgroundColor: tone.accent }]} /> : null}
+            </View>
+            {destinationName ? (
+              <Text numberOfLines={1} style={[styles.activityName, { color: tone.accent }]}>
+                {destinationName}
+              </Text>
+            ) : null}
+            <Text numberOfLines={2} style={styles.notificationBody}>{body}</Text>
+            {actionLabel ? (
+              <View style={styles.viewActivityRow}>
+                <Text style={styles.viewActivityText}>{actionLabel}</Text>
+                <Text style={styles.viewActivityArrow}>→</Text>
+              </View>
+            ) : null}
+          </View>
+        </View>
+      ) : (
+        <Pressable
+          accessibilityLabel={notification.title}
+          accessibilityRole="button"
+          onPress={onPress}
+          style={({ pressed }) => [styles.notificationPressArea, pressed && styles.notificationPressAreaPressed]}
+        >
         <View style={[styles.notificationIcon, { backgroundColor: tone.background }]}>
           <Icon color={tone.accent} size={28} strokeWidth={2.2} />
         </View>
@@ -424,7 +456,8 @@ function NotificationCard({
             </View>
           ) : null}
         </View>
-      </Pressable>
+        </Pressable>
+      )}
       <View style={styles.notificationRightActions}>
         <Text style={styles.notificationTime}>{getRelativeTime(notification.createdAt)}</Text>
         <Pressable

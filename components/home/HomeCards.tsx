@@ -33,6 +33,7 @@ export function ActivityCard({ item, onCtaPress, onPress, onSharePress }: Activi
   const isCtaDisabled = Boolean(item.isCancelled || item.isOrganizer)
   const isGroupActivity = Boolean(item.groupId || item.groupName)
   const groupColors = getGroupTheme(item.groupColor)
+  const isWeb = Platform.OS === 'web'
 
   useEffect(() => {
     setImageSource(item.image || defaultActivityImage)
@@ -56,12 +57,22 @@ export function ActivityCard({ item, onCtaPress, onPress, onSharePress }: Activi
           />
         ) : null}
         <View style={styles.imageOverlay} />
-        <Pressable
-          accessibilityLabel={`Ver detalle de ${item.title}`}
-          accessibilityRole="button"
-          onPress={onPress}
-          style={({ pressed }) => [StyleSheet.absoluteFill, pressed && styles.pressed]}
-        />
+        {isWeb ? (
+          <View
+            accessibilityLabel={`Ver detalle de ${item.title}`}
+            accessibilityRole="button"
+            onResponderRelease={onPress}
+            onStartShouldSetResponder={() => true}
+            style={StyleSheet.absoluteFill}
+          />
+        ) : (
+          <Pressable
+            accessibilityLabel={`Ver detalle de ${item.title}`}
+            accessibilityRole="button"
+            onPress={onPress}
+            style={({ pressed }) => [StyleSheet.absoluteFill, pressed && styles.pressed]}
+          />
+        )}
         <View style={styles.dateBadge}>
           <Text style={styles.dateBadgeText}>{item.dateBadge}</Text>
         </View>
@@ -89,7 +100,7 @@ export function ActivityCard({ item, onCtaPress, onPress, onSharePress }: Activi
           accessibilityLabel={`Compartir ${item.title}`}
           accessibilityRole="button"
           onPress={(event) => {
-            event.stopPropagation()
+            if (Platform.OS !== 'web') event.stopPropagation()
             onSharePress?.()
           }}
           style={({ pressed }) => [styles.shareButton, pressed && styles.pressed]}
@@ -98,42 +109,32 @@ export function ActivityCard({ item, onCtaPress, onPress, onSharePress }: Activi
             <Text style={styles.shareButtonText}>Compartir</Text>
           </Pressable>
         </View>
-        <Pressable
-          accessibilityLabel={`Ver detalle de ${item.title}`}
-          accessibilityRole="button"
-          onPress={onPress}
-          style={({ pressed }) => [styles.activityContentPressArea, pressed && styles.pressed]}
-        >
-          <Text numberOfLines={2} style={[styles.activityTitle, item.groupName && styles.activityTitleWithGroup]}>{item.title}</Text>
-          {item.groupName ? (
-            <View style={styles.groupIndicator}>
-              <GroupAvatar groupName={item.groupName} imageUrl={item.groupImageUrl} size={18} />
-              <Text numberOfLines={1} style={[styles.groupIndicatorText, { color: groupColors.chipTextColor }]}>{item.groupName}</Text>
-            </View>
-          ) : null}
-          <View style={styles.activityMetaRow}>
-            <CalendarDays color="#17803C" size={17} strokeWidth={2.2} />
-            <Text numberOfLines={1} style={styles.activityMeta}>{item.dateTime}</Text>
+        {isWeb ? (
+          <View
+            accessibilityLabel={`Ver detalle de ${item.title}`}
+            accessibilityRole="button"
+            onResponderRelease={onPress}
+            onStartShouldSetResponder={() => true}
+            style={styles.activityContentPressArea}
+          >
+            <ActivityCardContent groupColors={groupColors} item={item} />
           </View>
-          <View style={styles.activityMetaRow}>
-            <MapPin color="#17803C" size={17} strokeWidth={2.2} />
-            <Text numberOfLines={1} style={styles.activityMeta}>{item.location}</Text>
-          </View>
-          <View style={styles.activityMetaRow}>
-            <UserRound color="#17803C" size={17} strokeWidth={2.2} />
-            <Text numberOfLines={1} style={styles.activityMeta}>{item.organizer}</Text>
-          </View>
-          <View style={styles.peopleInline}>
-            <UsersRound color="#07392D" size={15} strokeWidth={2.4} />
-            <Text style={styles.peopleText}>{item.people}</Text>
-          </View>
-        </Pressable>
+        ) : (
+          <Pressable
+            accessibilityLabel={`Ver detalle de ${item.title}`}
+            accessibilityRole="button"
+            onPress={onPress}
+            style={({ pressed }) => [styles.activityContentPressArea, pressed && styles.pressed]}
+          >
+            <ActivityCardContent groupColors={groupColors} item={item} />
+          </Pressable>
+        )}
         <Pressable
           accessibilityLabel={item.cta}
           accessibilityRole="button"
           disabled={isCtaDisabled}
           onPress={(event) => {
-            event.stopPropagation()
+            if (Platform.OS !== 'web') event.stopPropagation()
             onCtaPress?.()
           }}
           style={({ pressed }) => [
@@ -151,6 +152,36 @@ export function ActivityCard({ item, onCtaPress, onPress, onSharePress }: Activi
         </Pressable>
       </View>
     </View>
+  )
+}
+
+function ActivityCardContent({ groupColors, item }: { groupColors: ReturnType<typeof getGroupTheme>; item: ActivityCardItem }) {
+  return (
+    <>
+      <Text numberOfLines={2} style={[styles.activityTitle, item.groupName && styles.activityTitleWithGroup]}>{item.title}</Text>
+      {item.groupName ? (
+        <View style={styles.groupIndicator}>
+          <GroupAvatar groupName={item.groupName} imageUrl={item.groupImageUrl} size={18} />
+          <Text numberOfLines={1} style={[styles.groupIndicatorText, { color: groupColors.chipTextColor }]}>{item.groupName}</Text>
+        </View>
+      ) : null}
+      <View style={styles.activityMetaRow}>
+        <CalendarDays color="#17803C" size={17} strokeWidth={2.2} />
+        <Text numberOfLines={1} style={styles.activityMeta}>{item.dateTime}</Text>
+      </View>
+      <View style={styles.activityMetaRow}>
+        <MapPin color="#17803C" size={17} strokeWidth={2.2} />
+        <Text numberOfLines={1} style={styles.activityMeta}>{item.location}</Text>
+      </View>
+      <View style={styles.activityMetaRow}>
+        <UserRound color="#17803C" size={17} strokeWidth={2.2} />
+        <Text numberOfLines={1} style={styles.activityMeta}>{item.organizer}</Text>
+      </View>
+      <View style={styles.peopleInline}>
+        <UsersRound color="#07392D" size={15} strokeWidth={2.4} />
+        <Text style={styles.peopleText}>{item.people}</Text>
+      </View>
+    </>
   )
 }
 
@@ -286,6 +317,7 @@ const styles = StyleSheet.create({
   },
   activityContentPressArea: {
     flexShrink: 1,
+    zIndex: 1,
   },
   activityImage: {
     height: '100%',
@@ -423,7 +455,8 @@ const styles = StyleSheet.create({
     minHeight: 34,
     justifyContent: 'center',
     marginTop: 9,
-    zIndex: 3,
+    position: 'relative',
+    zIndex: 10,
   },
   activityFooterDisabled: {
     backgroundColor: '#ECEBE7',
@@ -449,6 +482,8 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.06,
     shadowRadius: 8,
     elevation: 1,
+    position: 'relative',
+    zIndex: 10,
   },
   shareButtonText: {
     color: '#006A32',
