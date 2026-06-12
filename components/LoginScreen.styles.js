@@ -14,6 +14,11 @@ export const styles = StyleSheet.create({
     paddingTop: 22,
     paddingBottom: 28,
   },
+  webScrollContent: {
+    alignSelf: 'center',
+    maxWidth: 520,
+    width: '100%',
+  },
   backHitArea: {
     width: 48,
     height: 48,

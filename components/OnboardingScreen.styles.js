@@ -5,6 +5,25 @@ export const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#FAF8F1',
   },
+  webScreen: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 24,
+    paddingVertical: 24,
+  },
+  imageFrame: {
+    flex: 1,
+    width: '100%',
+  },
+  webImageFrame: {
+    aspectRatio: 390 / 844,
+    borderRadius: 28,
+    flex: 0,
+    maxHeight: '100%',
+    maxWidth: 420,
+    overflow: 'hidden',
+    width: '100%',
+  },
   image: {
     flex: 1,
     width: '100%',

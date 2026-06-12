@@ -18,7 +18,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { useFocusEffect, useRouter } from 'expo-router'
 import { onAuthStateChanged } from 'firebase/auth'
-import { collection, doc, getDoc, onSnapshot } from 'firebase/firestore'
+import { collection, deleteField, doc, getDoc, onSnapshot, runTransaction, serverTimestamp } from 'firebase/firestore'
 import {
   CalendarCheck,
   CalendarDays,
@@ -51,6 +51,8 @@ import { getFirebaseServices } from '../../firebaseConfig'
 import { readRemoteGroupPhotoUrl } from '../../lib/groupPhotos'
 import { getActivityRecommendationScore, getActivityRecommendationTerms } from '../../lib/recommendations'
 import { getActivityGroupMeta } from '../../utils/activityGroups'
+import { isOwnActivity } from '../../utils/activityOwnership'
+import { requireVerifiedParticipation } from '../../utils/authParticipation'
 import {
   compareActivitiesForDiscovery,
   getActivityVisualState,
@@ -100,6 +102,13 @@ type ExploreCardItem = {
   isCancelled?: boolean
   visualState?: ActivityVisualState
   Icon: LucideIcon
+  action?: 'interest' | 'join'
+  isOrganizer?: boolean
+}
+
+type ParticipationState = {
+  count: number
+  active: boolean
 }
 
 const quickCategoryLabels: Record<ActivityCategoryId, string> = {
@@ -179,6 +188,74 @@ function getParticipantCount(data: Record<string, unknown>) {
   const participants = data.participants ?? data.members
   if (typeof participants === 'object' && participants) return Object.keys(participants).length
   return Array.isArray(participants) ? participants.length : 0
+}
+
+function getInterestedCount(data: Record<string, unknown>) {
+  const interestedCount = readNumber(data.interestedCount, -1)
+  if (interestedCount >= 0) return interestedCount
+
+  const interestedUsers = data.interestedUsers
+  if (typeof interestedUsers === 'object' && interestedUsers) return Object.keys(interestedUsers).length
+  return 0
+}
+
+function hasUserInMap(value: unknown, userId: string) {
+  return typeof value === 'object' && value !== null && !Array.isArray(value) && userId in value
+}
+
+function hasUserInList(value: unknown, userId: string) {
+  return Array.isArray(value) && value.some((item) => item === userId || (typeof item === 'object' && item !== null && 'uid' in item && item.uid === userId))
+}
+
+function isUserJoined(data: Record<string, unknown>, userId: string | null) {
+  if (!userId) return false
+
+  return hasUserInMap(data.participants, userId)
+    || hasUserInMap(data.joinedUsers, userId)
+    || hasUserInList(data.participants, userId)
+    || hasUserInList(data.attendees, userId)
+    || hasUserInList(data.members, userId)
+}
+
+function isUserInterested(data: Record<string, unknown>, userId: string | null) {
+  return Boolean(userId && hasUserInMap(data.interestedUsers, userId))
+}
+
+function requiresInterestAction(data: Record<string, unknown>) {
+  const settings = getAdditionalSettings(data)
+  const privacy = normalize(settings.privacy)
+  const visibility = normalize(readString(data.visibility, readString(settings.visibility)))
+  const detail = normalize([
+    settings.quickSettings,
+    data.quickSettings,
+    data.participationMode,
+    data.joinMode,
+    data.type,
+  ].flat().filter(Boolean).join(' '))
+
+  return privacy.includes('aprobacion')
+    || visibility.includes('approval')
+    || detail.includes('aprobacion')
+    || detail.includes('solicitud')
+    || detail.includes('coordinar')
+    || detail.includes('cerrad')
+}
+
+function getParticipationState(
+  item: RecordItem,
+  userId: string | null,
+  optimisticState: Record<string, boolean>,
+  type: 'interest' | 'join',
+): ParticipationState {
+  const persistedActive = type === 'interest'
+    ? isUserInterested(item.data, userId)
+    : isUserJoined(item.data, userId)
+  const key = `${type}:${item.id}`
+  const active = key in optimisticState ? optimisticState[key] : persistedActive
+  const count = type === 'interest' ? getInterestedCount(item.data) : getParticipantCount(item.data)
+  const countDelta = active === persistedActive ? 0 : active ? 1 : -1
+
+  return { active, count: Math.max(0, count + countDelta) }
 }
 
 function getMaxParticipants(data: Record<string, unknown>) {
@@ -362,13 +439,25 @@ function getQuickIcon(filter: QuickFilterItem): LucideIcon {
   return Leaf
 }
 
-function mapExploreCard(item: RecordItem, localGroups: LocalGroup[] = [], groupImageUrlsByKey: GroupImageUrlsByKey = {}): ExploreCardItem {
+function mapExploreCard(
+  item: RecordItem,
+  currentUserId: string | null,
+  optimisticJoins: Record<string, boolean>,
+  optimisticInterests: Record<string, boolean>,
+  localGroups: LocalGroup[] = [],
+  groupImageUrlsByKey: GroupImageUrlsByKey = {},
+): ExploreCardItem {
   const data = item.data
   const isGroup = item.source === 'group'
-  const count = getParticipantCount(data)
+  const action = !isGroup && requiresInterestAction(data) ? 'interest' : 'join'
+  const participationState = !isGroup
+    ? getParticipationState(item, currentUserId, action === 'interest' ? optimisticInterests : optimisticJoins, action)
+    : { active: false, count: getParticipantCount(data) }
+  const count = participationState.count
   const max = getMaxParticipants(data)
   const cancelled = item.source === 'activity' && isCancelled(data)
   const groupMeta = isGroup ? { groupColor: '', groupId: '', groupName: '' } : getGroupMeta(data, localGroups)
+  const organizer = item.source === 'activity' && isOwnActivity(data, currentUserId)
 
   return {
     id: `${item.source}-${item.id}`,
@@ -384,9 +473,19 @@ function mapExploreCard(item: RecordItem, localGroups: LocalGroup[] = [], groupI
     groupId: groupMeta.groupId,
     groupImageUrl: isGroup ? readRemoteGroupPhotoUrl(data) : getGroupImageUrl(groupMeta, groupImageUrlsByKey),
     groupName: groupMeta.groupName,
-    cta: cancelled ? 'Cancelada' : isGroup ? 'Ver grupo' : 'Ver encuentro',
+    cta: cancelled
+      ? 'Cancelada'
+      : isGroup
+        ? 'Ver grupo'
+        : organizer
+          ? 'Tu actividad'
+          : action === 'interest'
+            ? participationState.active ? '✓ Te interesa' : 'Me interesa'
+            : participationState.active ? '✓ Te sumaste' : 'Me sumo',
     image: getCardImage(item),
     isCancelled: cancelled,
+    isOrganizer: organizer,
+    action: isGroup ? undefined : action,
     visualState: item.source === 'activity' ? getActivityVisualState(data) : undefined,
     Icon: getIcon(item),
   }
@@ -408,6 +507,10 @@ export default function ExplorarScreen() {
   const [userInterests, setUserInterests] = useState<unknown[]>([])
   const [activeQuickCategory, setActiveQuickCategory] = useState<ActivityQuickCategoryId>('all')
   const [localGroups, setLocalGroups] = useState<LocalGroup[]>([])
+  const [optimisticJoins, setOptimisticJoins] = useState<Record<string, boolean>>({})
+  const [optimisticInterests, setOptimisticInterests] = useState<Record<string, boolean>>({})
+  const [pendingParticipationKeys, setPendingParticipationKeys] = useState<string[]>([])
+  const [participationMessage, setParticipationMessage] = useState('')
   const carouselCardWidth = Math.min(300, Math.max(236, width - 104))
   const carouselSnapInterval = carouselCardWidth + 14
 
@@ -530,9 +633,113 @@ export default function ExplorarScreen() {
   }, [records])
 
   const cards = useMemo(
-    () => filteredRecords.map((item) => mapExploreCard(item, localGroups, groupImageUrlsByKey)),
-    [filteredRecords, groupImageUrlsByKey, localGroups],
+    () => filteredRecords.map((item) => mapExploreCard(item, currentUserId, optimisticJoins, optimisticInterests, localGroups, groupImageUrlsByKey)),
+    [currentUserId, filteredRecords, groupImageUrlsByKey, localGroups, optimisticInterests, optimisticJoins],
   )
+
+  const toggleActivityParticipation = async (item: ExploreCardItem) => {
+    if (Platform.OS === 'web') {
+      console.log('[WEB CTA PRESS]', {
+        activityId: item.recordId,
+        action: item.action ?? 'open',
+        userId: currentUserId,
+      })
+    }
+    if (!currentUserId || item.source !== 'activity' || item.isCancelled || item.isOrganizer || !item.action) return
+
+    const record = records.find((recordItem) => recordItem.source === 'activity' && recordItem.id === item.recordId)
+    if (!record) return
+
+    const key = `${item.action}:${record.id}`
+    if (pendingParticipationKeys.includes(key)) return
+
+    const { auth } = getFirebaseServices()
+    if (!(await requireVerifiedParticipation(auth))) return
+
+    const optimisticSetter = item.action === 'interest' ? setOptimisticInterests : setOptimisticJoins
+    const currentState = getParticipationState(
+      record,
+      currentUserId,
+      item.action === 'interest' ? optimisticInterests : optimisticJoins,
+      item.action,
+    )
+    const nextActive = !currentState.active
+
+    setParticipationMessage('')
+    optimisticSetter((current) => ({ ...current, [key]: nextActive }))
+    setPendingParticipationKeys((current) => [...current, key])
+
+    try {
+      const { db } = getFirebaseServices()
+      const targetRef = doc(db, 'activities', record.id)
+
+      await runTransaction(db, async (transaction) => {
+        const snapshot = await transaction.get(targetRef)
+        if (!snapshot.exists()) return
+
+        const data = snapshot.data() as Record<string, unknown>
+        if (isOwnActivity(data, currentUserId) || isCancelled(data)) return
+
+        if (item.action === 'interest') {
+          const wasInterested = isUserInterested(data, currentUserId)
+          const nextCount = Math.max(0, getInterestedCount(data) + (wasInterested ? -1 : 1))
+          transaction.update(targetRef, wasInterested
+            ? {
+              [`interestedUsers.${currentUserId}`]: deleteField(),
+              interestedCount: nextCount,
+              updatedAt: serverTimestamp(),
+            }
+            : {
+              [`interestedUsers.${currentUserId}`]: {
+                interestedAt: serverTimestamp(),
+                status: 'interested',
+                uid: currentUserId,
+              },
+              interestedCount: nextCount,
+              updatedAt: serverTimestamp(),
+            })
+          return
+        }
+
+        const wasJoined = isUserJoined(data, currentUserId)
+        const nextCount = Math.max(0, getParticipantCount(data) + (wasJoined ? -1 : 1))
+        transaction.update(targetRef, wasJoined
+          ? {
+            [`joinedUsers.${currentUserId}`]: deleteField(),
+            [`participants.${currentUserId}`]: deleteField(),
+            participantsCount: nextCount,
+            updatedAt: serverTimestamp(),
+          }
+          : {
+            [`joinedUsers.${currentUserId}`]: true,
+            [`participants.${currentUserId}`]: {
+              joinedAt: serverTimestamp(),
+              status: 'joined',
+              uid: currentUserId,
+            },
+            participantsCount: nextCount,
+            updatedAt: serverTimestamp(),
+          })
+      })
+    } catch (error) {
+      if (Platform.OS === 'web') {
+        console.warn('[WEB CTA ERROR]', {
+          activityId: item.recordId,
+          action: item.action,
+          userId: currentUserId,
+          error: error instanceof Error ? error.message : String(error),
+        })
+      }
+      setParticipationMessage(
+        item.action === 'interest'
+          ? 'No pudimos registrar tu interés. Intentá nuevamente.'
+          : 'No pudimos actualizar tu participación. Intentá nuevamente.',
+      )
+      optimisticSetter((current) => ({ ...current, [key]: currentState.active }))
+    } finally {
+      setPendingParticipationKeys((current) => current.filter((pendingKey) => pendingKey !== key))
+    }
+  }
 
   const openFilters = () => {
     setDraftFilters(filters)
@@ -553,7 +760,7 @@ export default function ExplorarScreen() {
 
   return (
     <SafeAreaView edges={['top']} style={styles.safeArea}>
-      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+      <ScrollView contentContainerStyle={[styles.content, Platform.OS === 'web' && styles.webContent]} showsVerticalScrollIndicator={false}>
         <View style={styles.headerRow}>
           <View style={styles.headerCopy}>
             <Text style={styles.title}>Explorar</Text>
@@ -601,6 +808,10 @@ export default function ExplorarScreen() {
 
         <ExploreBanner />
 
+        {participationMessage ? (
+          <Text accessibilityRole="alert" style={styles.participationMessage}>{participationMessage}</Text>
+        ) : null}
+
         <View style={styles.sectionHeader}>
           <View style={styles.sectionTitleRow}>
             <Sprout color="#006A32" size={24} strokeWidth={2.4} />
@@ -632,6 +843,9 @@ export default function ExplorarScreen() {
               <ExploreCard
                 cardWidth={carouselCardWidth}
                 item={item}
+                onCtaPress={() => {
+                  void toggleActivityParticipation(item)
+                }}
                 onPress={() => router.push(
                   item.source === 'activity'
                     ? { pathname: '/activity/[activityId]', params: { activityId: item.recordId } }
@@ -697,7 +911,7 @@ function ExploreBanner() {
   )
 }
 
-function ExploreCard({ cardWidth, item, onPress }: { cardWidth: number; item: ExploreCardItem; onPress: () => void }) {
+function ExploreCard({ cardWidth, item, onCtaPress, onPress }: { cardWidth: number; item: ExploreCardItem; onCtaPress?: () => void; onPress: () => void }) {
   const fallbackImage = getCategoryImage({ category: item.source === 'group' ? 'Grupales' : undefined, title: item.title, type: item.source }, defaultActivityImage)
   const [imageSource, setImageSource] = useState(item.image || defaultActivityImage)
   const [hasImageError, setHasImageError] = useState(false)
@@ -710,78 +924,95 @@ function ExploreCard({ cardWidth, item, onPress }: { cardWidth: number; item: Ex
   }, [item.image])
 
   return (
-    <Pressable
-      accessibilityRole="button"
-      onPress={onPress}
-      style={({ pressed }) => [
+    <View
+      style={[
         styles.exploreCard,
         { width: cardWidth },
         isGroupActivity && { borderColor: groupColors.borderColor },
-        pressed && styles.cardPressed,
       ]}
     >
-      <View style={styles.cardImageWrap}>
-        <ExpoImage contentFit="cover" source={fallbackImage} style={styles.cardImage} />
-        {!hasImageError ? (
-          <ExpoImage
-            contentFit="cover"
-            onError={() => {
-              if (__DEV__) console.log('[CARD IMAGE ERROR]', { title: item.title, source: item.source, groupId: item.groupId })
-              setHasImageError(true)
-              setImageSource(fallbackImage)
-            }}
-            source={imageSource || fallbackImage}
-            style={[styles.cardImage, StyleSheet.absoluteFillObject]}
-          />
-        ) : null}
-        {item.visualState ? (
-          <View
-            style={[
-              styles.statusBadge,
-              {
-                backgroundColor: item.visualState.backgroundColor,
-                borderColor: item.visualState.borderColor,
-              },
+      <Pressable
+        accessibilityRole="button"
+        onPress={onPress}
+        style={({ pressed }) => pressed && styles.cardPressed}
+      >
+        <View style={styles.cardImageWrap}>
+          <ExpoImage contentFit="cover" source={fallbackImage} style={styles.cardImage} />
+          {!hasImageError ? (
+            <ExpoImage
+              contentFit="cover"
+              onError={() => {
+                if (__DEV__) console.log('[CARD IMAGE ERROR]', { title: item.title, source: item.source, groupId: item.groupId })
+                setHasImageError(true)
+                setImageSource(fallbackImage)
+              }}
+              source={imageSource || fallbackImage}
+              style={[styles.cardImage, StyleSheet.absoluteFillObject]}
+            />
+          ) : null}
+          {item.visualState ? (
+            <View
+              style={[
+                styles.statusBadge,
+                {
+                  backgroundColor: item.visualState.backgroundColor,
+                  borderColor: item.visualState.borderColor,
+                },
+              ]}
+            >
+              <Text style={[styles.statusBadgeText, { color: item.visualState.color }]}>{item.visualState.label}</Text>
+            </View>
+          ) : null}
+          <View style={styles.cardIcon}>
+            {item.source === 'group' ? (
+              <GroupAvatar groupName={item.title} imageUrl={item.groupImageUrl} size={58} />
+            ) : (
+              <item.Icon color="#17803C" size={31} strokeWidth={2.2} />
+            )}
+          </View>
+        </View>
+        <View style={styles.cardBody}>
+          <Text numberOfLines={2} style={styles.cardTitle}>{item.title}</Text>
+          <View style={styles.cardMetaRow}>
+            <MapPin color="#0E5A44" size={16} strokeWidth={2.2} />
+            <Text numberOfLines={2} style={styles.cardMeta}>{item.location}</Text>
+          </View>
+          <View style={styles.cardMetaRow}>
+            <CalendarCheck color="#0E5A44" size={16} strokeWidth={2.2} />
+            <Text numberOfLines={1} style={styles.cardMeta}>{item.schedule}</Text>
+          </View>
+          {item.groupName ? (
+            <View style={styles.groupIndicator}>
+              <GroupAvatar groupName={item.groupName} imageUrl={item.groupImageUrl} size={18} />
+              <Text numberOfLines={1} style={[styles.groupIndicatorText, { color: groupColors.chipTextColor }]}>{item.groupName}</Text>
+            </View>
+          ) : null}
+        </View>
+      </Pressable>
+      <View style={styles.cardFooter}>
+        <View style={styles.capacityBadge}>
+          <UsersRound color="#006A32" size={16} strokeWidth={2.3} />
+          <Text style={styles.capacityText}>{item.capacity}</Text>
+        </View>
+        <Pressable
+          accessibilityRole="button"
+          disabled={Boolean(item.isCancelled || item.isOrganizer || item.source === 'group')}
+          onPress={(event) => {
+            event.stopPropagation()
+            onCtaPress?.()
+          }}
+          style={({ pressed }) => [
+            styles.cardCta,
+              item.isCancelled && styles.cardCtaDisabled,
+              item.isOrganizer && styles.cardCtaDisabled,
+              item.source === 'group' && styles.cardCtaDisabled,
+              pressed && styles.cardPressed,
             ]}
-          >
-            <Text style={[styles.statusBadgeText, { color: item.visualState.color }]}>{item.visualState.label}</Text>
-          </View>
-        ) : null}
-        <View style={styles.cardIcon}>
-          {item.source === 'group' ? (
-            <GroupAvatar groupName={item.title} imageUrl={item.groupImageUrl} size={58} />
-          ) : (
-            <item.Icon color="#17803C" size={31} strokeWidth={2.2} />
-          )}
-        </View>
+        >
+          <Text style={[styles.cardCtaText, item.isCancelled && styles.cardCtaTextDisabled]}>{item.cta}</Text>
+        </Pressable>
       </View>
-      <View style={styles.cardBody}>
-        <Text numberOfLines={2} style={styles.cardTitle}>{item.title}</Text>
-        <View style={styles.cardMetaRow}>
-          <MapPin color="#0E5A44" size={16} strokeWidth={2.2} />
-          <Text numberOfLines={2} style={styles.cardMeta}>{item.location}</Text>
-        </View>
-        <View style={styles.cardMetaRow}>
-          <CalendarCheck color="#0E5A44" size={16} strokeWidth={2.2} />
-          <Text numberOfLines={1} style={styles.cardMeta}>{item.schedule}</Text>
-        </View>
-        {item.groupName ? (
-          <View style={styles.groupIndicator}>
-            <GroupAvatar groupName={item.groupName} imageUrl={item.groupImageUrl} size={18} />
-            <Text numberOfLines={1} style={[styles.groupIndicatorText, { color: groupColors.chipTextColor }]}>{item.groupName}</Text>
-          </View>
-        ) : null}
-        <View style={styles.cardFooter}>
-          <View style={styles.capacityBadge}>
-            <UsersRound color="#006A32" size={16} strokeWidth={2.3} />
-            <Text style={styles.capacityText}>{item.capacity}</Text>
-          </View>
-          <View style={[styles.cardCta, item.isCancelled && styles.cardCtaDisabled]}>
-            <Text style={[styles.cardCtaText, item.isCancelled && styles.cardCtaTextDisabled]}>{item.cta}</Text>
-          </View>
-        </View>
-      </View>
-    </Pressable>
+    </View>
   )
 }
 
@@ -798,8 +1029,9 @@ type FilterSheetProps = {
 function FilterSheet({ draft, onApply, onChange, onClose, onReset, resultCount, visible }: FilterSheetProps) {
   return (
     <Modal animationType="fade" onRequestClose={onClose} transparent visible={visible}>
-      <Pressable style={styles.modalBackdrop} onPress={onClose}>
-        <Pressable style={styles.sheet}>
+      <View style={styles.modalBackdrop}>
+        <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
+        <View style={styles.sheet}>
           <View style={styles.sheetHandle} />
           <View style={styles.sheetHeader}>
             <Text style={styles.sheetTitle}>Filtros</Text>
@@ -824,8 +1056,8 @@ function FilterSheet({ draft, onApply, onChange, onClose, onReset, resultCount, 
           <PressScale onPress={onApply} scaleTo={0.97} style={styles.applyButton}>
             <Text style={styles.applyButtonText}>Ver resultados ({resultCount})</Text>
           </PressScale>
-        </Pressable>
-      </Pressable>
+        </View>
+      </View>
     </Modal>
   )
 }
@@ -880,6 +1112,20 @@ const styles = StyleSheet.create({
     paddingBottom: 128,
     paddingHorizontal: 20,
     paddingTop: 14,
+  },
+  webContent: {
+    alignSelf: 'center',
+    maxWidth: 760,
+    width: '100%',
+  },
+  participationMessage: {
+    color: '#8A3A32',
+    fontSize: 14,
+    fontWeight: '800',
+    letterSpacing: 0,
+    lineHeight: 19,
+    marginBottom: 10,
+    marginTop: 2,
   },
   headerRow: {
     alignItems: 'center',

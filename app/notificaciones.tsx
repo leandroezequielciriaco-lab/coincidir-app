@@ -339,58 +339,54 @@ function NotificationCard({
   const destinationName = notification.groupName || activityName
 
   return (
-    <PressScale
-      accessibilityLabel={notification.title}
-      accessibilityRole="button"
-      onPress={onPress}
-      scaleTo={0.98}
+    <View
       style={[
         styles.notificationCard,
         { backgroundColor: tone.cardBackground, borderColor: tone.border },
         !notification.read && styles.notificationCardUnread,
       ]}
     >
-      <View style={[styles.notificationIcon, { backgroundColor: tone.background }]}>
-        <Icon color={tone.accent} size={28} strokeWidth={2.2} />
-      </View>
-      <View style={styles.notificationCopy}>
-        <View style={styles.notificationHeaderRow}>
-          <View style={styles.notificationTitleWrap}>
-            <View style={styles.notificationTitleRow}>
-              <Text numberOfLines={2} style={styles.notificationTitle}>{notification.title}</Text>
-              {!notification.read ? <View style={[styles.unreadDot, { backgroundColor: tone.accent }]} /> : null}
-            </View>
-            {destinationName ? (
-              <Text numberOfLines={1} style={[styles.activityName, { color: tone.accent }]}>
-                {destinationName}
-              </Text>
-            ) : null}
-          </View>
-          <View style={styles.notificationRightActions}>
-            <Text style={styles.notificationTime}>{getRelativeTime(notification.createdAt)}</Text>
-            <Pressable
-              accessibilityLabel="Eliminar notificación"
-              accessibilityRole="button"
-              hitSlop={10}
-              onPress={(event) => {
-                event.stopPropagation()
-                onDelete()
-              }}
-              style={({ pressed }) => [styles.deleteButton, pressed && styles.deleteButtonPressed]}
-            >
-              <Trash2 color="#8A3A32" size={18} strokeWidth={2.3} />
-            </Pressable>
-          </View>
+      <Pressable
+        accessibilityLabel={notification.title}
+        accessibilityRole="button"
+        onPress={onPress}
+        style={({ pressed }) => [styles.notificationPressArea, pressed && styles.notificationPressAreaPressed]}
+      >
+        <View style={[styles.notificationIcon, { backgroundColor: tone.background }]}>
+          <Icon color={tone.accent} size={28} strokeWidth={2.2} />
         </View>
-        <Text numberOfLines={2} style={styles.notificationBody}>{body}</Text>
-        {actionLabel ? (
-          <View style={styles.viewActivityRow}>
-            <Text style={styles.viewActivityText}>{actionLabel}</Text>
-            <Text style={styles.viewActivityArrow}>→</Text>
+        <View style={styles.notificationCopy}>
+          <View style={styles.notificationTitleRow}>
+            <Text numberOfLines={2} style={styles.notificationTitle}>{notification.title}</Text>
+            {!notification.read ? <View style={[styles.unreadDot, { backgroundColor: tone.accent }]} /> : null}
           </View>
-        ) : null}
+          {destinationName ? (
+            <Text numberOfLines={1} style={[styles.activityName, { color: tone.accent }]}>
+              {destinationName}
+            </Text>
+          ) : null}
+          <Text numberOfLines={2} style={styles.notificationBody}>{body}</Text>
+          {actionLabel ? (
+            <View style={styles.viewActivityRow}>
+              <Text style={styles.viewActivityText}>{actionLabel}</Text>
+              <Text style={styles.viewActivityArrow}>→</Text>
+            </View>
+          ) : null}
+        </View>
+      </Pressable>
+      <View style={styles.notificationRightActions}>
+        <Text style={styles.notificationTime}>{getRelativeTime(notification.createdAt)}</Text>
+        <Pressable
+          accessibilityLabel="Eliminar notificación"
+          accessibilityRole="button"
+          hitSlop={10}
+          onPress={onDelete}
+          style={({ pressed }) => [styles.deleteButton, pressed && styles.deleteButtonPressed]}
+        >
+          <Trash2 color="#8A3A32" size={18} strokeWidth={2.3} />
+        </Pressable>
       </View>
-    </PressScale>
+    </View>
   )
 }
 
@@ -540,6 +536,16 @@ const styles = StyleSheet.create({
     paddingHorizontal: 18,
     paddingVertical: 18,
     ...shadow,
+  },
+  notificationPressArea: {
+    alignItems: 'flex-start',
+    flex: 1,
+    flexDirection: 'row',
+    gap: 16,
+    minWidth: 0,
+  },
+  notificationPressAreaPressed: {
+    opacity: 0.86,
   },
   notificationCardUnread: {
     borderWidth: 1.3,

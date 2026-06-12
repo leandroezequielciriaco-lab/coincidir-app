@@ -41,6 +41,7 @@ import { getLegalAcceptanceFields } from '../constants/legal'
 
 const googleWebClientId = process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID
 const googleIosClientId = process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID
+const isWeb = Platform.OS === 'web'
 let googleSignInModule = null
 
 function getGoogleSignInModule() {
@@ -399,6 +400,11 @@ export default function RegisterScreen() {
       return
     }
 
+    if (isWeb) {
+      setError('Google disponible en Android por ahora. Podés registrarte con correo y contraseña.')
+      return
+    }
+
     if (!googleWebClientId) {
       setError('Falta configurar el Web Client ID de Google.')
       return
@@ -581,22 +587,29 @@ export default function RegisterScreen() {
               <View style={styles.divider} />
             </View>
 
-            <Pressable
-              accessibilityLabel="Continuar con Google"
-              accessibilityRole="button"
-              disabled={isSubmitting || isGoogleSubmitting}
-              onPress={handleGoogleRegistration}
-              style={styles.googleButton}
-            >
-              {isGoogleSubmitting ? (
-                <ActivityIndicator color="#155C47" />
-              ) : (
-                <>
-                  <GoogleLogo size={23} />
-                  <Text style={styles.googleButtonText}>Continuar con Google</Text>
-                </>
-              )}
-            </Pressable>
+            {isWeb ? (
+              <View style={styles.googleButton}>
+                <GoogleLogo size={23} />
+                <Text style={styles.googleButtonText}>Google disponible en Android por ahora</Text>
+              </View>
+            ) : (
+              <Pressable
+                accessibilityLabel="Continuar con Google"
+                accessibilityRole="button"
+                disabled={isSubmitting || isGoogleSubmitting}
+                onPress={handleGoogleRegistration}
+                style={styles.googleButton}
+              >
+                {isGoogleSubmitting ? (
+                  <ActivityIndicator color="#155C47" />
+                ) : (
+                  <>
+                    <GoogleLogo size={23} />
+                    <Text style={styles.googleButtonText}>Continuar con Google</Text>
+                  </>
+                )}
+              </Pressable>
+            )}
 
             <View style={styles.socialRow}>
               <Pressable

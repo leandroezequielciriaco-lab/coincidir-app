@@ -54,9 +54,9 @@ import {
   Zap,
 } from 'lucide-react-native'
 import type { LucideIcon } from 'lucide-react-native'
-import MapView, { Marker, PROVIDER_GOOGLE, type Region } from 'react-native-maps'
 
 import CoincidirLogo from '../../components/CoincidirLogo'
+import LocationPicker, { LocationMapPreview, type MapRegion } from '../../components/maps/LocationPicker'
 import {
   activityCategories as categories,
   findActivityCategory,
@@ -139,9 +139,9 @@ type ActivityFormPayload = {
 }
 
 const hasGoogleMapsKey = Boolean(process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY?.trim())
-const canUseNativeMap = Platform.OS !== 'android' || hasGoogleMapsKey
+const canUseNativeMap = Platform.OS !== 'web' && (Platform.OS !== 'android' || hasGoogleMapsKey)
 const shouldShowMapConfigNotice = Platform.OS === 'android' && !hasGoogleMapsKey
-const mapProvider = Platform.OS === 'android' ? PROVIDER_GOOGLE : undefined
+const shouldUseWebMapFallback = Platform.OS === 'web'
 const weekDays = ['L', 'M', 'M', 'J', 'V', 'S', 'D']
 const monthNames = [
   'enero',
@@ -171,7 +171,7 @@ function getCategoryIcon(categoryId: CategoryId) {
 }
 
 const currencyOptions = ['ARS', 'USD', 'UYU', 'BRL', 'EUR']
-const initialLocationRegion: Region = {
+const initialLocationRegion: MapRegion = {
   latitude: -37.3217,
   longitude: -59.1332,
   latitudeDelta: 0.045,
@@ -475,7 +475,7 @@ export default function CrearScreen() {
   const [time, setTime] = useState('')
   const [location, setLocation] = useState('')
   const [selectedLocation, setSelectedLocation] = useState<LocationSelection | null>(null)
-  const [mapRegion, setMapRegion] = useState<Region>(initialLocationRegion)
+  const [mapRegion, setMapRegion] = useState<MapRegion>(initialLocationRegion)
   const [draftPin, setDraftPin] = useState({
     latitude: initialLocationRegion.latitude,
     longitude: initialLocationRegion.longitude,
@@ -837,6 +837,20 @@ export default function CrearScreen() {
   const confirmLocation = async () => {
     setIsResolvingLocation(true)
 
+    if (Platform.OS === 'web') {
+      const fallbackAddress = location.trim() || formatCoordinateAddress(draftPin.latitude, draftPin.longitude)
+      setSelectedLocation({
+        address: fallbackAddress,
+        latitude: draftPin.latitude,
+        longitude: draftPin.longitude,
+      })
+      setLocation(fallbackAddress)
+      setIsLocationPickerVisible(false)
+      setMessage('')
+      setIsResolvingLocation(false)
+      return
+    }
+
     try {
       const [geocode] = await Location.reverseGeocodeAsync(draftPin)
       const address = geocode
@@ -869,7 +883,15 @@ export default function CrearScreen() {
   }
 
   const buildActivityPayload = (): ActivityFormPayload | null => {
-    if (!category || !selectedDate || !selectedLocation) return null
+    const locationSelection = selectedLocation ?? (location.trim()
+      ? {
+        address: location.trim(),
+        latitude: draftPin.latitude,
+        longitude: draftPin.longitude,
+      }
+      : null)
+
+    if (!category || !selectedDate || !locationSelection) return null
     const visibility = activityKind === 'group' ? 'group' : getVisibilityFromPrivacy(privacy)
     const groupName = activityKind === 'group' ? selectedGroup : ''
     const groupId = groupName ? selectedGroupId : ''
@@ -886,16 +908,16 @@ export default function CrearScreen() {
       activityDate: selectedDate,
       activityDateISO: selectedDate.toISOString(),
       time,
-      location,
-      locationAddress: selectedLocation.address,
-      locationLatitude: selectedLocation.latitude,
-      locationLongitude: selectedLocation.longitude,
+      location: location.trim() || locationSelection.address,
+      locationAddress: locationSelection.address,
+      locationLatitude: locationSelection.latitude,
+      locationLongitude: locationSelection.longitude,
       locationPin: {
-        address: selectedLocation.address,
-        latitude: selectedLocation.latitude,
-        longitude: selectedLocation.longitude,
+        address: locationSelection.address,
+        latitude: locationSelection.latitude,
+        longitude: locationSelection.longitude,
       },
-      city: getCityFromLocation(location),
+      city: getCityFromLocation(location.trim() || locationSelection.address),
       groupId,
       groupName,
       visibility,
@@ -925,9 +947,40 @@ export default function CrearScreen() {
     return payload
   }
 
+  const getMissingActivityFields = () => {
+    const missingFields = []
+    if (!name.trim()) missingFields.push('título')
+    if (!category) missingFields.push('categoría')
+    if (!subcategory) missingFields.push('subcategoría')
+    if (!description.trim()) missingFields.push('descripción')
+    if (!selectedDate) missingFields.push('fecha')
+    if (!time) missingFields.push('hora')
+    if (!selectedLocation && !location.trim()) missingFields.push('ubicación')
+    if (activityKind === 'group' && (!selectedGroup || !selectedGroupId)) missingFields.push('grupo')
+    if (cost === 'Pago' && !price.trim()) missingFields.push('precio')
+    return missingFields
+  }
+
   const saveActivity = async () => {
-    if (!name.trim() || !category || !subcategory || !description.trim() || !selectedDate || !time || !selectedLocation) {
-      setMessage(isEditMode ? 'Completá todos los campos para guardar los cambios.' : 'Completá todos los campos para crear la actividad.')
+    const missingFields = getMissingActivityFields()
+    if (missingFields.length > 0) {
+      setMessage(`Falta completar: ${missingFields.join(', ')}.`)
+      if (Platform.OS === 'web') {
+        console.warn('[CREATE ACTIVITY VALIDATION]', {
+          userId: getFirebaseServices().auth.currentUser?.uid ?? '',
+          title: name.trim(),
+          category: category?.label ?? '',
+          subcategory,
+          date,
+          time,
+          address: selectedLocation?.address ?? location.trim(),
+          latitude: selectedLocation?.latitude ?? draftPin.latitude,
+          longitude: selectedLocation?.longitude ?? draftPin.longitude,
+          groupId: selectedGroupId,
+          missingFields,
+          errorMessage: 'missing-fields',
+        })
+      }
       return
     }
 
@@ -957,7 +1010,29 @@ export default function CrearScreen() {
       if (!(await requireVerifiedParticipation(auth))) return
 
       const payload = buildActivityPayload()
-      if (!payload) return
+      if (!payload) {
+        const payloadMissingFields = getMissingActivityFields()
+        if (Platform.OS === 'web') {
+          console.warn('[CREATE ACTIVITY VALIDATION]', {
+            userId: user.uid,
+            title: name.trim(),
+            category: category?.label ?? '',
+            subcategory,
+            date,
+            time,
+            address: selectedLocation?.address ?? location.trim(),
+            latitude: selectedLocation?.latitude ?? draftPin.latitude,
+            longitude: selectedLocation?.longitude ?? draftPin.longitude,
+            groupId: selectedGroupId,
+            missingFields: payloadMissingFields,
+            errorMessage: 'payload-null',
+          })
+        }
+        setMessage(payloadMissingFields.length > 0
+          ? `Faltan datos para guardar: ${payloadMissingFields.join(', ')}.`
+          : 'No pudimos preparar los datos de la actividad. Revisá ubicación, fecha y hora.')
+        return
+      }
 
       if (isEditMode) {
         if (!activityId) {
@@ -1035,7 +1110,23 @@ export default function CrearScreen() {
 
       router.replace('/home')
     } catch (error) {
-      setMessage(getSaveError(error, isEditMode))
+      const errorMessage = error instanceof Error ? error.message : String(error)
+      const diagnostic = {
+        userId: getFirebaseServices().auth.currentUser?.uid ?? '',
+        title: name.trim(),
+        category: category?.label ?? '',
+        subcategory,
+        date,
+        time,
+        address: selectedLocation?.address ?? location.trim(),
+        latitude: selectedLocation?.latitude ?? draftPin.latitude,
+        longitude: selectedLocation?.longitude ?? draftPin.longitude,
+        groupId: selectedGroupId,
+        missingFields: getMissingActivityFields(),
+        errorMessage,
+      }
+      if (__DEV__) console.warn('[CREATE ACTIVITY ERROR]', diagnostic)
+      setMessage(`${getSaveError(error, isEditMode)} Detalle: ${errorMessage}`)
     } finally {
       setIsSaving(false)
     }
@@ -1362,7 +1453,7 @@ export default function CrearScreen() {
       return false
     }
 
-    if (currentStep === 4 && (!selectedDate || !time || !selectedLocation)) {
+    if (currentStep === 4 && (!selectedDate || !time || (!selectedLocation && !location.trim()))) {
       setMessage('Seleccioná fecha, hora y ubicación para continuar.')
       return false
     }
@@ -1445,7 +1536,6 @@ export default function CrearScreen() {
       canUseNativeMap,
       hasGoogleMapsKey,
       platform: Platform.OS,
-      provider: mapProvider ?? 'default',
     })
   }, [])
 
@@ -1456,11 +1546,10 @@ export default function CrearScreen() {
       console.log('[CREATE MAP RENDER]', {
         latitude: mapRegion.latitude,
         longitude: mapRegion.longitude,
-        provider: mapProvider ?? 'default',
         target: 'locationPicker',
       })
-    } else {
-      console.error('[CREATE MAP ERROR]', {
+    } else if (Platform.OS !== 'web') {
+      console.warn('[CREATE MAP WARN]', {
         hasGoogleMapsKey,
         platform: Platform.OS,
         reason: 'native_map_disabled',
@@ -1473,11 +1562,10 @@ export default function CrearScreen() {
       console.log('[CREATE MAP RENDER]', {
         latitude: previewLocation.latitude,
         longitude: previewLocation.longitude,
-        provider: mapProvider ?? 'default',
         target: 'createPreview',
       })
-    } else {
-      console.error('[CREATE MAP ERROR]', {
+    } else if (Platform.OS !== 'web') {
+      console.warn('[CREATE MAP WARN]', {
         hasGoogleMapsKey,
         platform: Platform.OS,
         reason: 'preview_native_map_disabled',
@@ -1584,6 +1672,7 @@ export default function CrearScreen() {
         <ScrollView
           contentContainerStyle={[
             styles.createScrollContent,
+            Platform.OS === 'web' && styles.webCreateContent,
             { paddingTop: Math.max(insets.top + 18, 28), paddingBottom: Math.max(insets.bottom + 120, 150) },
           ]}
           showsVerticalScrollIndicator={false}
@@ -1646,6 +1735,7 @@ export default function CrearScreen() {
         <ScrollView
           contentContainerStyle={[
             styles.createScrollContent,
+            Platform.OS === 'web' && styles.webCreateContent,
             { paddingTop: Math.max(insets.top + 18, 28), paddingBottom: Math.max(insets.bottom + 120, 150) },
           ]}
           keyboardShouldPersistTaps="handled"
@@ -1753,6 +1843,7 @@ export default function CrearScreen() {
         <ScrollView
           contentContainerStyle={[
             styles.groupCreatedScrollContent,
+            Platform.OS === 'web' && styles.webCreateContent,
             { paddingTop: Math.max(insets.top + 18, 28), paddingBottom: Math.max(insets.bottom + 72, 96) },
           ]}
           showsVerticalScrollIndicator={false}
@@ -1800,6 +1891,7 @@ export default function CrearScreen() {
       <ScrollView
         contentContainerStyle={[
           styles.createScrollContent,
+          Platform.OS === 'web' && styles.webCreateContent,
           { paddingTop: Math.max(insets.top + 18, 28), paddingBottom: Math.max(insets.bottom + 120, 150) },
         ]}
         keyboardShouldPersistTaps="handled"
@@ -2043,29 +2135,21 @@ export default function CrearScreen() {
             onPress={openLocationPicker}
             style={styles.createMapCard}
           >
-            {canUseNativeMap ? (
-              <MapView
-                mapType="standard"
-                provider={mapProvider}
+            {canUseNativeMap || shouldUseWebMapFallback ? (
+              <LocationMapPreview
+                address={previewLocation.address}
+                coordinate={{
+                  latitude: previewLocation.latitude,
+                  longitude: previewLocation.longitude,
+                }}
                 region={{
                   latitude: previewLocation.latitude,
                   longitude: previewLocation.longitude,
                   latitudeDelta: 0.018,
                   longitudeDelta: 0.018,
                 }}
-                scrollEnabled={false}
                 style={styles.createMapPreview}
-                toolbarEnabled={false}
-                zoomEnabled={false}
-              >
-                <Marker
-                  coordinate={{
-                    latitude: previewLocation.latitude,
-                    longitude: previewLocation.longitude,
-                  }}
-                  pinColor="#0E5A44"
-                />
-              </MapView>
+              />
             ) : selectedLocation ? (
               <View style={styles.createMapFallbackPreview}>
                 <FallbackMapArtwork />
@@ -2133,35 +2217,23 @@ export default function CrearScreen() {
             </View>
 
             <View style={styles.locationPickerMapFrame}>
-              {canUseNativeMap ? (
-                <MapView
-                  loadingEnabled
-                  mapType="standard"
-                  moveOnMarkerPress={false}
-                  onLongPress={updateDraftPin}
-                  onPress={updateDraftPin}
+              {canUseNativeMap || shouldUseWebMapFallback ? (
+                <LocationPicker
+                  address={location}
+                  markerCoordinate={draftPin}
+                  onMapPress={updateDraftPin}
+                  onMarkerDragEnd={(coordinate) => {
+                    setDraftPin(coordinate)
+                    setMapRegion((value) => ({
+                      ...value,
+                      latitude: coordinate.latitude,
+                      longitude: coordinate.longitude,
+                    }))
+                  }}
                   onRegionChangeComplete={setMapRegion}
-                  provider={mapProvider}
                   region={mapRegion}
-                  showsCompass
-                  showsMyLocationButton
                   style={styles.locationPickerMap}
-                  toolbarEnabled={false}
-                >
-                  <Marker
-                    coordinate={draftPin}
-                    draggable
-                    onDragEnd={(event) => {
-                      setDraftPin(event.nativeEvent.coordinate)
-                      setMapRegion((value) => ({
-                        ...value,
-                        latitude: event.nativeEvent.coordinate.latitude,
-                        longitude: event.nativeEvent.coordinate.longitude,
-                      }))
-                    }}
-                    pinColor="#0E5A44"
-                  />
-                </MapView>
+                />
               ) : (
                 <Pressable
                   accessibilityLabel="Selector alternativo de ubicación"
@@ -2207,8 +2279,9 @@ export default function CrearScreen() {
             keyboardVerticalOffset={Platform.OS === 'ios' ? 12 : 0}
             style={styles.groupModalAvoidingView}
           >
-            <Pressable style={styles.modalBackdrop} onPress={closeCreateGroup}>
-              <Pressable style={[styles.groupModalCard, { paddingBottom: Math.max(insets.bottom + 24, 36) }]}>
+            <View style={styles.modalBackdrop}>
+              <Pressable style={StyleSheet.absoluteFill} onPress={closeCreateGroup} />
+              <View style={[styles.groupModalCard, { paddingBottom: Math.max(insets.bottom + 24, 36) }]}>
                 <Text style={styles.modalTitle}>Crear grupo</Text>
                 <TextInput
                   autoCapitalize="words"
@@ -2230,14 +2303,15 @@ export default function CrearScreen() {
                 <Pressable accessibilityRole="button" onPress={closeCreateGroup} style={styles.groupModalSecondaryButton}>
                   <Text style={styles.groupModalSecondaryText}>Cancelar</Text>
                 </Pressable>
-              </Pressable>
-            </Pressable>
+              </View>
+            </View>
           </KeyboardAvoidingView>
         </Modal>
 
         <Modal animationType="fade" transparent visible={pickerMode !== null} onRequestClose={() => setPickerMode(null)}>
-          <Pressable style={styles.modalBackdrop} onPress={() => setPickerMode(null)}>
-            <Pressable style={[styles.modalCard, { paddingBottom: Math.max(insets.bottom + 18, 30) }]}>
+          <View style={styles.modalBackdrop}>
+            <Pressable style={StyleSheet.absoluteFill} onPress={() => setPickerMode(null)} />
+            <View style={[styles.modalCard, { paddingBottom: Math.max(insets.bottom + 18, 30) }]}>
               <Text style={styles.modalTitle}>{pickerTitle}</Text>
               <ScrollView contentContainerStyle={styles.modalOptionsContent} showsVerticalScrollIndicator={false}>
                 {pickerMode === 'category'
@@ -2337,8 +2411,8 @@ export default function CrearScreen() {
                   ))
                   : null}
               </ScrollView>
-            </Pressable>
-          </Pressable>
+            </View>
+          </View>
         </Modal>
       </ScrollView>
 
@@ -2677,6 +2751,11 @@ const styles = StyleSheet.create({
   createScrollContent: {
     flexGrow: 1,
     paddingHorizontal: 16,
+  },
+  webCreateContent: {
+    alignSelf: 'center',
+    maxWidth: 720,
+    width: '100%',
   },
   groupCreatedScrollContent: {
     flexGrow: 1,

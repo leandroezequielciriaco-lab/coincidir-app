@@ -1,13 +1,12 @@
 import { getApp, getApps, initializeApp } from 'firebase/app'
 import AsyncStorage from '@react-native-async-storage/async-storage'
+import { Platform } from 'react-native'
 import {
   Auth,
   getAuth,
   initializeAuth,
+  Persistence,
 } from 'firebase/auth'
-// Expo/Metro resolves Firebase Auth's React Native entrypoint at runtime; TS uses the web declarations.
-// @ts-expect-error getReactNativePersistence is exported by the React Native build of firebase/auth.
-import { getReactNativePersistence } from 'firebase/auth'
 import { Firestore, getFirestore } from 'firebase/firestore'
 import { FirebaseStorage, getStorage } from 'firebase/storage'
 
@@ -26,6 +25,10 @@ const missingFirebaseKeys = Object.entries(firebaseConfig)
 
 let cachedAuth: Auth | null = null
 
+type ReactNativeAuthModule = typeof import('firebase/auth') & {
+  getReactNativePersistence?: (storage: typeof AsyncStorage) => Persistence
+}
+
 function normalizeStorageBucket(bucket?: string) {
   return bucket?.trim().replace(/^gs:\/\//, '').replace(/\/$/, '') ?? ''
 }
@@ -41,8 +44,24 @@ export function assertFirebaseConfig() {
 function getConfiguredAuth(app: ReturnType<typeof initializeApp>) {
   if (cachedAuth) return cachedAuth
 
+  if (__DEV__) console.log('[AUTH INIT]', Platform.OS)
+
+  if (Platform.OS === 'web') {
+    if (__DEV__) console.log('[AUTH MODE]', 'web')
+    cachedAuth = getAuth(app)
+    return cachedAuth
+  }
+
+  if (__DEV__) console.log('[AUTH MODE]', 'native')
+
   try {
     if (__DEV__) console.log('[AUTH RESTORE START]', { source: 'initializeAuth' })
+    const { getReactNativePersistence } = require('firebase/auth') as ReactNativeAuthModule
+
+    if (typeof getReactNativePersistence !== 'function') {
+      throw new TypeError('getReactNativePersistence is not available in this Firebase Auth build')
+    }
+
     cachedAuth = initializeAuth(app, {
       persistence: getReactNativePersistence(AsyncStorage),
     })

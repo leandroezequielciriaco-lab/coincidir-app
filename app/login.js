@@ -30,6 +30,7 @@ import { getLegalAcceptanceFields, hasAcceptedCurrentLegal } from '../constants/
 
 const googleWebClientId = process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID
 const googleIosClientId = process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID
+const isWeb = Platform.OS === 'web'
 let googleSignInModule = null
 
 function getGoogleSignInModule() {
@@ -277,6 +278,11 @@ export default function LoginScreen() {
       return
     }
 
+    if (isWeb) {
+      setError('Google disponible en Android por ahora. Podés ingresar con correo y contraseña.')
+      return
+    }
+
     if (!googleWebClientId) {
       console.error('Error login Google', {
         message: 'Falta EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID.',
@@ -335,6 +341,7 @@ export default function LoginScreen() {
         <ScrollView
           contentContainerStyle={[
             styles.scrollContent,
+            isWeb && styles.webScrollContent,
             {
               paddingTop: Math.max(insets.top + 10, 22),
               paddingBottom: Math.max(insets.bottom + 24, 34),
@@ -481,22 +488,29 @@ export default function LoginScreen() {
               <View style={styles.divider} />
             </View>
 
-            <Pressable
-              accessibilityLabel="Continuar con Google"
-              accessibilityRole="button"
-              disabled={isSubmitting || isGoogleSubmitting}
-              onPress={handleGoogleLogin}
-              style={styles.googleButton}
-            >
-              {isGoogleSubmitting ? (
-                <ActivityIndicator color="#155C47" />
-              ) : (
-                <>
-                  <GoogleLogo size={23} />
-                  <Text style={styles.googleButtonText}>Continuar con Google</Text>
-                </>
-              )}
-            </Pressable>
+            {isWeb ? (
+              <View style={styles.googleButton}>
+                <GoogleLogo size={23} />
+                <Text style={styles.googleButtonText}>Google disponible en Android por ahora</Text>
+              </View>
+            ) : (
+              <Pressable
+                accessibilityLabel="Continuar con Google"
+                accessibilityRole="button"
+                disabled={isSubmitting || isGoogleSubmitting}
+                onPress={handleGoogleLogin}
+                style={styles.googleButton}
+              >
+                {isGoogleSubmitting ? (
+                  <ActivityIndicator color="#155C47" />
+                ) : (
+                  <>
+                    <GoogleLogo size={23} />
+                    <Text style={styles.googleButtonText}>Continuar con Google</Text>
+                  </>
+                )}
+              </Pressable>
+            )}
 
             <View style={styles.socialRow}>
               <Pressable

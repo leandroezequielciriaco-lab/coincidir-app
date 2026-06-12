@@ -564,6 +564,7 @@ export default function HomeScreen() {
   const [optimisticInterests, setOptimisticInterests] = useState<Record<string, boolean>>({})
   const [pendingJoinKeys, setPendingJoinKeys] = useState<string[]>([])
   const [pendingInterestKeys, setPendingInterestKeys] = useState<string[]>([])
+  const [participationMessage, setParticipationMessage] = useState('')
   const [selectedCity, setSelectedCity] = useState(DEFAULT_CITY)
   const [isCitySelectorVisible, setIsCitySelectorVisible] = useState(false)
   const [isCitySearchVisible, setIsCitySearchVisible] = useState(false)
@@ -844,6 +845,14 @@ export default function HomeScreen() {
 
     const nextJoined = !getJoinState(record, collectionName, currentUserId, optimisticJoins).joined
 
+    if (Platform.OS === 'web') {
+      console.log('[WEB CTA PRESS]', {
+        activityId: record.id,
+        action: 'join',
+        userId: currentUserId,
+      })
+    }
+    setParticipationMessage('')
     setOptimisticJoins((current) => ({ ...current, [key]: nextJoined }))
     setPendingJoinKeys((current) => [...current, key])
 
@@ -885,7 +894,16 @@ export default function HomeScreen() {
 
       if (result === 'organizer') throw new Error('activity-organizer')
       if (result === 'cancelled') throw new Error('activity-cancelled')
-    } catch {
+    } catch (error) {
+      if (Platform.OS === 'web') {
+        console.warn('[WEB CTA ERROR]', {
+          activityId: record.id,
+          action: 'join',
+          userId: currentUserId,
+          error: error instanceof Error ? error.message : String(error),
+        })
+      }
+      setParticipationMessage('No pudimos actualizar tu participación. Intentá nuevamente.')
       setOptimisticJoins((current) => {
         const next = { ...current }
         delete next[key]
@@ -908,6 +926,14 @@ export default function HomeScreen() {
 
     const nextInterested = !getInterestState(record, currentUserId, optimisticInterests).interested
 
+    if (Platform.OS === 'web') {
+      console.log('[WEB CTA PRESS]', {
+        activityId: record.id,
+        action: 'interest',
+        userId: currentUserId,
+      })
+    }
+    setParticipationMessage('')
     setOptimisticInterests((current) => ({ ...current, [key]: nextInterested }))
     setPendingInterestKeys((current) => [...current, key])
 
@@ -963,7 +989,16 @@ export default function HomeScreen() {
           if (__DEV__) console.warn('home-interest-notification-create-error', error)
         })
       }
-    } catch {
+    } catch (error) {
+      if (Platform.OS === 'web') {
+        console.warn('[WEB CTA ERROR]', {
+          activityId: record.id,
+          action: 'interest',
+          userId: currentUserId,
+          error: error instanceof Error ? error.message : String(error),
+        })
+      }
+      setParticipationMessage('No pudimos registrar tu interés. Intentá nuevamente.')
       setOptimisticInterests((current) => {
         const next = { ...current }
         delete next[key]
@@ -1014,7 +1049,7 @@ export default function HomeScreen() {
   return (
     <SafeAreaView edges={['top']} style={styles.safeArea}>
       <ScrollView
-        contentContainerStyle={[styles.scrollContent, { paddingHorizontal: horizontalInset }]}
+        contentContainerStyle={[styles.scrollContent, Platform.OS === 'web' && styles.webContent, { paddingHorizontal: horizontalInset }]}
         showsVerticalScrollIndicator={false}
       >
         <View style={styles.header}>
@@ -1090,8 +1125,9 @@ export default function HomeScreen() {
           transparent
           visible={isCitySelectorVisible}
         >
-          <Pressable style={styles.cityModalBackdrop} onPress={() => setIsCitySelectorVisible(false)}>
-            <Pressable accessibilityRole="menu" style={styles.cityModalCard}>
+          <View style={styles.cityModalBackdrop}>
+            <Pressable style={StyleSheet.absoluteFill} onPress={() => setIsCitySelectorVisible(false)} />
+            <View accessibilityRole="menu" style={styles.cityModalCard}>
               <Text style={styles.cityModalTitle}>Elegí una ciudad</Text>
               <Pressable
                 accessibilityRole="menuitem"
@@ -1158,8 +1194,8 @@ export default function HomeScreen() {
                   ) : null}
                 </View>
               ) : null}
-            </Pressable>
-          </Pressable>
+            </View>
+          </View>
         </Modal>
 
         <View style={styles.quickCategoryBlock}>
@@ -1182,6 +1218,10 @@ export default function HomeScreen() {
           )}
           showsHorizontalScrollIndicator={false}
         />
+
+        {participationMessage ? (
+          <Text accessibilityRole="alert" style={styles.participationMessage}>{participationMessage}</Text>
+        ) : null}
 
         {(hasSearch || hasCategoryFilter || hasQuickCategoryFilter) && !hasVisibleResults ? (
           <EmptyState
@@ -1344,6 +1384,20 @@ const styles = StyleSheet.create({
   scrollContent: {
     paddingBottom: 138,
     paddingTop: 14,
+  },
+  webContent: {
+    alignSelf: 'center',
+    maxWidth: 760,
+    width: '100%',
+  },
+  participationMessage: {
+    color: '#8A3A32',
+    fontSize: 14,
+    fontWeight: '800',
+    letterSpacing: 0,
+    lineHeight: 19,
+    marginBottom: 10,
+    marginTop: 6,
   },
   header: {
     alignItems: 'center',

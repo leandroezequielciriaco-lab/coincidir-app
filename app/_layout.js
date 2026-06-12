@@ -88,7 +88,17 @@ export default function RootLayout() {
       redirectTimerRef.current = null
     }
 
-    if (!authState.checked) {
+    const authLoading = !authState.checked
+    const isPublicRoute = PUBLIC_ROUTES.has(pathname)
+
+    console.log('[ROUTE GUARD DECISION]', {
+      pathname,
+      authLoading,
+      userId: authState.user?.uid ?? null,
+      isPublicRoute,
+    })
+
+    if (authLoading) {
       console.log('[ROUTE GUARD REDIRECT BLOCKED AUTH LOADING]', { path: pathname })
       return
     }
@@ -121,7 +131,12 @@ export default function RootLayout() {
       return
     }
 
-    const isPublicRoute = PUBLIC_ROUTES.has(pathname)
+    if (pathname === '/') {
+      console.log('[ROUTE GUARD REDIRECT]', { from: pathname, to: '/onboarding', reason: 'root_without_user' })
+      router.replace('/onboarding')
+      return
+    }
+
     if (!isPublicRoute) {
       const elapsedSinceUser = Date.now() - lastAuthenticatedAtRef.current
       const redirectToLogin = () => {

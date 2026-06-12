@@ -156,8 +156,9 @@ export function InviteFriendsSheet({ onClose, target, visible }: InviteFriendsSh
 
   return (
     <Modal animationType="fade" onRequestClose={onClose} transparent visible={visible}>
-      <Pressable style={styles.backdrop} onPress={onClose}>
-        <Pressable accessibilityRole="menu" style={styles.sheet}>
+      <View style={styles.backdrop}>
+        <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
+        <View accessibilityRole="menu" style={styles.sheet}>
           <View style={styles.handle} />
           <View style={styles.headerIcon}>
             <UsersRound color="#4B348A" size={30} strokeWidth={2.2} />
@@ -208,8 +209,8 @@ export function InviteFriendsSheet({ onClose, target, visible }: InviteFriendsSh
           <PressScale onPress={onClose} scaleTo={0.97} style={styles.cancelButton}>
             <Text style={styles.cancelText}>Cancelar</Text>
           </PressScale>
-        </Pressable>
-      </Pressable>
+        </View>
+      </View>
     </Modal>
   )
 }

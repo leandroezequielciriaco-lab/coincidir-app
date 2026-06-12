@@ -604,7 +604,7 @@ export default function PerfilScreen() {
 
   return (
     <SafeAreaView edges={['top']} style={styles.safeArea}>
-      <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+      <ScrollView contentContainerStyle={[styles.scrollContent, Platform.OS === 'web' && styles.webContent]} showsVerticalScrollIndicator={false}>
         <View style={styles.headerRow}>
           <Text style={styles.screenTitle}>Mi perfil</Text>
         </View>
@@ -1595,8 +1595,9 @@ function EditProfileModal({ authPhotoURL, onClose, profile, userId, visible }: E
           transparent
           visible={isPhotoOptionsVisible}
         >
-          <Pressable style={styles.photoSheetBackdrop} onPress={() => setIsPhotoOptionsVisible(false)}>
-            <Pressable accessibilityRole="menu" style={[styles.photoSheet, { paddingBottom: Math.max(insets.bottom + 16, 20) }]}>
+          <View style={styles.photoSheetBackdrop}>
+            <Pressable style={StyleSheet.absoluteFill} onPress={() => setIsPhotoOptionsVisible(false)} />
+            <View accessibilityRole="menu" style={[styles.photoSheet, { paddingBottom: Math.max(insets.bottom + 16, 20) }]}>
               <View style={styles.photoSheetHandle} />
               <Text style={styles.photoSheetTitle}>Foto de perfil</Text>
               <Pressable accessibilityRole="menuitem" onPress={choosePhotoFromLibrary} style={styles.photoSheetOption}>
@@ -1614,8 +1615,8 @@ function EditProfileModal({ authPhotoURL, onClose, profile, userId, visible }: E
               <Pressable accessibilityRole="menuitem" onPress={() => setIsPhotoOptionsVisible(false)} style={styles.photoSheetCancel}>
                 <Text style={styles.photoSheetCancelText}>Cancelar</Text>
               </Pressable>
-            </Pressable>
-          </Pressable>
+            </View>
+          </View>
         </Modal>
       </SafeAreaView>
     </Modal>
@@ -1696,6 +1697,11 @@ const styles = StyleSheet.create({
     paddingBottom: 154,
     paddingHorizontal: 20,
     paddingTop: 16,
+  },
+  webContent: {
+    alignSelf: 'center',
+    maxWidth: 760,
+    width: '100%',
   },
   centerState: {
     alignItems: 'center',

@@ -85,12 +85,15 @@ export function ActivityCard({ item, onCtaPress, onPress, onSharePress }: Activi
             <item.Icon color="#17803C" size={16} strokeWidth={2.3} />
             <Text numberOfLines={1} style={styles.categoryPillText}>{item.iconLabel}</Text>
           </View>
-          <Pressable
-            accessibilityLabel={`Compartir ${item.title}`}
-            accessibilityRole="button"
-            onPress={onSharePress}
-            style={({ pressed }) => [styles.shareButton, pressed && styles.pressed]}
-          >
+        <Pressable
+          accessibilityLabel={`Compartir ${item.title}`}
+          accessibilityRole="button"
+          onPress={(event) => {
+            event.stopPropagation()
+            onSharePress?.()
+          }}
+          style={({ pressed }) => [styles.shareButton, pressed && styles.pressed]}
+        >
             <Share2 color="#006A32" size={15} strokeWidth={2.5} />
             <Text style={styles.shareButtonText}>Compartir</Text>
           </Pressable>
@@ -129,7 +132,10 @@ export function ActivityCard({ item, onCtaPress, onPress, onSharePress }: Activi
           accessibilityLabel={item.cta}
           accessibilityRole="button"
           disabled={isCtaDisabled}
-          onPress={onCtaPress}
+          onPress={(event) => {
+            event.stopPropagation()
+            onCtaPress?.()
+          }}
           style={({ pressed }) => [
             styles.activityFooter,
             item.isCancelled && styles.activityFooterDisabled,
