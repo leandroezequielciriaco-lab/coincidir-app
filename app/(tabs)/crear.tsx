@@ -546,6 +546,8 @@ export default function CrearScreen() {
     return ''
   }, [pickerMode])
 
+  const isWebDateTimePicker = Platform.OS === 'web' && (pickerMode === 'date' || pickerMode === 'time')
+
   const calendarDays = useMemo(
     () => getCalendarDays(calendarMonth),
     [calendarMonth],
@@ -2355,11 +2357,22 @@ export default function CrearScreen() {
         </Modal>
 
         <Modal animationType="fade" transparent visible={pickerMode !== null} onRequestClose={() => setPickerMode(null)}>
-          <View style={styles.modalBackdrop}>
+          <View style={[styles.modalBackdrop, isWebDateTimePicker && styles.webPickerBackdrop]}>
             <Pressable style={StyleSheet.absoluteFill} onPress={() => setPickerMode(null)} />
-            <View style={[styles.modalCard, { paddingBottom: Math.max(insets.bottom + 18, 30) }]}>
+            <View style={[
+              styles.modalCard,
+              isWebDateTimePicker && styles.webPickerModalCard,
+              { paddingBottom: isWebDateTimePicker ? 20 : Math.max(insets.bottom + 18, 30) },
+            ]}>
               <Text style={styles.modalTitle}>{pickerTitle}</Text>
-              <ScrollView contentContainerStyle={styles.modalOptionsContent} showsVerticalScrollIndicator={false}>
+              <ScrollView
+                contentContainerStyle={[
+                  styles.modalOptionsContent,
+                  isWebDateTimePicker && styles.webPickerOptionsContent,
+                  Platform.OS === 'web' && pickerMode === 'time' && styles.webTimeOptionsContent,
+                ]}
+                showsVerticalScrollIndicator={false}
+              >
                 {pickerMode === 'category'
                   ? categories.map((item) => (
                     <Pressable key={item.id} onPress={() => selectOption(item)} style={[styles.optionRow, { backgroundColor: item.backgroundColor }]}>
@@ -2382,7 +2395,7 @@ export default function CrearScreen() {
                   ))
                   : null}
                 {pickerMode === 'date' ? (
-                  <View style={styles.calendarPicker}>
+                  <View style={[styles.calendarPicker, Platform.OS === 'web' && styles.webCalendarPicker]}>
                     <View style={styles.calendarHeader}>
                       <Pressable
                         accessibilityLabel="Mes anterior"
@@ -2403,13 +2416,13 @@ export default function CrearScreen() {
                       </Pressable>
                     </View>
 
-                    <View style={styles.calendarWeekRow}>
+                    <View style={[styles.calendarWeekRow, Platform.OS === 'web' && styles.webCalendarWeekRow]}>
                       {weekDays.map((item, index) => (
                         <Text key={`${item}-${index}`} style={styles.calendarWeekText}>{item}</Text>
                       ))}
                     </View>
 
-                    <View style={styles.calendarGrid}>
+                    <View style={[styles.calendarGrid, Platform.OS === 'web' && styles.webCalendarGrid]}>
                       {calendarDays.map((item, index) => {
                         const isSelected = item && selectedDate ? isSameDay(item, selectedDate) : false
                         const isToday = item ? isSameDay(item, new Date()) : false
@@ -2423,6 +2436,7 @@ export default function CrearScreen() {
                             onPress={() => item && selectCalendarDate(item)}
                             style={[
                               styles.calendarDay,
+                              Platform.OS === 'web' && styles.webCalendarDay,
                               isToday && styles.calendarDayToday,
                               isSelected && styles.calendarDaySelected,
                             ]}
@@ -2444,8 +2458,12 @@ export default function CrearScreen() {
                 ) : null}
                 {pickerMode === 'time'
                   ? timeOptions.map((item) => (
-                    <Pressable key={item} onPress={() => selectOption(item)} style={styles.optionRow}>
-                      <Text style={styles.optionText}>{item}</Text>
+                    <Pressable
+                      key={item}
+                      onPress={() => selectOption(item)}
+                      style={[styles.optionRow, Platform.OS === 'web' && styles.webTimeOption]}
+                    >
+                      <Text style={[styles.optionText, Platform.OS === 'web' && styles.webTimeOptionText]}>{item}</Text>
                     </Pressable>
                   ))
                   : null}
@@ -4059,8 +4077,55 @@ const styles = StyleSheet.create({
   modalCard: { maxHeight: '82%', backgroundColor: '#FFFFFF', borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingHorizontal: 20, paddingTop: 20 },
   modalTitle: { color: '#0E5A44', fontSize: 20, fontWeight: '900', marginBottom: 14, textAlign: 'center' },
   modalOptionsContent: { paddingBottom: 18 },
+  webPickerBackdrop: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 28,
+  },
+  webPickerModalCard: {
+    borderRadius: 22,
+    maxHeight: '78%',
+    maxWidth: 500,
+    paddingHorizontal: 18,
+    paddingTop: 18,
+    width: '100%',
+    shadowColor: '#0E5A44',
+    shadowOffset: { width: 0, height: 12 },
+    shadowOpacity: 0.12,
+    shadowRadius: 24,
+  },
+  webPickerOptionsContent: {
+    paddingBottom: 0,
+  },
+  webTimeOptionsContent: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 10,
+    justifyContent: 'center',
+  },
   optionRow: { borderRadius: 16, marginBottom: 10, paddingHorizontal: 16, paddingVertical: 14 },
   optionText: { color: '#123F38', fontSize: 17, fontWeight: '800' },
+  webTimeOption: {
+    alignItems: 'center',
+    backgroundColor: '#FAF8F3',
+    borderColor: '#E2E6E3',
+    borderRadius: 12,
+    borderWidth: 1,
+    justifyContent: 'center',
+    marginBottom: 0,
+    minHeight: 42,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    width: 82,
+  },
+  webTimeOptionText: {
+    color: '#0E5A44',
+    fontSize: 15,
+    lineHeight: 20,
+    textAlign: 'center',
+  },
   groupModalCard: {
     backgroundColor: '#FFFFFF',
     borderTopLeftRadius: 24,
@@ -4106,6 +4171,16 @@ const styles = StyleSheet.create({
   calendarPicker: {
     paddingBottom: 4,
   },
+  webCalendarPicker: {
+    alignSelf: 'center',
+    backgroundColor: '#FAF8F3',
+    borderColor: '#E2E6E3',
+    borderRadius: 18,
+    borderWidth: 1,
+    maxWidth: 420,
+    padding: 14,
+    width: '100%',
+  },
   calendarHeader: {
     minHeight: 48,
     flexDirection: 'row',
@@ -4130,6 +4205,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     marginBottom: 8,
   },
+  webCalendarWeekRow: {
+    marginBottom: 6,
+  },
   calendarWeekText: {
     flex: 1,
     color: '#6D7975',
@@ -4142,12 +4220,19 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
   },
+  webCalendarGrid: {
+    alignSelf: 'center',
+    width: '100%',
+  },
   calendarDay: {
     width: `${100 / 7}%`,
     aspectRatio: 1,
     alignItems: 'center',
     justifyContent: 'center',
     borderRadius: 14,
+  },
+  webCalendarDay: {
+    borderRadius: 10,
   },
   calendarDayToday: {
     backgroundColor: '#EFF7EB',
