@@ -1510,6 +1510,13 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     paddingBottom: 34,
+    ...Platform.select({
+      web: {
+        alignItems: 'center',
+        paddingHorizontal: 24,
+      },
+      default: {},
+    }),
   },
   topBar: {
     alignItems: 'center',
@@ -1517,6 +1524,13 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingHorizontal: 18,
     paddingVertical: 12,
+    ...Platform.select({
+      web: {
+        maxWidth: 960,
+        width: '100%',
+      },
+      default: {},
+    }),
   },
   iconButton: {
     alignItems: 'center',
@@ -1533,6 +1547,16 @@ const styles = StyleSheet.create({
   heroWrap: {
     height: 210,
     position: 'relative',
+    ...Platform.select({
+      web: {
+        borderRadius: 18,
+        height: 240,
+        maxWidth: 960,
+        overflow: 'hidden',
+        width: '100%',
+      },
+      default: {},
+    }),
   },
   heroImage: {
     height: '100%',
@@ -1560,6 +1584,17 @@ const styles = StyleSheet.create({
     marginTop: -18,
     padding: 20,
     ...shadow,
+    ...Platform.select({
+      web: {
+        borderBottomLeftRadius: 22,
+        borderBottomRightRadius: 22,
+        marginTop: -10,
+        maxWidth: 960,
+        paddingTop: 18,
+        width: '100%',
+      },
+      default: {},
+    }),
   },
   titleRow: {
     alignItems: 'center',
