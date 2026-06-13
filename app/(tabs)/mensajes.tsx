@@ -196,6 +196,7 @@ export default function MensajesScreen() {
   return (
     <SafeAreaView edges={['top']} style={styles.safeArea}>
       <FlatList
+        style={Platform.OS === 'web' ? styles.webListFrame : undefined}
         ListEmptyComponent={<EmptyState onExplore={() => router.push('/explorar')} />}
         ListFooterComponent={<UpcomingBlock />}
         ListHeaderComponent={(
@@ -329,6 +330,11 @@ const styles = StyleSheet.create({
   listContent: {
     paddingBottom: 118,
     paddingHorizontal: 18,
+  },
+  webListFrame: {
+    alignSelf: 'center',
+    maxWidth: 1000,
+    width: '100%',
   },
   header: {
     paddingBottom: 16,

@@ -290,19 +290,21 @@ export default function ChatScreen() {
   if (!sourceData || !canAccess) {
     return (
       <SafeAreaView style={styles.safeArea}>
-        <View style={styles.topBar}>
-          <PressScale accessibilityLabel="Volver" accessibilityRole="button" onPress={() => router.back()} scaleTo={0.94} style={styles.iconButton}>
-            <ArrowLeft color="#063C31" size={26} strokeWidth={2.4} />
-          </PressScale>
-          <Text style={styles.headerTitle}>Mensajes</Text>
-          <View style={styles.iconButton} />
-        </View>
-        <View style={styles.centerState}>
-          <View style={styles.lockIcon}>
-            <UsersRound color="#8C4BD6" size={42} strokeWidth={2} />
+        <View style={[styles.chatContainer, Platform.OS === 'web' && styles.webChatContainer]}>
+          <View style={styles.topBar}>
+            <PressScale accessibilityLabel="Volver" accessibilityRole="button" onPress={() => router.back()} scaleTo={0.94} style={styles.iconButton}>
+              <ArrowLeft color="#063C31" size={26} strokeWidth={2.4} />
+            </PressScale>
+            <Text style={styles.headerTitle}>Mensajes</Text>
+            <View style={styles.iconButton} />
           </View>
-          <Text style={styles.blockedTitle}>No podes entrar a este chat</Text>
-          <Text style={styles.blockedText}>Los chats estan disponibles solo para creadores, participantes o miembros.</Text>
+          <View style={styles.centerState}>
+            <View style={styles.lockIcon}>
+              <UsersRound color="#8C4BD6" size={42} strokeWidth={2} />
+            </View>
+            <Text style={styles.blockedTitle}>No podes entrar a este chat</Text>
+            <Text style={styles.blockedText}>Los chats estan disponibles solo para creadores, participantes o miembros.</Text>
+          </View>
         </View>
       </SafeAreaView>
     )
@@ -311,62 +313,64 @@ export default function ChatScreen() {
   return (
     <SafeAreaView edges={['top']} style={styles.safeArea}>
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} keyboardVerticalOffset={Platform.OS === 'ios' ? 8 : 0} style={styles.keyboardView}>
-        <View style={styles.topBar}>
-          <PressScale accessibilityLabel="Volver" accessibilityRole="button" onPress={() => router.back()} scaleTo={0.94} style={styles.iconButton}>
-            <ArrowLeft color="#8C4BD6" size={27} strokeWidth={2.5} />
-          </PressScale>
-          <Image source={detail.image} style={styles.headerImage} />
-          <View style={styles.headerCopy}>
-            <Text numberOfLines={1} style={styles.chatTitle}>{detail.title}</Text>
-            <Text style={styles.chatSubtitle}>{detail.participantCount} {chatSource === 'group' ? 'miembros' : 'participantes'}</Text>
-          </View>
-        </View>
-
-        <FlatList
-          ListEmptyComponent={<ConversationEmpty />}
-          contentContainerStyle={[styles.messagesContent, { paddingBottom: Math.max(insets.bottom + 24, 32) }]}
-          data={messages}
-          keyboardDismissMode="interactive"
-          keyboardShouldPersistTaps="handled"
-          keyExtractor={(item) => item.id}
-          ref={listRef}
-          renderItem={({ item }) => (
-            <MessageBubble
-              canDelete={chatSource === 'activity' && item.senderId === userId && !item.deleted}
-              isMine={item.senderId === userId}
-              message={item}
-              onLongPress={() => openMessageActions(item)}
-            />
-          )}
-          showsVerticalScrollIndicator={false}
-        />
-
-        <View style={[styles.composer, composerSafeStyle]}>
-          <TextInput
-            multiline
-            onChangeText={setText}
-            placeholder="Escribe un mensaje..."
-            placeholderTextColor="#718178"
-            selectionColor="#006A32"
-            style={styles.input}
-            textAlignVertical="top"
-            value={text}
-          />
-          <Pressable
-            accessibilityLabel="Enviar mensaje"
-            accessibilityRole="button"
-            disabled={!canSend}
-            onPress={sendMessage}
-            style={({ pressed }) => [styles.sendHitArea, pressed && canSend && styles.sendButtonPressed]}
-          >
-            <View style={[styles.sendButton, hasDraftMessage ? styles.sendButtonActive : styles.sendButtonDisabled]}>
-              {isSending ? (
-                <ActivityIndicator color="#FFFFFF" size="small" />
-              ) : (
-                <Send color={hasDraftMessage ? '#FFFFFF' : '#6F8E7E'} size={22} strokeWidth={2.8} />
-              )}
+        <View style={[styles.chatContainer, Platform.OS === 'web' && styles.webChatContainer]}>
+          <View style={styles.topBar}>
+            <PressScale accessibilityLabel="Volver" accessibilityRole="button" onPress={() => router.back()} scaleTo={0.94} style={styles.iconButton}>
+              <ArrowLeft color="#8C4BD6" size={27} strokeWidth={2.5} />
+            </PressScale>
+            <Image source={detail.image} style={styles.headerImage} />
+            <View style={styles.headerCopy}>
+              <Text numberOfLines={1} style={styles.chatTitle}>{detail.title}</Text>
+              <Text style={styles.chatSubtitle}>{detail.participantCount} {chatSource === 'group' ? 'miembros' : 'participantes'}</Text>
             </View>
-          </Pressable>
+          </View>
+
+          <FlatList
+            ListEmptyComponent={<ConversationEmpty />}
+            contentContainerStyle={[styles.messagesContent, { paddingBottom: Math.max(insets.bottom + 24, 32) }]}
+            data={messages}
+            keyboardDismissMode="interactive"
+            keyboardShouldPersistTaps="handled"
+            keyExtractor={(item) => item.id}
+            ref={listRef}
+            renderItem={({ item }) => (
+              <MessageBubble
+                canDelete={chatSource === 'activity' && item.senderId === userId && !item.deleted}
+                isMine={item.senderId === userId}
+                message={item}
+                onLongPress={() => openMessageActions(item)}
+              />
+            )}
+            showsVerticalScrollIndicator={false}
+          />
+
+          <View style={[styles.composer, composerSafeStyle]}>
+            <TextInput
+              multiline
+              onChangeText={setText}
+              placeholder="Escribe un mensaje..."
+              placeholderTextColor="#718178"
+              selectionColor="#006A32"
+              style={styles.input}
+              textAlignVertical="top"
+              value={text}
+            />
+            <Pressable
+              accessibilityLabel="Enviar mensaje"
+              accessibilityRole="button"
+              disabled={!canSend}
+              onPress={sendMessage}
+              style={({ pressed }) => [styles.sendHitArea, pressed && canSend && styles.sendButtonPressed]}
+            >
+              <View style={[styles.sendButton, hasDraftMessage ? styles.sendButtonActive : styles.sendButtonDisabled]}>
+                {isSending ? (
+                  <ActivityIndicator color="#FFFFFF" size="small" />
+                ) : (
+                  <Send color={hasDraftMessage ? '#FFFFFF' : '#6F8E7E'} size={22} strokeWidth={2.8} />
+                )}
+              </View>
+            </Pressable>
+          </View>
         </View>
       </KeyboardAvoidingView>
     </SafeAreaView>
@@ -438,6 +442,14 @@ const styles = StyleSheet.create({
   },
   keyboardView: {
     flex: 1,
+  },
+  chatContainer: {
+    flex: 1,
+  },
+  webChatContainer: {
+    alignSelf: 'center',
+    maxWidth: 900,
+    width: '100%',
   },
   topBar: {
     alignItems: 'center',

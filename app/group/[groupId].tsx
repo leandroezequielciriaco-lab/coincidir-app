@@ -757,17 +757,18 @@ export default function GroupDetailScreen() {
   return (
     <SafeAreaView edges={['top']} style={styles.safeArea}>
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-        <View style={styles.topBar}>
-          <PressScale accessibilityLabel="Volver" accessibilityRole="button" onPress={safeBack} style={styles.iconButton} scaleTo={0.94}>
-            <ArrowLeft color="#063C31" size={26} strokeWidth={2.4} />
-          </PressScale>
-          <Text style={styles.headerTitle}>Detalle de grupo</Text>
-          <View style={styles.iconButton} />
-        </View>
+        <View style={Platform.OS === 'web' ? styles.webGroupContainer : undefined}>
+          <View style={styles.topBar}>
+            <PressScale accessibilityLabel="Volver" accessibilityRole="button" onPress={safeBack} style={styles.iconButton} scaleTo={0.94}>
+              <ArrowLeft color="#063C31" size={26} strokeWidth={2.4} />
+            </PressScale>
+            <Text style={styles.headerTitle}>Detalle de grupo</Text>
+            <View style={styles.iconButton} />
+          </View>
 
-        <Image source={heroSource} style={styles.heroImage} />
+          <Image source={heroSource} style={styles.heroImage} />
 
-        <View style={styles.content}>
+          <View style={styles.content}>
           <View style={styles.titleRow}>
             <GroupAvatar groupName={detail.title} imageUrl={detail.photoUrl} size={66} />
             <View style={styles.titleCopy}>
@@ -1024,6 +1025,7 @@ export default function GroupDetailScreen() {
             )}
           </View>
         </View>
+        </View>
       </ScrollView>
     </SafeAreaView>
   )
@@ -1067,6 +1069,11 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     paddingBottom: 34,
+  },
+  webGroupContainer: {
+    alignSelf: 'center',
+    maxWidth: 950,
+    width: '100%',
   },
   topBar: {
     alignItems: 'center',
