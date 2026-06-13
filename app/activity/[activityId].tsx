@@ -91,6 +91,34 @@ function readNumber(value: unknown, fallback = 0) {
   return typeof value === 'number' && Number.isFinite(value) ? value : fallback
 }
 
+function getErrorMessage(error: unknown) {
+  if (typeof error === 'object' && error) {
+    const code = 'code' in error ? String((error as { code?: unknown }).code ?? '') : ''
+    const message = 'message' in error ? String((error as { message?: unknown }).message ?? '') : ''
+    return [code, message].filter(Boolean).join(' - ') || 'Error desconocido'
+  }
+
+  return typeof error === 'string' && error.trim() ? error : 'Error desconocido'
+}
+
+function showActivityDeleteError(title: string, message: string) {
+  if (Platform.OS === 'web' && typeof window !== 'undefined') {
+    window.alert(`${title}\n\n${message}`)
+    return
+  }
+
+  Alert.alert(title, message)
+}
+
+function showActivityCancelError(title: string, message: string) {
+  if (Platform.OS === 'web' && typeof window !== 'undefined') {
+    window.alert(`${title}\n\n${message}`)
+    return
+  }
+
+  Alert.alert(title, message)
+}
+
 function normalize(value: unknown) {
   return readString(value)
     .normalize('NFD')
@@ -328,6 +356,7 @@ function getCreatorId(data: ActivityData) {
     || readString(data.creatorId)
     || readString(data.ownerId)
     || readString(data.userId)
+    || readString(data.createdById)
 }
 
 function getLocationDisplayName(data: ActivityData) {
@@ -984,6 +1013,11 @@ export default function ActivityDetailScreen() {
   const cancelActivityNow = async () => {
     if (!activityId || !currentUserId || isCancellingActivity) return
 
+    console.log('[WEB CANCEL ACTIVITY START]', {
+      activityId,
+      currentUserId,
+      platform: Platform.OS,
+    })
     setIsCancellingActivity(true)
     try {
       const { db } = getFirebaseServices()
@@ -991,12 +1025,39 @@ export default function ActivityDetailScreen() {
       const snapshot = await getDoc(targetRef)
 
       if (!snapshot.exists()) {
-        Alert.alert('Actividad no disponible', 'No encontramos esta actividad para cancelarla.')
+        const message = 'No encontramos esta actividad para cancelarla.'
+        console.warn('[WEB CANCEL ACTIVITY ERROR]', {
+          activityId,
+          currentUserId,
+          message,
+          platform: Platform.OS,
+        })
+        showActivityCancelError('Actividad no disponible', message)
         return
       }
 
       const latestActivity = snapshot.data() as ActivityData
       if (getCreatorId(latestActivity) !== currentUserId) {
+        const latestCreatorId = getCreatorId(latestActivity)
+        const ownerDetails = {
+          createdBy: readString(latestActivity.createdBy),
+          creatorId: readString(latestActivity.creatorId),
+          ownerId: readString(latestActivity.ownerId),
+          userId: readString(latestActivity.userId),
+        }
+        const message = `Solo quien organiza la actividad puede cancelarla. Usuario actual: ${currentUserId}. Owner detectado: ${latestCreatorId || 'sin owner'}.`
+        console.warn('[WEB CANCEL ACTIVITY ERROR]', {
+          activityId,
+          currentUserId,
+          detectedOwnerId: latestCreatorId,
+          ownerDetails,
+          platform: Platform.OS,
+          reason: 'owner_mismatch',
+        })
+        if (Platform.OS === 'web') {
+          showActivityCancelError('No podes cancelar esta actividad', message)
+          return
+        }
         Alert.alert('No podés cancelar esta actividad', 'Solo quien organiza la actividad puede cancelarla.')
         return
       }
@@ -1011,6 +1072,11 @@ export default function ActivityDetailScreen() {
         cancelledAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
       })
+      console.log('[WEB CANCEL ACTIVITY SUCCESS]', {
+        activityId,
+        currentUserId,
+        platform: Platform.OS,
+      })
       notifyActivityCancelled({
         activity: latestActivity,
         activityId,
@@ -1020,7 +1086,18 @@ export default function ActivityDetailScreen() {
         if (__DEV__) console.warn('activity-cancelled-notification-create-error', error)
       })
       Alert.alert('Actividad cancelada', 'La actividad quedó cancelada, pero no se borró.')
-    } catch {
+    } catch (error) {
+      const message = getErrorMessage(error)
+      console.error('[WEB CANCEL ACTIVITY ERROR]', {
+        activityId,
+        currentUserId,
+        error: message,
+        platform: Platform.OS,
+      })
+      if (Platform.OS === 'web') {
+        showActivityCancelError('No pudimos cancelar', message)
+        return
+      }
       Alert.alert('No pudimos cancelar', 'Intentá nuevamente en unos segundos.')
     } finally {
       setIsCancellingActivity(false)
@@ -1030,12 +1107,35 @@ export default function ActivityDetailScreen() {
   const confirmCancelActivity = () => {
     if (!isOrganizer || isCancellingActivity) return
 
+    console.log('[WEB CANCEL ACTIVITY PRESS]', {
+      activityId,
+      currentUserId,
+      creatorId,
+      platform: Platform.OS,
+    })
+
     if (detail.isCancelled) {
       Alert.alert('Actividad ya cancelada', 'Esta actividad ya figura como cancelada.')
       return
     }
 
     const hasPeople = detail.interestedCount > 0 || detail.participantCount > 0
+    const message = hasPeople
+      ? 'Esta actividad tiene personas interesadas, participantes o confirmadas. Si la cancelas, quedara marcada como cancelada y ya no se podran sumar ni gestionar invitaciones, pero no se borrara.'
+      : 'La actividad quedara marcada como cancelada y ya no se podran sumar personas, pero no se borrara.'
+
+    if (Platform.OS === 'web' && typeof window !== 'undefined') {
+      const confirmed = window.confirm(`Cancelar actividad\n\n${message}`)
+      console.log('[WEB CANCEL ACTIVITY CONFIRM]', {
+        activityId,
+        confirmed,
+        currentUserId,
+        platform: Platform.OS,
+      })
+      if (confirmed) void cancelActivityNow()
+      return
+    }
+
     Alert.alert(
       'Cancelar actividad',
       hasPeople
@@ -1057,6 +1157,11 @@ export default function ActivityDetailScreen() {
   const deleteActivityNow = async () => {
     if (!activityId || !currentUserId || isDeletingActivity) return
 
+    console.log('[WEB DELETE ACTIVITY START]', {
+      activityId,
+      currentUserId,
+      platform: Platform.OS,
+    })
     setIsDeletingActivity(true)
     try {
       const { db } = getFirebaseServices()
@@ -1064,19 +1169,64 @@ export default function ActivityDetailScreen() {
       const snapshot = await getDoc(targetRef)
 
       if (!snapshot.exists()) {
-        Alert.alert('Actividad no disponible', 'No encontramos esta actividad para eliminarla.')
+        const message = 'No encontramos esta actividad para eliminarla.'
+        console.warn('[WEB DELETE ACTIVITY ERROR]', {
+          activityId,
+          currentUserId,
+          message,
+          platform: Platform.OS,
+        })
+        showActivityDeleteError('Actividad no disponible', message)
         return
       }
 
       const latestActivity = snapshot.data() as ActivityData
-      if (getCreatorId(latestActivity) !== currentUserId) {
+      const latestCreatorId = getCreatorId(latestActivity)
+      if (latestCreatorId !== currentUserId) {
+        const ownerDetails = {
+          createdBy: readString(latestActivity.createdBy),
+          createdById: readString(latestActivity.createdById),
+          creatorId: readString(latestActivity.creatorId),
+          organizerId: readString(latestActivity.organizerId),
+          ownerId: readString(latestActivity.ownerId),
+          userId: readString(latestActivity.userId),
+        }
+        const message = `Solo quien organiza la actividad puede eliminarla. Usuario actual: ${currentUserId}. Owner detectado: ${latestCreatorId || 'sin owner'}.`
+        console.warn('[WEB DELETE ACTIVITY ERROR]', {
+          activityId,
+          currentUserId,
+          detectedOwnerId: latestCreatorId,
+          ownerDetails,
+          platform: Platform.OS,
+          reason: 'owner_mismatch',
+        })
+        if (Platform.OS === 'web') {
+          showActivityDeleteError('No podes eliminar esta actividad', message)
+          return
+        }
         Alert.alert('No podés eliminar esta actividad', 'Solo quien organiza la actividad puede eliminarla.')
         return
       }
 
       await deleteDoc(targetRef)
+      console.log('[WEB DELETE ACTIVITY SUCCESS]', {
+        activityId,
+        currentUserId,
+        platform: Platform.OS,
+      })
       router.replace('/home')
-    } catch {
+    } catch (error) {
+      const message = getErrorMessage(error)
+      console.error('[WEB DELETE ACTIVITY ERROR]', {
+        activityId,
+        currentUserId,
+        error: message,
+        platform: Platform.OS,
+      })
+      if (Platform.OS === 'web') {
+        showActivityDeleteError('No pudimos eliminar', message)
+        return
+      }
       Alert.alert('No pudimos eliminar', 'Intentá nuevamente en unos segundos.')
     } finally {
       setIsDeletingActivity(false)
@@ -1086,7 +1236,29 @@ export default function ActivityDetailScreen() {
   const confirmDeleteActivity = () => {
     if (!isOrganizer || isDeletingActivity) return
 
+    console.log('[WEB DELETE ACTIVITY PRESS]', {
+      activityId,
+      currentUserId,
+      creatorId,
+      platform: Platform.OS,
+    })
     const hasPeople = detail.interestedCount > 0 || detail.participantCount > 0
+    const message = hasPeople
+      ? 'Esta actividad tiene personas interesadas o confirmadas. Si la eliminas, dejara de estar disponible para todos. Esta accion no se puede deshacer.'
+      : 'Esta accion no se puede deshacer.'
+
+    if (Platform.OS === 'web' && typeof window !== 'undefined') {
+      const confirmed = window.confirm(`Eliminar actividad\n\n${message}`)
+      console.log('[WEB DELETE ACTIVITY CONFIRM]', {
+        activityId,
+        confirmed,
+        currentUserId,
+        platform: Platform.OS,
+      })
+      if (confirmed) void deleteActivityNow()
+      return
+    }
+
     Alert.alert(
       'Eliminar actividad',
       hasPeople

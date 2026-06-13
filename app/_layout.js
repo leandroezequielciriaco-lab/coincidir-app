@@ -8,7 +8,7 @@ import { getFirebaseServices } from '../firebaseConfig'
 import { AuthContext } from '../utils/authContext'
 import { consumePendingExternalReturnRoute } from '../utils/externalReturnRoute'
 import { getJsInstanceId } from '../utils/jsInstance'
-import { reloadAuthUser } from '../utils/authParticipation'
+import { canParticipate, isGoogleUser, reloadAuthUser } from '../utils/authParticipation'
 
 const PUBLIC_ROUTES = new Set([
   '/',
@@ -18,7 +18,42 @@ const PUBLIC_ROUTES = new Set([
   '/login',
   '/onboarding',
   '/register',
+  '/verify-email',
 ])
+
+const EMAIL_VERIFICATION_BLOCKED_EXACT_ROUTES = new Set([
+  '/(tabs)',
+  '/(tabs)/crear',
+  '/(tabs)/explorar',
+  '/(tabs)/home',
+  '/(tabs)/mensajes',
+  '/(tabs)/perfil',
+  '/crear',
+  '/explorar',
+  '/home',
+  '/mensajes',
+  '/notificaciones',
+  '/perfil',
+])
+
+const EMAIL_VERIFICATION_BLOCKED_PREFIXES = [
+  '/activity/',
+  '/chat/',
+  '/group/',
+]
+
+function requiresEmailVerification(user) {
+  if (!user) return false
+  if (isGoogleUser(user)) return false
+
+  const usesPasswordProvider = user.providerData?.some((provider) => provider.providerId === 'password')
+  return Boolean(usesPasswordProvider && !canParticipate(user))
+}
+
+function isEmailVerificationBlockedRoute(pathname) {
+  if (EMAIL_VERIFICATION_BLOCKED_EXACT_ROUTES.has(pathname)) return true
+  return EMAIL_VERIFICATION_BLOCKED_PREFIXES.some((prefix) => pathname.startsWith(prefix))
+}
 
 export default function RootLayout() {
   const pathname = usePathname()
@@ -90,12 +125,16 @@ export default function RootLayout() {
 
     const authLoading = !authState.checked
     const isPublicRoute = PUBLIC_ROUTES.has(pathname)
+    const needsEmailVerification = requiresEmailVerification(authState.user)
+    const isVerificationBlockedRoute = isEmailVerificationBlockedRoute(pathname)
 
     console.log('[ROUTE GUARD DECISION]', {
       pathname,
       authLoading,
       userId: authState.user?.uid ?? null,
       isPublicRoute,
+      needsEmailVerification,
+      isVerificationBlockedRoute,
     })
 
     if (authLoading) {
@@ -104,6 +143,35 @@ export default function RootLayout() {
     }
 
     if (authState.user) {
+      if (needsEmailVerification) {
+        if (isVerificationBlockedRoute) {
+          console.log('[VERIFY EMAIL GUARD]', {
+            from: pathname,
+            to: '/verify-email',
+            userId: authState.user.uid,
+          })
+          router.replace('/verify-email')
+          return
+        }
+
+        console.log('[ROUTE GUARD KEEP CURRENT]', {
+          path: pathname,
+          reason: 'authenticated_needs_email_verification',
+        })
+        return
+      }
+
+      if (pathname === '/verify-email') {
+        console.log('[VERIFY EMAIL GUARD]', {
+          from: pathname,
+          to: '/home',
+          reason: 'verified_or_google',
+          userId: authState.user.uid,
+        })
+        router.replace('/home')
+        return
+      }
+
       if (!externalRouteRestoreAttemptedRef.current) {
         externalRouteRestoreAttemptedRef.current = true
         consumePendingExternalReturnRoute()
