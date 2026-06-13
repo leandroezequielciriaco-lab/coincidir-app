@@ -2221,7 +2221,7 @@ export default function CrearScreen() {
         </Pressable>
         <Modal animationType="slide" visible={isLocationPickerVisible} onRequestClose={() => setIsLocationPickerVisible(false)}>
           <SafeAreaView edges={['top', 'bottom']} style={styles.locationPickerScreen}>
-            <View style={styles.locationPickerHeader}>
+            <View style={[styles.locationPickerHeader, Platform.OS === 'web' && styles.webLocationPickerColumn]}>
               <Pressable
                 accessibilityLabel="Cerrar selector de ubicación"
                 accessibilityRole="button"
@@ -2278,7 +2278,11 @@ export default function CrearScreen() {
             </View>
             ) : null}
 
-            <View style={[styles.locationPickerFooter, { paddingBottom: Math.max(insets.bottom + 16, 24) }]}>
+            <View style={[
+              styles.locationPickerFooter,
+              Platform.OS === 'web' && styles.webLocationPickerColumn,
+              { paddingBottom: Math.max(insets.bottom + 16, 24) },
+            ]}>
               {Platform.OS === 'web' ? (
                 <View style={styles.locationWebAddressBlock}>
                   <Text style={styles.locationWebAddressLabel}>Dirección o punto de encuentro</Text>
@@ -4252,6 +4256,11 @@ const styles = StyleSheet.create({
   locationPickerScreen: {
     backgroundColor: '#FCFAF3',
     flex: 1,
+  },
+  webLocationPickerColumn: {
+    alignSelf: 'center',
+    maxWidth: 720,
+    width: '100%',
   },
   locationPickerHeader: {
     alignItems: 'center',

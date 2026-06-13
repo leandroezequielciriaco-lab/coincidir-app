@@ -1,6 +1,6 @@
 import { useRouter } from 'expo-router'
 import { ChevronLeft, FileText } from 'lucide-react-native'
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
+import { Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 
 import {
@@ -63,6 +63,15 @@ const styles = StyleSheet.create({
   content: {
     paddingBottom: 36,
     paddingHorizontal: 20,
+    ...Platform.select({
+      web: {
+        alignSelf: 'center',
+        maxWidth: 860,
+        paddingHorizontal: 24,
+        width: '100%',
+      },
+      default: {},
+    }),
   },
   header: {
     alignItems: 'center',

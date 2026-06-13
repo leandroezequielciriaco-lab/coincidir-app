@@ -2462,6 +2462,15 @@ const styles = StyleSheet.create({
     paddingBottom: 44,
     paddingHorizontal: 20,
     paddingTop: 10,
+    ...Platform.select({
+      web: {
+        alignSelf: 'center',
+        maxWidth: 760,
+        paddingHorizontal: 24,
+        width: '100%',
+      },
+      default: {},
+    }),
   },
   editHeader: {
     alignItems: 'center',
@@ -2497,6 +2506,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 24,
     paddingTop: 4,
+    ...Platform.select({
+      web: {
+        marginBottom: 20,
+      },
+      default: {},
+    }),
   },
   editAvatarStage: {
     alignItems: 'center',
@@ -2505,6 +2520,13 @@ const styles = StyleSheet.create({
     marginBottom: 10,
     position: 'relative',
     width: 132,
+    ...Platform.select({
+      web: {
+        height: 112,
+        width: 112,
+      },
+      default: {},
+    }),
   },
   editAvatar: {
     alignItems: 'center',
@@ -2523,6 +2545,13 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.12,
     shadowRadius: 20,
     elevation: 4,
+    ...Platform.select({
+      web: {
+        height: 104,
+        width: 104,
+      },
+      default: {},
+    }),
   },
   editAvatarPressed: {
     opacity: 0.9,

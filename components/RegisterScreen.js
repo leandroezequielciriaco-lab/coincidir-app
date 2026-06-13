@@ -329,6 +329,20 @@ export default function RegisterScreen() {
     [width],
   )
 
+  const handleBack = () => {
+    if (typeof router.canGoBack === 'function' && router.canGoBack()) {
+      router.back()
+      return
+    }
+
+    if (isWeb) {
+      router.replace('/login')
+      return
+    }
+
+    router.back()
+  }
+
   const updateField = (field) => (value) => {
     setError('')
     setForm((current) => ({ ...current, [field]: value }))
@@ -475,7 +489,7 @@ export default function RegisterScreen() {
             accessibilityRole="button"
             accessibilityLabel="Volver"
             hitSlop={12}
-            onPress={() => router.back()}
+            onPress={handleBack}
             style={styles.backButton}
           >
             <Text style={styles.backIcon}>←</Text>

@@ -13,6 +13,13 @@ export const styles = StyleSheet.create({
     minHeight: '100%',
     overflow: 'hidden',
     paddingBottom: 34,
+    ...Platform.select({
+      web: {
+        alignItems: 'center',
+        width: '100%',
+      },
+      default: {},
+    }),
   },
   content: {
     width: '100%',
@@ -21,6 +28,14 @@ export const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: 30,
     paddingTop: 74,
+    ...Platform.select({
+      web: {
+        maxWidth: 480,
+        paddingHorizontal: 24,
+        paddingTop: 54,
+      },
+      default: {},
+    }),
   },
   backButton: {
     position: 'absolute',
@@ -47,6 +62,12 @@ export const styles = StyleSheet.create({
     borderRadius: 280,
     backgroundColor: 'rgba(222, 238, 217, 0.62)',
     transform: [{ rotate: '-15deg' }],
+    ...Platform.select({
+      web: {
+        display: 'none',
+      },
+      default: {},
+    }),
   },
   backgroundArc: {
     position: 'absolute',
@@ -59,10 +80,22 @@ export const styles = StyleSheet.create({
     borderTopLeftRadius: 360,
     borderTopRightRadius: 360,
     transform: [{ rotate: '-7deg' }],
+    ...Platform.select({
+      web: {
+        display: 'none',
+      },
+      default: {},
+    }),
   },
   header: {
     alignItems: 'center',
     marginTop: 58,
+    ...Platform.select({
+      web: {
+        marginTop: 42,
+      },
+      default: {},
+    }),
   },
   title: {
     color: '#123F38',
@@ -83,6 +116,12 @@ export const styles = StyleSheet.create({
     width: '100%',
     gap: 16,
     marginTop: 78,
+    ...Platform.select({
+      web: {
+        marginTop: 44,
+      },
+      default: {},
+    }),
   },
   inputShell: {
     minHeight: 58,

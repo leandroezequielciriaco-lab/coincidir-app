@@ -332,6 +332,20 @@ export default function LoginScreen() {
     Alert.alert('Disponible próximamente')
   }
 
+  const handleBack = () => {
+    if (Platform.OS === 'web') {
+      router.replace('/onboarding')
+      return
+    }
+
+    if (typeof router.canGoBack === 'function' && router.canGoBack()) {
+      router.back()
+      return
+    }
+
+    router.replace('/onboarding')
+  }
+
   return (
     <View style={styles.screen}>
       <KeyboardAvoidingView
@@ -353,7 +367,7 @@ export default function LoginScreen() {
           <Pressable
             accessibilityLabel="Volver"
             accessibilityRole="button"
-            onPress={() => router.back()}
+            onPress={handleBack}
             style={styles.backHitArea}
           >
             <ArrowLeft color="#0E5A44" size={33} strokeWidth={2.2} />

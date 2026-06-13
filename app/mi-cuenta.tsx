@@ -728,11 +728,29 @@ const styles = StyleSheet.create({
     paddingBottom: 34,
     paddingHorizontal: 20,
     paddingTop: 14,
+    ...Platform.select({
+      web: {
+        alignSelf: 'center',
+        maxWidth: 760,
+        paddingHorizontal: 24,
+        width: '100%',
+      },
+      default: {},
+    }),
   },
   editContent: {
     paddingBottom: 34,
     paddingHorizontal: 20,
     paddingTop: 14,
+    ...Platform.select({
+      web: {
+        alignSelf: 'center',
+        maxWidth: 720,
+        paddingHorizontal: 24,
+        width: '100%',
+      },
+      default: {},
+    }),
   },
   header: {
     alignItems: 'center',
