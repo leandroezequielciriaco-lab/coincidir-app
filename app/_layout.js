@@ -9,6 +9,7 @@ import { AuthContext } from '../utils/authContext'
 import { consumePendingExternalReturnRoute } from '../utils/externalReturnRoute'
 import { getJsInstanceId } from '../utils/jsInstance'
 import { canParticipate, isGoogleUser, reloadAuthUser } from '../utils/authParticipation'
+import { checkWebAppVersion } from '../utils/webVersion'
 
 const PUBLIC_ROUTES = new Set([
   '/',
@@ -66,6 +67,7 @@ export default function RootLayout() {
 
   useEffect(() => {
     console.log('[ROOT MOUNT]', { instanceId })
+    checkWebAppVersion()
 
     return () => {
       console.log('[ROOT UNMOUNT]', { instanceId })

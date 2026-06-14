@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
-import type { ReactNode } from 'react'
+import { Component, useCallback, useEffect, useMemo, useState } from 'react'
+import type { ErrorInfo, ReactNode } from 'react'
 import {
   ActivityIndicator,
   Alert,
@@ -72,6 +72,7 @@ import { uploadGroupPhoto } from '../../lib/groupPhotos'
 import { notifyActivityUpdated } from '../../lib/notifications'
 import { requireVerifiedParticipation } from '../../utils/authParticipation'
 import { formatGroupMemberCount, getGroupMemberCount } from '../../utils/groupMembership'
+import { clearCreateActivityTemporaryState } from '../../utils/webVersion'
 
 type PickerMode = 'category' | 'subcategory' | 'date' | 'time' | 'currency' | null
 type CreateStep = 1 | 2 | 3 | 4 | 5
@@ -442,6 +443,14 @@ function mergeAvailableGroups(...groupLists: AvailableGroup[][]) {
 }
 
 export default function CrearScreen() {
+  return (
+    <CrearScreenErrorBoundary>
+      <CrearScreenContent />
+    </CrearScreenErrorBoundary>
+  )
+}
+
+function CrearScreenContent() {
   const router = useRouter()
   const { activityId, groupContext, groupId: preselectedGroupId, groupName: preselectedGroupName, kind, mode } = useLocalSearchParams<{ activityId?: string; groupContext?: string; groupId?: string; groupName?: string; kind?: string; mode?: string }>()
   const insets = useSafeAreaInsets()
@@ -2677,6 +2686,64 @@ export default function CrearScreen() {
   )
 }
 
+type CrearScreenErrorBoundaryProps = {
+  children: ReactNode
+}
+
+type CrearScreenErrorBoundaryState = {
+  hasError: boolean
+  resetKey: number
+}
+
+class CrearScreenErrorBoundary extends Component<CrearScreenErrorBoundaryProps, CrearScreenErrorBoundaryState> {
+  state: CrearScreenErrorBoundaryState = {
+    hasError: false,
+    resetKey: 0,
+  }
+
+  static getDerivedStateFromError() {
+    return { hasError: true }
+  }
+
+  componentDidCatch(error: Error, errorInfo: ErrorInfo) {
+    console.warn('[CREATE RENDER ERROR]', {
+      componentStack: errorInfo.componentStack,
+      errorMessage: error.message,
+    })
+  }
+
+  retry = () => {
+    clearCreateActivityTemporaryState()
+
+    if (Platform.OS === 'web' && typeof window !== 'undefined') {
+      window.location.replace('/crear')
+      return
+    }
+
+    this.setState((state) => ({
+      hasError: false,
+      resetKey: state.resetKey + 1,
+    }))
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <SafeAreaView edges={['top', 'left', 'right']} style={styles.screen}>
+          <View style={styles.createErrorFallback}>
+            <Text style={styles.createErrorFallbackText}>No pudimos cargar el formulario. Tocá Reintentar.</Text>
+            <Pressable accessibilityRole="button" onPress={this.retry} style={styles.createErrorRetryButton}>
+              <Text style={styles.createErrorRetryText}>Reintentar</Text>
+            </Pressable>
+          </View>
+        </SafeAreaView>
+      )
+    }
+
+    return <View key={this.state.resetKey} style={styles.errorBoundaryContent}>{this.props.children}</View>
+  }
+}
+
 type AdditionalSectionProps = {
   children: ReactNode
   Icon: LucideIcon
@@ -2815,6 +2882,38 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     flex: 1,
     justifyContent: 'center',
+  },
+  errorBoundaryContent: {
+    flex: 1,
+  },
+  createErrorFallback: {
+    alignItems: 'center',
+    flex: 1,
+    justifyContent: 'center',
+    paddingHorizontal: 24,
+  },
+  createErrorFallbackText: {
+    color: '#123F38',
+    fontSize: 17,
+    fontWeight: '800',
+    lineHeight: 24,
+    marginBottom: 18,
+    textAlign: 'center',
+  },
+  createErrorRetryButton: {
+    alignItems: 'center',
+    backgroundColor: '#0E5A44',
+    borderRadius: 14,
+    justifyContent: 'center',
+    minHeight: 50,
+    minWidth: 150,
+    paddingHorizontal: 18,
+  },
+  createErrorRetryText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '900',
+    lineHeight: 20,
   },
   createScrollContent: {
     flexGrow: 1,
