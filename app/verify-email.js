@@ -17,7 +17,6 @@ import { SafeAreaView } from 'react-native-safe-area-context'
 import { getFirebaseServices } from '../firebaseConfig'
 import CoincidirLogo from '../components/CoincidirLogo'
 import {
-  canParticipate,
   getEmailVerificationErrorMessage,
   reloadAuthUser,
   resendEmailVerification,
@@ -28,11 +27,13 @@ export default function VerifyEmailScreen() {
   const [isReloading, setIsReloading] = useState(false)
   const [isResending, setIsResending] = useState(false)
   const [isSigningOut, setIsSigningOut] = useState(false)
+  const [statusMessage, setStatusMessage] = useState('')
 
   const handleResend = async () => {
     if (isResending) return
 
     setIsResending(true)
+    setStatusMessage('')
     try {
       const { auth } = getFirebaseServices()
       console.log('[VERIFY EMAIL RESEND]', {
@@ -40,8 +41,11 @@ export default function VerifyEmailScreen() {
         email: auth.currentUser?.email ?? null,
       })
       await resendEmailVerification(auth)
+      setStatusMessage('Te enviamos un nuevo correo de verificación. Revisá spam o promociones.')
     } catch (error) {
-      Alert.alert('No pudimos reenviar el email', getEmailVerificationErrorMessage(error))
+      const message = getEmailVerificationErrorMessage(error)
+      setStatusMessage(message)
+      Alert.alert('No pudimos reenviar el email', message)
     } finally {
       setIsResending(false)
     }
@@ -51,22 +55,30 @@ export default function VerifyEmailScreen() {
     if (isReloading) return
 
     setIsReloading(true)
+    setStatusMessage('')
     try {
       const { auth } = getFirebaseServices()
+      const user = auth.currentUser
       console.log('[VERIFY EMAIL RELOAD]', {
-        userId: auth.currentUser?.uid ?? null,
-        email: auth.currentUser?.email ?? null,
+        userId: user?.uid ?? null,
+        email: user?.email ?? null,
       })
-      await reloadAuthUser(auth.currentUser)
 
-      if (canParticipate(auth.currentUser)) {
+      if (!user) {
+        setStatusMessage('Necesitamos que vuelvas a iniciar sesión para confirmar tu email.')
+        return
+      }
+
+      await reloadAuthUser(user)
+
+      if (user.emailVerified) {
         router.replace('/home')
         return
       }
 
-      Alert.alert('Email pendiente', 'Todav\u00eda no vemos tu email verificado. Revis\u00e1 tu casilla y prob\u00e1 de nuevo.')
+      setStatusMessage('Todavía no pudimos confirmar la verificación. Revisá tu correo o esperá unos segundos y probá de nuevo.')
     } catch {
-      Alert.alert('No pudimos actualizar tu estado', 'Prob\u00e1 nuevamente en unos segundos.')
+      setStatusMessage('No pudimos actualizar tu estado. Probá nuevamente en unos segundos.')
     } finally {
       setIsReloading(false)
     }
@@ -81,7 +93,7 @@ export default function VerifyEmailScreen() {
       await signOut(auth)
       router.replace('/login')
     } catch {
-      Alert.alert('No pudimos cerrar sesi\u00f3n', 'Intent\u00e1 nuevamente en unos segundos.')
+      Alert.alert('No pudimos cerrar sesión', 'Intentá nuevamente en unos segundos.')
     } finally {
       setIsSigningOut(false)
     }
@@ -101,30 +113,32 @@ export default function VerifyEmailScreen() {
             <MailCheck color="#155C47" size={38} strokeWidth={2.2} />
           </View>
 
-          <Text style={styles.title}>Verific\u00e1 tu email para usar COINCIDIR</Text>
+          <Text style={styles.title}>Verificá tu email para usar COINCIDIR</Text>
           <Text style={styles.subtitle}>
-            Te enviamos un correo de verificaci\u00f3n. Revis\u00e1 tu casilla y luego volv\u00e9 a entrar.
+            Te enviamos un correo de verificación. Revisá tu casilla y luego volvé a entrar.
           </Text>
+
+          {statusMessage ? <Text style={styles.statusText}>{statusMessage}</Text> : null}
 
           <View style={styles.actions}>
             <VerifyButton
               disabled={anyLoading}
               loading={isResending}
               onPress={handleResend}
-              text="Reenviar email de verificaci\u00f3n"
+              text="Reenviar email de verificación"
             />
             <VerifyButton
               disabled={anyLoading}
               loading={isReloading}
               onPress={handleReload}
-              text="Ya verifiqu\u00e9 mi email"
+              text="Ya verifiqué mi email"
               variant="secondary"
             />
             <VerifyButton
               disabled={anyLoading}
               loading={isSigningOut}
               onPress={handleSignOut}
-              text="Cerrar sesi\u00f3n"
+              text="Cerrar sesión"
               variant="ghost"
             />
           </View>
@@ -237,6 +251,15 @@ const styles = StyleSheet.create({
     letterSpacing: 0,
     lineHeight: 24,
     marginTop: 12,
+    textAlign: 'center',
+  },
+  statusText: {
+    color: '#155C47',
+    fontSize: 14,
+    fontWeight: '800',
+    letterSpacing: 0,
+    lineHeight: 20,
+    marginTop: 16,
     textAlign: 'center',
   },
   actions: {

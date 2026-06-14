@@ -15,7 +15,6 @@ import { useRouter } from 'expo-router'
 import {
   createUserWithEmailAndPassword,
   GoogleAuthProvider,
-  sendEmailVerification,
   signInWithCredential,
   updateProfile,
 } from 'firebase/auth'
@@ -37,6 +36,7 @@ import GoogleLogo from './GoogleLogo'
 import { styles } from './RegisterScreen.styles'
 import { getFirebaseServices } from '../firebaseConfig'
 import { getLegalAcceptanceFields } from '../constants/legal'
+import { sendLocalizedEmailVerification } from '../utils/authParticipation'
 
 const googleWebClientId = process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID
 const googleIosClientId = process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID
@@ -377,7 +377,7 @@ export default function RegisterScreen() {
       const fullName = form.fullName.trim()
 
       await saveRegistrationProfile(user, form, fullName)
-      await sendEmailVerification(user)
+      await sendLocalizedEmailVerification(auth, user)
 
       Alert.alert('Verificá tu email', REGISTRATION_EMAIL_VERIFICATION_MESSAGE, [
         { text: 'OK', onPress: () => router.replace('/home') },

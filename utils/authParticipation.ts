@@ -1,6 +1,6 @@
 import { Alert } from 'react-native'
 import type { Auth, User } from 'firebase/auth'
-import { sendEmailVerification } from 'firebase/auth'
+import { getAuth, reload, sendEmailVerification } from 'firebase/auth'
 
 type FirebaseAuthLikeError = {
   code?: string
@@ -15,6 +15,28 @@ export const EMAIL_VERIFICATION_REQUIRED_MESSAGE =
 
 export const EMAIL_VERIFICATION_TOO_MANY_REQUESTS_MESSAGE =
   'Firebase bloqueó temporalmente los reenvíos. Probá de nuevo más tarde.'
+
+export const EMAIL_VERIFICATION_ACTION_CODE_SETTINGS = {
+  handleCodeInApp: false,
+  url: 'https://coincidir.web.app/verify-email',
+}
+
+export function configureEmailVerificationLanguage(auth?: Auth | null) {
+  if (auth) {
+    auth.languageCode = 'es'
+  }
+
+  try {
+    getAuth().languageCode = 'es'
+  } catch {
+    // getAuth can fail before Firebase is initialized; the provided auth is enough.
+  }
+}
+
+export async function sendLocalizedEmailVerification(auth: Auth, user: User) {
+  configureEmailVerificationLanguage(auth)
+  await sendEmailVerification(user, EMAIL_VERIFICATION_ACTION_CODE_SETTINGS)
+}
 
 export function isGoogleUser(user: User | null | undefined) {
   return Boolean(user?.providerData?.some((provider) => provider.providerId === 'google.com'))
@@ -32,7 +54,7 @@ export function canParticipate(user: User | null | undefined) {
 
 export async function reloadAuthUser(user: User | null | undefined) {
   if (!user) return null
-  await user.reload()
+  await reload(user)
   return user
 }
 
@@ -96,7 +118,7 @@ export async function resendEmailVerification(auth: Auth) {
 
   try {
     const targetUser = auth.currentUser ?? user
-    await sendEmailVerification(targetUser)
+    await sendLocalizedEmailVerification(auth, targetUser)
     console.log('[EMAIL VERIFY RESEND SUCCESS]', {
       userId: targetUser.uid,
       email: targetUser.email ?? null,
