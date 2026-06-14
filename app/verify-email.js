@@ -117,6 +117,9 @@ export default function VerifyEmailScreen() {
           <Text style={styles.subtitle}>
             Te enviamos un correo de verificación. Revisá tu casilla y luego volvé a entrar.
           </Text>
+          <Text style={styles.spamHint}>
+            Si no encontrás el correo, revisá la carpeta Spam o Correo no deseado.
+          </Text>
 
           {statusMessage ? <Text style={styles.statusText}>{statusMessage}</Text> : null}
 
@@ -250,6 +253,15 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     letterSpacing: 0,
     lineHeight: 24,
+    marginTop: 12,
+    textAlign: 'center',
+  },
+  spamHint: {
+    color: '#50615A',
+    fontSize: 14,
+    fontWeight: '700',
+    letterSpacing: 0,
+    lineHeight: 20,
     marginTop: 12,
     textAlign: 'center',
   },
