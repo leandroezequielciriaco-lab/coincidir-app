@@ -72,7 +72,7 @@ import { uploadGroupPhoto } from '../../lib/groupPhotos'
 import { notifyActivityUpdated } from '../../lib/notifications'
 import { requireVerifiedParticipation } from '../../utils/authParticipation'
 import { formatGroupMemberCount, getGroupMemberCount } from '../../utils/groupMembership'
-import { clearCreateActivityTemporaryState } from '../../utils/webVersion'
+import { WEB_APP_VERSION, canUseWebStorage, clearCreateActivityTemporaryState, getCreateActivityTemporaryStorageKeys } from '../../utils/webVersion'
 
 type PickerMode = 'category' | 'subcategory' | 'date' | 'time' | 'currency' | null
 type CreateStep = 1 | 2 | 3 | 4 | 5
@@ -102,6 +102,7 @@ type LocationSelection = {
 }
 
 type ActivityData = Record<string, unknown>
+type CreateWebPrecheckState = 'ready' | 'resetting'
 
 type ActivityFormPayload = {
   name: string
@@ -158,6 +159,58 @@ const monthNames = [
   'noviembre',
   'diciembre',
 ]
+
+function getCreateWebPrecheckResetKey() {
+  if (!canUseWebStorage()) return ''
+
+  const pathKey = `${window.location.pathname}${window.location.search}`
+  return `coincidir:createWebPrecheckReset:${WEB_APP_VERSION}:${pathKey}`
+}
+
+function runCreateWebPrecheck(): CreateWebPrecheckState {
+  if (!canUseWebStorage()) return 'ready'
+
+  try {
+    const resetKey = getCreateWebPrecheckResetKey()
+    const alreadyReset = resetKey ? window.sessionStorage.getItem(resetKey) === '1' : true
+    const temporaryKeys = getCreateActivityTemporaryStorageKeys()
+    const existingTemporaryKeys = temporaryKeys.filter((key) => window.localStorage.getItem(key) !== null)
+
+    console.log('[CREATE WEB PRECHECK]', {
+      alreadyReset,
+      existingTemporaryKeys,
+      path: window.location.pathname,
+      search: window.location.search,
+      version: WEB_APP_VERSION,
+    })
+
+    if (!alreadyReset && existingTemporaryKeys.length > 0) {
+      const clearedKeys = clearCreateActivityTemporaryState()
+      if (resetKey) window.sessionStorage.setItem(resetKey, '1')
+
+      console.log('[CREATE WEB PRECHECK RESET]', {
+        clearedKeys,
+        reason: 'temporary-create-state',
+        target: window.location.href,
+      })
+
+      window.location.replace(window.location.href)
+      return 'resetting'
+    }
+
+    console.log('[CREATE WEB PRECHECK OK]', {
+      alreadyReset,
+      existingTemporaryKeys,
+    })
+  } catch (error) {
+    console.warn('[CREATE WEB ERROR DETAIL]', {
+      errorMessage: error instanceof Error ? error.message : String(error),
+      phase: 'precheck',
+    })
+  }
+
+  return 'ready'
+}
 
 function getCategoryIcon(categoryId: CategoryId) {
   if (categoryId === 'outdoor') return Leaf
@@ -443,6 +496,18 @@ function mergeAvailableGroups(...groupLists: AvailableGroup[][]) {
 }
 
 export default function CrearScreen() {
+  const [webPrecheckState] = useState<CreateWebPrecheckState>(runCreateWebPrecheck)
+
+  if (webPrecheckState === 'resetting') {
+    return (
+      <SafeAreaView edges={['top', 'left', 'right']} style={styles.screen}>
+        <View style={styles.createLoadingState}>
+          <ActivityIndicator color="#0E5A44" />
+        </View>
+      </SafeAreaView>
+    )
+  }
+
   return (
     <CrearScreenErrorBoundary>
       <CrearScreenContent />
@@ -2706,9 +2771,10 @@ class CrearScreenErrorBoundary extends Component<CrearScreenErrorBoundaryProps, 
   }
 
   componentDidCatch(error: Error, errorInfo: ErrorInfo) {
-    console.warn('[CREATE RENDER ERROR]', {
+    console.warn('[CREATE WEB ERROR DETAIL]', {
       componentStack: errorInfo.componentStack,
       errorMessage: error.message,
+      phase: 'render',
     })
   }
 
