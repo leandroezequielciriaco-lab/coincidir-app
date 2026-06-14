@@ -185,15 +185,15 @@ const privacyDetails = [
 
 const activityKindDetails = [
   {
-    description: 'La actividad no pertenece a ningún grupo.',
+    description: 'Creá una actividad para que otras personas puedan sumarse.',
     Icon: Sparkles,
-    label: 'Actividad individual',
+    label: 'Actividad grupal',
     value: 'individual' as const,
   },
   {
-    description: 'La actividad pertenece a uno de tus grupos.',
+    description: 'Publicá una actividad para los miembros de un grupo que ya creaste.',
     Icon: UsersRound,
-    label: 'Actividad de grupo',
+    label: 'Actividad de tu grupo',
     value: 'group' as const,
   },
 ]

@@ -1299,6 +1299,7 @@ export default function HomeScreen() {
             <Section
               accent="green"
               data={nearbyMeetups}
+              hideSeeAllOnWeb
               renderItem={({ item }) => (
                 <ActivityCard
                   item={item}
@@ -1375,6 +1376,7 @@ type SectionProps<T> = {
   data: T[]
   emptySubtitle?: string
   emptyTitle?: string
+  hideSeeAllOnWeb?: boolean
   renderItem: ({ item }: { item: T }) => ReactElement
   variant?: 'horizontal' | 'vertical'
 }
@@ -1386,10 +1388,12 @@ function Section<T extends { id: string }>({
   data,
   emptySubtitle,
   emptyTitle,
+  hideSeeAllOnWeb = false,
   renderItem,
   variant = 'horizontal',
 }: SectionProps<T>) {
   const color = accent === 'violet' ? '#39206C' : '#006A32'
+  const showSeeAll = !(hideSeeAllOnWeb && Platform.OS === 'web')
 
   if (data.length === 0 && !emptyTitle) return null
 
@@ -1400,10 +1404,12 @@ function Section<T extends { id: string }>({
           <Text style={[styles.sectionTitle, { color }]}>{title}</Text>
           {subtitle ? <Text style={styles.sectionSubtitle}>{subtitle}</Text> : null}
         </View>
-        <PressScale style={styles.seeAll} scaleTo={0.96}>
-          <Text style={[styles.seeAllText, { color }]}>Ver todo</Text>
-          <ChevronRight color={color} size={21} strokeWidth={2.5} />
-        </PressScale>
+        {showSeeAll ? (
+          <PressScale style={styles.seeAll} scaleTo={0.96}>
+            <Text style={[styles.seeAllText, { color }]}>Ver todo</Text>
+            <ChevronRight color={color} size={21} strokeWidth={2.5} />
+          </PressScale>
+        ) : null}
       </View>
       {data.length === 0 ? (
         <EmptyState subtitle={emptySubtitle} title={emptyTitle ?? ''} />

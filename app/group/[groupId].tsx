@@ -136,6 +136,18 @@ function showGroupRequestFeedback(message: string) {
   Alert.alert(message)
 }
 
+function getErrorMessage(error: unknown) {
+  if (error instanceof Error && error.message) return error.message
+  if (typeof error === 'object' && error) {
+    const data = error as { code?: unknown; message?: unknown }
+    const code = typeof data.code === 'string' ? data.code : ''
+    const message = typeof data.message === 'string' ? data.message : ''
+    return [code, message].filter(Boolean).join(': ') || String(error)
+  }
+
+  return String(error)
+}
+
 export default function GroupDetailScreen() {
   const router = useRouter()
   const { groupId, groupName } = useLocalSearchParams<{ groupId?: string; groupName?: string }>()
@@ -165,6 +177,7 @@ export default function GroupDetailScreen() {
   const [draftGroupPhotoPreviewUri, setDraftGroupPhotoPreviewUri] = useState('')
   const [isRemovingGroupPhoto, setIsRemovingGroupPhoto] = useState(false)
   const [isSavingGroupEdits, setIsSavingGroupEdits] = useState(false)
+  const [deleteGroupError, setDeleteGroupError] = useState('')
 
   useEffect(() => {
     try {
@@ -683,6 +696,10 @@ export default function GroupDetailScreen() {
   const deleteGroupNow = async () => {
     if (!groupId || !userId || isDeletingGroup) return
 
+    if (Platform.OS === 'web') {
+      console.log('[WEB DELETE GROUP START]', { groupId, userId })
+    }
+    setDeleteGroupError('')
     setIsDeletingGroup(true)
     try {
       const { db } = getFirebaseServices()
@@ -690,6 +707,12 @@ export default function GroupDetailScreen() {
       const snapshot = await getDoc(groupRef)
 
       if (!snapshot.exists()) {
+        if (Platform.OS === 'web') {
+          const errorMessage = 'Grupo no disponible: No encontramos este grupo.'
+          console.log('[WEB DELETE GROUP ERROR]', { groupId, userId, error: errorMessage })
+          setDeleteGroupError(errorMessage)
+          return
+        }
         Alert.alert('Grupo no disponible', 'No encontramos este grupo.')
         router.replace('/home')
         return
@@ -708,6 +731,11 @@ export default function GroupDetailScreen() {
       }
 
       if (latestOwnerId !== userId) {
+        if (Platform.OS === 'web') {
+          console.log('[WEB DELETE GROUP ERROR]', { groupId, userId, error: `ownerId=${latestOwnerId || 'sin ownerId'}, currentUser=${userId}` })
+          setDeleteGroupError(`No podés eliminar este grupo: ownerId=${latestOwnerId || 'sin ownerId'}, currentUser=${userId}`)
+          return
+        }
         Alert.alert('No podés eliminar este grupo', 'Solo el organizador puede eliminarlo.')
         return
       }
@@ -725,10 +753,21 @@ export default function GroupDetailScreen() {
 
       await deleteDoc(groupRef)
 
+      if (Platform.OS === 'web') {
+        console.log('[WEB DELETE GROUP SUCCESS]', { groupId, userId })
+        router.canGoBack() ? router.back() : router.replace('/home')
+        return
+      }
       Alert.alert('Grupo eliminado', 'El grupo fue eliminado correctamente.', [
         { text: 'OK', onPress: () => (router.canGoBack() ? router.back() : router.replace('/home')) },
       ])
-    } catch {
+    } catch (error) {
+      const errorMessage = getErrorMessage(error)
+      if (Platform.OS === 'web') {
+        console.log('[WEB DELETE GROUP ERROR]', { groupId, userId, error: errorMessage })
+        setDeleteGroupError(errorMessage)
+        return
+      }
       Alert.alert('No pudimos eliminar el grupo', 'Intentá nuevamente en unos segundos.')
     } finally {
       setIsDeletingGroup(false)
@@ -736,7 +775,22 @@ export default function GroupDetailScreen() {
   }
 
   const confirmDeleteGroup = () => {
+    if (Platform.OS === 'web') {
+      console.log('[WEB DELETE GROUP PRESS]', { groupId, userId })
+    }
     if (!isOwner || isDeletingGroup) return
+
+    if (Platform.OS === 'web') {
+      const confirmed = typeof window !== 'undefined'
+        ? window.confirm('¿Eliminar grupo? Esta acción eliminará el grupo y no se puede deshacer.')
+        : false
+
+      if (confirmed) {
+        console.log('[WEB DELETE GROUP CONFIRM]', { groupId, userId })
+        void deleteGroupNow()
+      }
+      return
+    }
 
     Alert.alert(
       '¿Eliminar grupo?',
@@ -815,6 +869,10 @@ export default function GroupDetailScreen() {
                 )}
               </PressScale>
             </View>
+          ) : null}
+
+          {deleteGroupError ? (
+            <Text accessibilityRole="alert" style={styles.deleteGroupError}>{deleteGroupError}</Text>
           ) : null}
 
           {isOwner && isEditingGroup ? (
@@ -1218,6 +1276,14 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '900',
     letterSpacing: 0,
+  },
+  deleteGroupError: {
+    color: '#B42318',
+    fontSize: 13,
+    fontWeight: '800',
+    letterSpacing: 0,
+    lineHeight: 18,
+    marginTop: 10,
   },
   editGroupCard: {
     backgroundColor: '#FAFAF8',
