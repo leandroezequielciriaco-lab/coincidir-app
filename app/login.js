@@ -526,27 +526,29 @@ export default function LoginScreen() {
               </Pressable>
             )}
 
-            <View style={styles.socialRow}>
-              <Pressable
-                accessibilityLabel="Ingresar con Apple"
-                accessibilityRole="button"
-                disabled={isSubmitting || isGoogleSubmitting}
-                onPress={handleComingSoon}
-                style={styles.socialButton}
-              >
-                <FontAwesome5 color="#111111" name="apple" size={28} />
-              </Pressable>
+            {!isWeb ? (
+              <View style={styles.socialRow}>
+                <Pressable
+                  accessibilityLabel="Ingresar con Apple"
+                  accessibilityRole="button"
+                  disabled={isSubmitting || isGoogleSubmitting}
+                  onPress={handleComingSoon}
+                  style={styles.socialButton}
+                >
+                  <FontAwesome5 color="#111111" name="apple" size={28} />
+                </Pressable>
 
-              <Pressable
-                accessibilityLabel="Ingresar con Facebook"
-                accessibilityRole="button"
-                disabled={isSubmitting || isGoogleSubmitting}
-                onPress={handleComingSoon}
-                style={styles.socialButton}
-              >
-                <FontAwesome5 color="#2E68B8" name="facebook-f" size={25} />
-              </Pressable>
-            </View>
+                <Pressable
+                  accessibilityLabel="Ingresar con Facebook"
+                  accessibilityRole="button"
+                  disabled={isSubmitting || isGoogleSubmitting}
+                  onPress={handleComingSoon}
+                  style={styles.socialButton}
+                >
+                  <FontAwesome5 color="#2E68B8" name="facebook-f" size={25} />
+                </Pressable>
+              </View>
+            ) : null}
           </View>
 
           <Pressable

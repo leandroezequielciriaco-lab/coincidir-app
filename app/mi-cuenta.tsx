@@ -82,6 +82,24 @@ const emptyPasswordDraft: PasswordDraft = {
   newPassword: '',
 }
 
+function logWebDeleteAccount(message: string, payload?: Record<string, unknown>) {
+  if (Platform.OS === 'web') {
+    console.log(message, payload ?? {})
+  }
+}
+
+function getAccountErrorMessage(error: unknown) {
+  if (error instanceof Error && error.message) return error.message
+  if (typeof error === 'object' && error) {
+    const data = error as { code?: unknown; message?: unknown }
+    const code = typeof data.code === 'string' ? data.code : ''
+    const message = typeof data.message === 'string' ? data.message : ''
+    return [code, message].filter(Boolean).join(': ') || String(error)
+  }
+
+  return String(error)
+}
+
 function getGoogleSignInModule() {
   try {
     // Loaded lazily so Expo Go can evaluate this route without RNGoogleSignin.
@@ -320,37 +338,46 @@ export default function MiCuentaScreen() {
       const { auth, db } = getFirebaseServices()
       const user = auth.currentUser
       const providerId = getCurrentProviderId()
+      const logPayload = { providerId, uid: user?.uid ?? null }
 
       if (!user) {
+        logWebDeleteAccount('[WEB DELETE ACCOUNT ERROR]', { ...logPayload, error: 'missing-current-user' })
         setDeleteError('Necesitamos que vuelvas a iniciar sesión para eliminar la cuenta.')
         return
       }
 
       if (providerId === 'password') {
         if (!user.email || !deletePassword) {
+          logWebDeleteAccount('[WEB DELETE ACCOUNT ERROR]', { ...logPayload, error: 'missing-password-or-email' })
           setDeleteError('Ingresá tu contraseña actual para confirmar.')
           return
         }
 
+        logWebDeleteAccount('[WEB DELETE ACCOUNT REAUTH START]', logPayload)
         await reauthenticateWithCredential(user, EmailAuthProvider.credential(user.email, deletePassword))
       } else if (providerId === 'google.com') {
         if (!googleWebClientId) {
+          logWebDeleteAccount('[WEB DELETE ACCOUNT ERROR]', { ...logPayload, error: 'missing-google-web-client-id' })
           setDeleteError('Falta configurar Google para confirmar la eliminación.')
           return
         }
 
+        logWebDeleteAccount('[WEB DELETE ACCOUNT REAUTH START]', logPayload)
         const idToken = await getGoogleIdTokenForReauth()
         if (!idToken) {
+          logWebDeleteAccount('[WEB DELETE ACCOUNT ERROR]', { ...logPayload, error: 'missing-google-id-token' })
           setDeleteError('Google no devolvió un token válido. No se eliminó nada.')
           return
         }
 
         await reauthenticateWithCredential(user, GoogleAuthProvider.credential(idToken))
       } else {
+        logWebDeleteAccount('[WEB DELETE ACCOUNT ERROR]', { ...logPayload, error: 'unknown-provider' })
         setDeleteError('No pudimos detectar el método de ingreso de esta cuenta.')
         return
       }
 
+      logWebDeleteAccount('[WEB DELETE ACCOUNT DELETE START]', logPayload)
       await setDoc(doc(db, 'users', user.uid), {
         deletedAt: serverTimestamp(),
         isDeleted: true,
@@ -360,9 +387,11 @@ export default function MiCuentaScreen() {
 
       await deleteUser(user)
       await signOut(auth).catch(() => {})
+      logWebDeleteAccount('[WEB DELETE ACCOUNT SUCCESS]', logPayload)
       router.replace(LOGIN_ROUTE)
     } catch (error) {
       const code = typeof error === 'object' && error && 'code' in error ? String(error.code) : ''
+      logWebDeleteAccount('[WEB DELETE ACCOUNT ERROR]', { code, error: getAccountErrorMessage(error) })
 
       if (code === 'auth/wrong-password' || code === 'auth/invalid-credential' || code === 'auth/invalid-login-credentials') {
         setDeleteError('La reautenticación falló. No se eliminó nada.')
@@ -392,6 +421,19 @@ export default function MiCuentaScreen() {
   }
 
   const confirmDeleteAccount = () => {
+    logWebDeleteAccount('[WEB DELETE ACCOUNT PRESS]', { providerId: deleteProviderId })
+
+    if (Platform.OS === 'web') {
+      const confirmed = typeof window !== 'undefined'
+        ? window.confirm('Eliminar cuenta\n\nEsta acción eliminará tu cuenta y no se puede deshacer.')
+        : false
+
+      if (confirmed) {
+        void deleteAccount()
+      }
+      return
+    }
+
     Alert.alert(
       'Eliminar cuenta',
       'Esta acción eliminará tu cuenta y no se puede deshacer.',

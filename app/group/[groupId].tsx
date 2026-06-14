@@ -403,6 +403,9 @@ export default function GroupDetailScreen() {
   const cancelJoinRequest = async () => {
     if (!groupId || !userId || !group || isOwner || isMember || !hasRequestedJoin || isCancelingJoinRequest) return
 
+    if (Platform.OS === 'web') {
+      console.log('[WEB GROUP REQUEST CANCEL START]', { groupId, userId })
+    }
     setIsCancelingJoinRequest(true)
     try {
       const { db } = getFirebaseServices()
@@ -417,9 +420,17 @@ export default function GroupDetailScreen() {
         requesterId: userId,
         userId: detail.ownerId || undefined,
       })
-      showGroupRequestFeedback('Solicitud cancelada')
-    } catch {
-      Alert.alert('No pudimos cancelar la solicitud', 'Intentá cancelar tu solicitud nuevamente en unos segundos.')
+      if (Platform.OS === 'web') {
+        console.log('[WEB GROUP REQUEST CANCEL SUCCESS]', { groupId, userId })
+      } else {
+        showGroupRequestFeedback('Solicitud cancelada')
+      }
+    } catch (error) {
+      if (Platform.OS === 'web') {
+        console.log('[WEB GROUP REQUEST CANCEL ERROR]', { groupId, userId, error: getErrorMessage(error) })
+      } else {
+        Alert.alert('No pudimos cancelar la solicitud', 'Intentá cancelar tu solicitud nuevamente en unos segundos.')
+      }
     } finally {
       setIsCancelingJoinRequest(false)
     }
@@ -484,7 +495,15 @@ export default function GroupDetailScreen() {
   }
 
   const confirmCancelJoinRequest = () => {
+    if (Platform.OS === 'web') {
+      console.log('[WEB GROUP REQUEST CANCEL PRESS]', { groupId, userId })
+    }
     if (isOwner || isMember || !hasRequestedJoin || isCancelingJoinRequest) return
+
+    if (Platform.OS === 'web') {
+      void cancelJoinRequest()
+      return
+    }
 
     Alert.alert(
       '¿Querés cancelar tu solicitud para unirte a este grupo?',
@@ -976,7 +995,7 @@ export default function GroupDetailScreen() {
                 accessibilityRole="button"
                 disabled={isCancelingJoinRequest}
                 onPress={confirmCancelJoinRequest}
-                style={[styles.cancelRequestButton, isCancelingJoinRequest && styles.primaryButtonDisabled]}
+                style={[styles.cancelRequestButton, styles.webInteractiveButton, isCancelingJoinRequest && styles.primaryButtonDisabled]}
                 scaleTo={0.97}
               >
                 {isCancelingJoinRequest ? <ActivityIndicator color="#B63232" /> : <X color="#B63232" size={20} strokeWidth={2.6} />}
@@ -1486,6 +1505,14 @@ const styles = StyleSheet.create({
     minHeight: 48,
     paddingHorizontal: 16,
   },
+  webInteractiveButton: Platform.select({
+    web: {
+      pointerEvents: 'auto',
+      position: 'relative',
+      zIndex: 20,
+    },
+    default: {},
+  }),
   cancelRequestButtonText: {
     color: '#B63232',
     fontSize: 15,
