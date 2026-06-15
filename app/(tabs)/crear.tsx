@@ -143,13 +143,6 @@ const hasGoogleMapsKey = Boolean(process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY?.tr
 const canUseNativeMap = Platform.OS !== 'web' && (Platform.OS !== 'android' || hasGoogleMapsKey)
 const shouldShowMapConfigNotice = Platform.OS === 'android' && !hasGoogleMapsKey
 const shouldUseWebMapFallback = Platform.OS === 'web'
-const DEBUG_WEB_CREATE_SAFE_MODE = Platform.OS === 'web'
-const DEBUG_WEB_CREATE_BLOCKS = {
-  activityType: true,
-  basicInfo: true,
-  categoryPicker: true,
-  footer: true,
-}
 const weekDays = ['L', 'M', 'M', 'J', 'V', 'S', 'D']
 const monthNames = [
   'enero',
@@ -176,11 +169,6 @@ function setCreateRenderDiagnostics(value: CreateRenderDiagnostics) {
 function getCreateRenderDiagnostics() {
   if (Platform.OS !== 'web') return null
   return ((globalThis as typeof globalThis & Record<string, unknown>)[createRenderDiagnosticsKey] ?? null) as CreateRenderDiagnostics | null
-}
-
-function logCreateWebRenderBlock(blockName: string) {
-  if (!DEBUG_WEB_CREATE_SAFE_MODE) return
-  console.log('[CREATE WEB RENDER BLOCK]', blockName)
 }
 
 function getCategoryIcon(categoryId: CategoryId) {
@@ -1741,35 +1729,118 @@ function CrearScreenContent() {
     </>
   )
 
-  if (DEBUG_WEB_CREATE_SAFE_MODE) {
-    const safeGoToNextStep = () => {
-      setMessage('')
-      setCurrentStep((step) => {
-        const currentIndex = visibleActivitySteps.indexOf(step)
-        return visibleActivitySteps[Math.min(currentIndex + 1, visibleActivitySteps.length - 1)] ?? lastVisibleStep
-      })
-    }
+  const renderPickerContent = () => (
+    <ScrollView
+      contentContainerStyle={[
+        styles.modalOptionsContent,
+        isWebDateTimePicker && styles.webPickerOptionsContent,
+        Platform.OS === 'web' && pickerMode === 'time' && styles.webTimeOptionsContent,
+      ]}
+      showsVerticalScrollIndicator={false}
+    >
+      {pickerMode === 'category'
+        ? categories.map((item) => (
+          <Pressable key={item.id} onPress={() => selectOption(item)} style={[styles.optionRow, { backgroundColor: item.backgroundColor }]}>
+            <View style={styles.categoryOptionRow}>
+              {(() => {
+                const CategoryIcon = getCategoryIcon(item.id)
 
-    return (
-      <CreateWebSafeMode
-        activityKind={activityKind}
-        categoryLabel={category?.label ?? ''}
-        currentStep={currentStep}
-        onClosePickerModalTest={() => {
-          console.log('[CREATE WEB PICKER MODAL TEST CLOSE]')
-          setPickerMode(null)
-        }}
-        onContinue={safeGoToNextStep}
-        onOpenPickerModalTest={() => {
-          console.log('[CREATE WEB PICKER MODAL TEST OPEN]')
-          setPickerMode('currency')
-        }}
-        pickerMode={pickerMode}
-        selectedGroup={selectedGroup}
-        subcategory={subcategory}
-      />
-    )
-  }
+                return <CategoryIcon color={item.color} size={21} strokeWidth={2.3} />
+              })()}
+              <Text style={[styles.optionText, { color: item.color }]}>{item.label}</Text>
+            </View>
+          </Pressable>
+        ))
+        : null}
+      {pickerMode === 'subcategory'
+        ? subcategoryOptions.map((item) => (
+          <Pressable key={item} onPress={() => selectOption(item)} style={styles.optionRow}>
+            <Text style={styles.optionText}>{item}</Text>
+          </Pressable>
+        ))
+        : null}
+      {pickerMode === 'date' ? (
+        <View style={[styles.calendarPicker, Platform.OS === 'web' && styles.webCalendarPicker]}>
+          <View style={styles.calendarHeader}>
+            <Pressable
+              accessibilityLabel="Mes anterior"
+              accessibilityRole="button"
+              onPress={() => moveCalendarMonth(-1)}
+              style={styles.calendarNavButton}
+            >
+              <ChevronLeft color="#0E5A44" size={24} strokeWidth={2.4} />
+            </Pressable>
+            <Text style={styles.calendarMonthTitle}>{getCalendarMonthTitle(calendarMonth)}</Text>
+            <Pressable
+              accessibilityLabel="Mes siguiente"
+              accessibilityRole="button"
+              onPress={() => moveCalendarMonth(1)}
+              style={styles.calendarNavButton}
+            >
+              <ChevronRight color="#0E5A44" size={24} strokeWidth={2.4} />
+            </Pressable>
+          </View>
+
+          <View style={[styles.calendarWeekRow, Platform.OS === 'web' && styles.webCalendarWeekRow]}>
+            {weekDays.map((item, index) => (
+              <Text key={`${item}-${index}`} style={styles.calendarWeekText}>{item}</Text>
+            ))}
+          </View>
+
+          <View style={[styles.calendarGrid, Platform.OS === 'web' && styles.webCalendarGrid]}>
+            {calendarDays.map((item, index) => {
+              const isSelected = item && selectedDate ? isSameDay(item, selectedDate) : false
+              const isToday = item ? isSameDay(item, new Date()) : false
+
+              return (
+                <Pressable
+                  accessibilityLabel={item ? `Elegir ${formatDate(item)}` : undefined}
+                  accessibilityRole={item ? 'button' : undefined}
+                  disabled={!item}
+                  key={item ? item.toISOString() : `empty-${index}`}
+                  onPress={() => item && selectCalendarDate(item)}
+                  style={[
+                    styles.calendarDay,
+                    Platform.OS === 'web' && styles.webCalendarDay,
+                    isToday && styles.calendarDayToday,
+                    isSelected && styles.calendarDaySelected,
+                  ]}
+                >
+                  {item ? (
+                    <Text style={[
+                      styles.calendarDayText,
+                      isSelected && styles.calendarDayTextSelected,
+                    ]}
+                    >
+                      {item.getDate()}
+                    </Text>
+                  ) : null}
+                </Pressable>
+              )
+            })}
+          </View>
+        </View>
+      ) : null}
+      {pickerMode === 'time'
+        ? timeOptions.map((item) => (
+          <Pressable
+            key={item}
+            onPress={() => selectOption(item)}
+            style={[styles.optionRow, Platform.OS === 'web' && styles.webTimeOption]}
+          >
+            <Text style={[styles.optionText, Platform.OS === 'web' && styles.webTimeOptionText]}>{item}</Text>
+          </Pressable>
+        ))
+        : null}
+      {pickerMode === 'currency'
+        ? currencyOptions.map((item) => (
+          <Pressable key={item} onPress={() => selectOption(item)} style={styles.optionRow}>
+            <Text style={styles.optionText}>{item}</Text>
+          </Pressable>
+        ))
+        : null}
+    </ScrollView>
+  )
 
   if (isLoadingEditActivity) {
     return (
@@ -2457,131 +2528,35 @@ function CrearScreenContent() {
         </Modal>
         ) : null}
 
-        {(Platform.OS !== 'web' || pickerMode !== null) ? (
-        <Modal animationType={Platform.OS === 'web' ? 'none' : 'fade'} transparent visible={pickerMode !== null} onRequestClose={() => setPickerMode(null)}>
-          <View style={[styles.modalBackdrop, isWebDateTimePicker && styles.webPickerBackdrop]}>
-            <Pressable style={StyleSheet.absoluteFill} onPress={() => setPickerMode(null)} />
-            <View style={[
-              styles.modalCard,
-              isWebDateTimePicker && styles.webPickerModalCard,
-              { paddingBottom: isWebDateTimePicker ? 20 : Math.max(insets.bottom + 18, 30) },
-            ]}>
-              <Text style={styles.modalTitle}>{pickerTitle}</Text>
-              <ScrollView
-                contentContainerStyle={[
-                  styles.modalOptionsContent,
-                  isWebDateTimePicker && styles.webPickerOptionsContent,
-                  Platform.OS === 'web' && pickerMode === 'time' && styles.webTimeOptionsContent,
-                ]}
-                showsVerticalScrollIndicator={false}
-              >
-                {pickerMode === 'category'
-                  ? categories.map((item) => (
-                    <Pressable key={item.id} onPress={() => selectOption(item)} style={[styles.optionRow, { backgroundColor: item.backgroundColor }]}>
-                      <View style={styles.categoryOptionRow}>
-                        {(() => {
-                          const CategoryIcon = getCategoryIcon(item.id)
-
-                          return <CategoryIcon color={item.color} size={21} strokeWidth={2.3} />
-                        })()}
-                        <Text style={[styles.optionText, { color: item.color }]}>{item.label}</Text>
-                      </View>
-                    </Pressable>
-                  ))
-                  : null}
-                {pickerMode === 'subcategory'
-                  ? subcategoryOptions.map((item) => (
-                    <Pressable key={item} onPress={() => selectOption(item)} style={styles.optionRow}>
-                      <Text style={styles.optionText}>{item}</Text>
-                    </Pressable>
-                  ))
-                  : null}
-                {pickerMode === 'date' ? (
-                  <View style={[styles.calendarPicker, Platform.OS === 'web' && styles.webCalendarPicker]}>
-                    <View style={styles.calendarHeader}>
-                      <Pressable
-                        accessibilityLabel="Mes anterior"
-                        accessibilityRole="button"
-                        onPress={() => moveCalendarMonth(-1)}
-                        style={styles.calendarNavButton}
-                      >
-                        <ChevronLeft color="#0E5A44" size={24} strokeWidth={2.4} />
-                      </Pressable>
-                      <Text style={styles.calendarMonthTitle}>{getCalendarMonthTitle(calendarMonth)}</Text>
-                      <Pressable
-                        accessibilityLabel="Mes siguiente"
-                        accessibilityRole="button"
-                        onPress={() => moveCalendarMonth(1)}
-                        style={styles.calendarNavButton}
-                      >
-                        <ChevronRight color="#0E5A44" size={24} strokeWidth={2.4} />
-                      </Pressable>
-                    </View>
-
-                    <View style={[styles.calendarWeekRow, Platform.OS === 'web' && styles.webCalendarWeekRow]}>
-                      {weekDays.map((item, index) => (
-                        <Text key={`${item}-${index}`} style={styles.calendarWeekText}>{item}</Text>
-                      ))}
-                    </View>
-
-                    <View style={[styles.calendarGrid, Platform.OS === 'web' && styles.webCalendarGrid]}>
-                      {calendarDays.map((item, index) => {
-                        const isSelected = item && selectedDate ? isSameDay(item, selectedDate) : false
-                        const isToday = item ? isSameDay(item, new Date()) : false
-
-                        return (
-                          <Pressable
-                            accessibilityLabel={item ? `Elegir ${formatDate(item)}` : undefined}
-                            accessibilityRole={item ? 'button' : undefined}
-                            disabled={!item}
-                            key={item ? item.toISOString() : `empty-${index}`}
-                            onPress={() => item && selectCalendarDate(item)}
-                            style={[
-                              styles.calendarDay,
-                              Platform.OS === 'web' && styles.webCalendarDay,
-                              isToday && styles.calendarDayToday,
-                              isSelected && styles.calendarDaySelected,
-                            ]}
-                          >
-                            {item ? (
-                              <Text style={[
-                                styles.calendarDayText,
-                                isSelected && styles.calendarDayTextSelected,
-                              ]}
-                              >
-                                {item.getDate()}
-                              </Text>
-                            ) : null}
-                          </Pressable>
-                        )
-                      })}
-                    </View>
-                  </View>
-                ) : null}
-                {pickerMode === 'time'
-                  ? timeOptions.map((item) => (
-                    <Pressable
-                      key={item}
-                      onPress={() => selectOption(item)}
-                      style={[styles.optionRow, Platform.OS === 'web' && styles.webTimeOption]}
-                    >
-                      <Text style={[styles.optionText, Platform.OS === 'web' && styles.webTimeOptionText]}>{item}</Text>
-                    </Pressable>
-                  ))
-                  : null}
-                {pickerMode === 'currency'
-                  ? currencyOptions.map((item) => (
-                    <Pressable key={item} onPress={() => selectOption(item)} style={styles.optionRow}>
-                      <Text style={styles.optionText}>{item}</Text>
-                    </Pressable>
-                  ))
-                  : null}
-              </ScrollView>
+        {Platform.OS !== 'web' && pickerMode !== null ? (
+          <Modal animationType="fade" transparent visible={pickerMode !== null} onRequestClose={() => setPickerMode(null)}>
+            <View style={styles.modalBackdrop}>
+              <Pressable style={StyleSheet.absoluteFill} onPress={() => setPickerMode(null)} />
+              <View style={[
+                styles.modalCard,
+                { paddingBottom: Math.max(insets.bottom + 18, 30) },
+              ]}>
+                <Text style={styles.modalTitle}>{pickerTitle}</Text>
+                {renderPickerContent()}
+              </View>
             </View>
-          </View>
-        </Modal>
+          </Modal>
         ) : null}
       </ScrollView>
+
+      {Platform.OS === 'web' && pickerMode !== null ? (
+        <View style={[styles.webPickerOverlay, isWebDateTimePicker && styles.webPickerBackdrop]}>
+          <Pressable style={StyleSheet.absoluteFill} onPress={() => setPickerMode(null)} />
+          <View style={[
+            styles.modalCard,
+            styles.webPickerModalCard,
+            { paddingBottom: isWebDateTimePicker ? 20 : Math.max(insets.bottom + 18, 30) },
+          ]}>
+            <Text style={styles.modalTitle}>{pickerTitle}</Text>
+            {renderPickerContent()}
+          </View>
+        </View>
+      ) : null}
 
       {isAdditionalVisible ? (
         <View style={styles.additionalScreen}>
@@ -2780,90 +2755,6 @@ type CrearScreenErrorBoundaryProps = {
   children: ReactNode
 }
 
-type CreateWebSafeModeProps = {
-  activityKind: ActivityKind
-  categoryLabel: string
-  currentStep: CreateStep
-  onClosePickerModalTest: () => void
-  onContinue: () => void
-  onOpenPickerModalTest: () => void
-  pickerMode: PickerMode
-  selectedGroup: string
-  subcategory: string
-}
-
-function CreateWebSafeMode({
-  activityKind,
-  categoryLabel,
-  currentStep,
-  onClosePickerModalTest,
-  onContinue,
-  onOpenPickerModalTest,
-  pickerMode,
-  selectedGroup,
-  subcategory,
-}: CreateWebSafeModeProps) {
-  if (DEBUG_WEB_CREATE_BLOCKS.basicInfo) logCreateWebRenderBlock('basic-info')
-  if (DEBUG_WEB_CREATE_BLOCKS.categoryPicker) logCreateWebRenderBlock('category-picker')
-  if (DEBUG_WEB_CREATE_BLOCKS.activityType) logCreateWebRenderBlock('activity-type')
-  if (DEBUG_WEB_CREATE_BLOCKS.footer) logCreateWebRenderBlock('footer')
-  if (pickerMode !== null) console.log('[CREATE WEB PICKER MODAL TEST RENDER]')
-
-  return (
-    <SafeAreaView edges={['top', 'left', 'right']} style={styles.screen}>
-      <View style={styles.webCreateSafeContent}>
-        <Text style={styles.webCreateSafeTitle}>Crear actividad</Text>
-        <Text style={styles.webCreateSafeStep}>Paso actual: {currentStep}</Text>
-
-        {DEBUG_WEB_CREATE_BLOCKS.basicInfo ? (
-          <View style={styles.webCreateSafeBlock}>
-            <Text style={styles.webCreateSafeBlockTitle}>basic-info</Text>
-          </View>
-        ) : null}
-
-        {DEBUG_WEB_CREATE_BLOCKS.categoryPicker ? (
-          <View style={styles.webCreateSafeBlock}>
-            <Text style={styles.webCreateSafeBlockTitle}>category-picker</Text>
-            <Text style={styles.webCreateSafeBlockText}>{categoryLabel || 'Sin categoria'}</Text>
-            <Text style={styles.webCreateSafeBlockText}>{subcategory || 'Sin subcategoria'}</Text>
-          </View>
-        ) : null}
-
-        {DEBUG_WEB_CREATE_BLOCKS.activityType ? (
-          <View style={styles.webCreateSafeBlock}>
-            <Text style={styles.webCreateSafeBlockTitle}>activity-type</Text>
-            <Text style={styles.webCreateSafeBlockText}>{activityKind}</Text>
-            <Text style={styles.webCreateSafeBlockText}>{selectedGroup || 'Sin grupo'}</Text>
-          </View>
-        ) : null}
-
-        {DEBUG_WEB_CREATE_BLOCKS.footer ? (
-          <>
-            <Pressable accessibilityRole="button" onPress={onOpenPickerModalTest} style={styles.webCreateSafeSecondaryButton}>
-              <Text style={styles.webCreateSafeSecondaryButtonText}>Probar picker modal</Text>
-            </Pressable>
-            <Pressable accessibilityRole="button" onPress={onContinue} style={styles.webCreateSafeButton}>
-              <Text style={styles.webCreateSafeButtonText}>Continuar</Text>
-            </Pressable>
-          </>
-        ) : null}
-      </View>
-      {pickerMode !== null ? (
-        <Modal animationType="none" transparent visible={pickerMode !== null} onRequestClose={onClosePickerModalTest}>
-          <View style={styles.modalBackdrop}>
-            <View style={styles.webCreateSafePickerCard}>
-              <Text style={styles.modalTitle}>Picker test</Text>
-              <Pressable accessibilityRole="button" onPress={onClosePickerModalTest} style={styles.webCreateSafeButton}>
-                <Text style={styles.webCreateSafeButtonText}>Cerrar</Text>
-              </Pressable>
-            </View>
-          </View>
-        </Modal>
-      ) : null}
-    </SafeAreaView>
-  )
-}
-
 type CreateGroupModalFrameProps = {
   children: ReactNode
 }
@@ -2943,22 +2834,7 @@ class CrearScreenErrorBoundary extends Component<CrearScreenErrorBoundaryProps, 
         <SafeAreaView edges={['top', 'left', 'right']} style={styles.screen}>
           <View style={styles.createErrorFallback}>
             <Text style={styles.createErrorFallbackText}>No pudimos cargar el formulario.</Text>
-            <Text selectable style={styles.createErrorLabelText}>ERROR NAME:</Text>
-            <Text selectable style={styles.createErrorDetailText}>{this.state.errorName || 'Error'}</Text>
-            <Text selectable style={styles.createErrorLabelText}>ERROR MESSAGE:</Text>
             <Text selectable style={styles.createErrorDetailText}>{this.state.errorMessage || 'Error sin mensaje'}</Text>
-            {this.state.componentStack ? (
-              <>
-                <Text selectable style={styles.createErrorLabelText}>COMPONENT STACK:</Text>
-                <Text selectable style={styles.createErrorStackText}>{this.state.componentStack}</Text>
-              </>
-            ) : null}
-            {this.state.errorStack ? (
-              <>
-                <Text selectable style={styles.createErrorLabelText}>ERROR STACK:</Text>
-                <Text selectable style={styles.createErrorStackText}>{this.state.errorStack}</Text>
-              </>
-            ) : null}
           </View>
         </SafeAreaView>
       )
@@ -3110,93 +2986,6 @@ const styles = StyleSheet.create({
   errorBoundaryContent: {
     flex: 1,
   },
-  webCreateSafeContent: {
-    alignSelf: 'center',
-    flex: 1,
-    maxWidth: 520,
-    paddingHorizontal: 24,
-    paddingTop: 40,
-    width: '100%',
-  },
-  webCreateSafeTitle: {
-    color: '#123F38',
-    fontSize: 28,
-    fontWeight: '900',
-    letterSpacing: 0,
-    lineHeight: 34,
-    marginBottom: 12,
-  },
-  webCreateSafeStep: {
-    color: '#34445F',
-    fontSize: 16,
-    fontWeight: '800',
-    letterSpacing: 0,
-    lineHeight: 22,
-    marginBottom: 24,
-  },
-  webCreateSafeBlock: {
-    borderColor: '#D7E7D7',
-    borderRadius: 8,
-    borderWidth: 1,
-    marginBottom: 14,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-  },
-  webCreateSafeBlockTitle: {
-    color: '#0E5A44',
-    fontSize: 14,
-    fontWeight: '900',
-    letterSpacing: 0,
-    lineHeight: 18,
-    marginBottom: 6,
-  },
-  webCreateSafeBlockText: {
-    color: '#34445F',
-    fontSize: 14,
-    fontWeight: '700',
-    letterSpacing: 0,
-    lineHeight: 19,
-  },
-  webCreateSafeButton: {
-    alignItems: 'center',
-    backgroundColor: '#00613F',
-    borderRadius: 8,
-    justifyContent: 'center',
-    marginTop: 10,
-    minHeight: 54,
-    paddingHorizontal: 18,
-  },
-  webCreateSafeButtonText: {
-    color: '#FFFFFF',
-    fontSize: 17,
-    fontWeight: '900',
-    letterSpacing: 0,
-    lineHeight: 22,
-  },
-  webCreateSafeSecondaryButton: {
-    alignItems: 'center',
-    borderColor: '#0E5A44',
-    borderRadius: 8,
-    borderWidth: 1,
-    justifyContent: 'center',
-    minHeight: 50,
-    paddingHorizontal: 18,
-  },
-  webCreateSafeSecondaryButtonText: {
-    color: '#0E5A44',
-    fontSize: 16,
-    fontWeight: '900',
-    letterSpacing: 0,
-    lineHeight: 21,
-  },
-  webCreateSafePickerCard: {
-    backgroundColor: '#FFFFFF',
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    paddingBottom: 28,
-    paddingHorizontal: 20,
-    paddingTop: 20,
-  },
   createErrorFallback: {
     alignItems: 'stretch',
     flex: 1,
@@ -3212,28 +3001,11 @@ const styles = StyleSheet.create({
     marginBottom: 18,
     textAlign: 'center',
   },
-  createErrorLabelText: {
-    color: '#123F38',
-    fontSize: 12,
-    fontWeight: '900',
-    letterSpacing: 0,
-    lineHeight: 16,
-    marginBottom: 4,
-    maxWidth: 640,
-  },
   createErrorDetailText: {
     color: '#B42318',
     fontSize: 14,
     fontWeight: '800',
     lineHeight: 20,
-    marginBottom: 14,
-    maxWidth: 640,
-    textAlign: 'left',
-  },
-  createErrorStackText: {
-    color: '#394A45',
-    fontSize: 11,
-    lineHeight: 16,
     marginBottom: 14,
     maxWidth: 640,
     textAlign: 'left',
@@ -4523,6 +4295,13 @@ const styles = StyleSheet.create({
   },
   webPickerOptionsContent: {
     paddingBottom: 0,
+  },
+  webPickerOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.25)',
+    elevation: 30,
+    justifyContent: 'flex-end',
+    zIndex: 30,
   },
   webTimeOptionsContent: {
     alignItems: 'center',
