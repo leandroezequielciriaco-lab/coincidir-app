@@ -1690,6 +1690,32 @@ function CrearScreenContent() {
     })
   }
 
+  const goBackFromWebStep4 = () => {
+    setPickerMode(null)
+    setMessage('')
+    setCurrentStep(3)
+  }
+
+  const continueFromWebStep4 = () => {
+    const parsedDate = parseWebDateInput(date)
+    const cleanTime = time.trim()
+    const cleanLocation = location.trim()
+
+    if (!parsedDate || !cleanTime || !cleanLocation) {
+      setMessage('Seleccioná fecha, hora y ubicación para continuar.')
+      return
+    }
+
+    setSelectedDate(parsedDate)
+    setDate(formatDate(parsedDate))
+    setTime(cleanTime)
+    setLocation(cleanLocation)
+    setSelectedLocation(null)
+    setPickerMode(null)
+    setMessage('')
+    setCurrentStep(5)
+  }
+
   const returnToCreateActivity = () => {
     setPickerMode(null)
     setIsAdditionalVisible(false)
@@ -2433,6 +2459,25 @@ function CrearScreenContent() {
       selectedGroupId,
       showGroupSection,
     })
+  }
+
+  if (Platform.OS === 'web' && currentStep === 4) {
+    return (
+      <CreateStep4WebSimple
+        date={date}
+        location={location}
+        message={message}
+        onBack={goBackFromWebStep4}
+        onChangeDate={changeWebDate}
+        onChangeLocation={changeWebLocation}
+        onChangeTime={(value) => {
+          setTime(value)
+          if (message) setMessage('')
+        }}
+        onContinue={continueFromWebStep4}
+        time={time}
+      />
+    )
   }
 
   if (Platform.OS === 'web' && currentStep === 2) {
@@ -3315,6 +3360,81 @@ type CrearScreenErrorBoundaryProps = {
 
 type CreateGroupModalFrameProps = {
   children: ReactNode
+}
+
+type CreateStep4WebSimpleProps = {
+  date: string
+  location: string
+  message: string
+  onBack: () => void
+  onChangeDate: (value: string) => void
+  onChangeLocation: (value: string) => void
+  onChangeTime: (value: string) => void
+  onContinue: () => void
+  time: string
+}
+
+function CreateStep4WebSimple({
+  date,
+  location,
+  message,
+  onBack,
+  onChangeDate,
+  onChangeLocation,
+  onChangeTime,
+  onContinue,
+  time,
+}: CreateStep4WebSimpleProps) {
+  return (
+    <View style={styles.screen}>
+      <View style={styles.createScrollContent}>
+        <View style={styles.createCard}>
+          <Text style={styles.createSectionTitle}>¿Cuándo y dónde?</Text>
+          <Text style={styles.createFieldLabel}>Fecha</Text>
+          <TextInput
+            autoCapitalize="none"
+            onChangeText={onChangeDate}
+            placeholder="DD/MM/AAAA"
+            placeholderTextColor="#7A8790"
+            style={styles.createTextInput}
+            underlineColorAndroid="transparent"
+            value={date}
+          />
+          <Text style={styles.createFieldLabel}>Hora</Text>
+          <TextInput
+            autoCapitalize="none"
+            onChangeText={onChangeTime}
+            placeholder="HH:MM"
+            placeholderTextColor="#7A8790"
+            style={styles.createTextInput}
+            underlineColorAndroid="transparent"
+            value={time}
+          />
+          <Text style={styles.createFieldLabel}>Dirección o punto de encuentro</Text>
+          <TextInput
+            maxLength={120}
+            multiline
+            onChangeText={onChangeLocation}
+            placeholder="Ej: Plaza Independencia, Tandil"
+            placeholderTextColor="#7A8790"
+            style={[styles.createTextInput, styles.createDescriptionInput]}
+            textAlignVertical="top"
+            underlineColorAndroid="transparent"
+            value={location}
+          />
+        </View>
+
+        {message ? <Text style={styles.createMessageText}>{message}</Text> : null}
+
+        <Pressable accessibilityLabel="Volver al paso anterior" accessibilityRole="button" onPress={onBack} style={styles.createSecondaryButton}>
+          <Text style={styles.createSecondaryText}>Atrás</Text>
+        </Pressable>
+        <Pressable accessibilityLabel="Continuar" accessibilityRole="button" onPress={onContinue} style={styles.createSubmitButton}>
+          <Text style={styles.createSubmitText}>Continuar</Text>
+        </Pressable>
+      </View>
+    </View>
+  )
 }
 
 type CreateRootFrameProps = {
