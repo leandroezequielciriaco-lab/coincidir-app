@@ -201,6 +201,15 @@ function shouldRenderWebDebugSection(section: WebDebugSectionKey) {
   return Platform.OS !== 'web' || WEB_DEBUG_SECTIONS[section]
 }
 
+function logCreateWebDiagnostic(message: string, payload?: Record<string, unknown>) {
+  if (Platform.OS !== 'web') return
+  if (payload) {
+    console.log(message, payload)
+    return
+  }
+  console.log(message)
+}
+
 function createWebSafeLucideIcon(Icon: LucideIcon): LucideIcon {
   const SafeIcon = ((props) => {
     if (Platform.OS === 'web') return null
@@ -1573,10 +1582,26 @@ function CrearScreenContent() {
   }
 
   const goToNextStep = () => {
+    logCreateWebDiagnostic('[CREATE WEB CONTINUE PRESS]', {
+      activityKind,
+      currentStep,
+      isGroupContext,
+      selectedGroup,
+      selectedGroupId,
+      visibleActivitySteps,
+    })
     if (!validateCurrentStep()) return
+    logCreateWebDiagnostic('[CREATE WEB CONTINUE VALIDATION OK]', {
+      currentStep,
+    })
     setCurrentStep((step) => {
       const currentIndex = visibleActivitySteps.indexOf(step)
-      return visibleActivitySteps[Math.min(currentIndex + 1, visibleActivitySteps.length - 1)] ?? lastVisibleStep
+      const nextStep = visibleActivitySteps[Math.min(currentIndex + 1, visibleActivitySteps.length - 1)] ?? lastVisibleStep
+      logCreateWebDiagnostic('[CREATE WEB CONTINUE NEXT STEP]', {
+        fromStep: step,
+        nextStep,
+      })
+      return nextStep
     })
   }
 
@@ -1716,6 +1741,16 @@ function CrearScreenContent() {
       })
     }
   }, [previewLocation.latitude, previewLocation.longitude])
+
+  useEffect(() => {
+    logCreateWebDiagnostic('[CREATE WEB STEP CHANGE]', {
+      activityKind,
+      currentStep,
+      isGroupContext,
+      showGroupSection: shouldRenderWebDebugSection('groupSection'),
+      visibleActivitySteps,
+    })
+  }, [activityKind, currentStep, isGroupContext, visibleActivitySteps])
 
   const renderAdditionalSettings = () => (
     <>
@@ -2296,6 +2331,15 @@ function CrearScreenContent() {
     || showCategorySection
     || showActivityTypeSection
   )
+  if (currentStep === 2) {
+    logCreateWebDiagnostic('[CREATE WEB RENDER STEP 2]', {
+      activityKind,
+      isGroupContext,
+      selectedGroup,
+      selectedGroupId,
+      showGroupSection,
+    })
+  }
 
   return (
     <CreateRootFrame>
