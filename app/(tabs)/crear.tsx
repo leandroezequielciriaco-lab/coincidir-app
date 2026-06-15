@@ -1984,18 +1984,20 @@ function CrearScreenContent() {
   )
 
   if (isLoadingEditActivity) {
-    return (
-      <SafeAreaView edges={['top']} style={styles.screen}>
-        <View style={styles.createLoadingState}>
-          <ActivityIndicator color="#0E5A44" />
-        </View>
-      </SafeAreaView>
+    const loadingContent = (
+      <View style={styles.createLoadingState}>
+        <ActivityIndicator color="#0E5A44" />
+      </View>
     )
+
+    return Platform.OS === 'web'
+      ? <View style={styles.screen}>{loadingContent}</View>
+      : <SafeAreaView edges={['top']} style={styles.screen}>{loadingContent}</SafeAreaView>
   }
 
   if (flowMode === 'choice') {
     return (
-      <SafeAreaView edges={['left', 'right']} style={styles.screen}>
+      <CreateRootFrame>
         <ScrollView
           contentContainerStyle={[
             styles.createScrollContent,
@@ -2052,13 +2054,13 @@ function CrearScreenContent() {
             </View>
           </View>
         </ScrollView>
-      </SafeAreaView>
+      </CreateRootFrame>
     )
   }
 
   if (flowMode === 'group') {
     return (
-      <SafeAreaView edges={['left', 'right']} style={styles.screen}>
+      <CreateRootFrame>
         <ScrollView
           contentContainerStyle={[
             styles.createScrollContent,
@@ -2160,13 +2162,13 @@ function CrearScreenContent() {
             <ArrowRight color="#FFFFFF" size={32} strokeWidth={2.2} style={styles.createSubmitArrow} />
           </Pressable>
         </ScrollView>
-      </SafeAreaView>
+      </CreateRootFrame>
     )
   }
 
   if (flowMode === 'groupCreated') {
     return (
-      <SafeAreaView edges={['left', 'right']} style={styles.screen}>
+      <CreateRootFrame>
         <ScrollView
           contentContainerStyle={[
             styles.groupCreatedScrollContent,
@@ -2209,12 +2211,12 @@ function CrearScreenContent() {
             </Pressable>
           </View>
         </ScrollView>
-      </SafeAreaView>
+      </CreateRootFrame>
     )
   }
 
   return (
-    <SafeAreaView edges={['left', 'right']} style={styles.screen}>
+    <CreateRootFrame>
       <ScrollView
         contentContainerStyle={[
           styles.createScrollContent,
@@ -2900,7 +2902,7 @@ function CrearScreenContent() {
           </ScrollView>
         </View>
       ) : null}
-    </SafeAreaView>
+    </CreateRootFrame>
   )
 }
 
@@ -2910,6 +2912,22 @@ type CrearScreenErrorBoundaryProps = {
 
 type CreateGroupModalFrameProps = {
   children: ReactNode
+}
+
+type CreateRootFrameProps = {
+  children: ReactNode
+}
+
+function CreateRootFrame({ children }: CreateRootFrameProps) {
+  if (Platform.OS === 'web') {
+    return <View style={styles.screen}>{children}</View>
+  }
+
+  return (
+    <SafeAreaView edges={['left', 'right']} style={styles.screen}>
+      {children}
+    </SafeAreaView>
+  )
 }
 
 function CreateGroupModalFrame({ children }: CreateGroupModalFrameProps) {
