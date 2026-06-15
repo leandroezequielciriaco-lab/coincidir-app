@@ -203,7 +203,7 @@ const WEB_DEBUG_STEP2_HEADER: Record<WebDebugStep2HeaderKey, boolean> = {
 const STEP2_DEBUG: Record<Step2DebugKey, boolean> = {
   header: true,
   publicCard: true,
-  groupCard: false,
+  groupCard: true,
   approvalCard: false,
   helpText: false,
 }
