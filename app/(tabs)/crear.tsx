@@ -179,6 +179,7 @@ const WEB_DEBUG_STEP2: Record<WebDebugStep2Key, boolean> = {
   approvalCard: false,
   helpText: false,
 }
+const WEB_DEBUG_STEP2_MINIMAL = true
 const weekDays = ['L', 'M', 'M', 'J', 'V', 'S', 'D']
 const monthNames = [
   'enero',
@@ -2370,6 +2371,10 @@ function CrearScreenContent() {
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >
+        {Platform.OS === 'web' && currentStep === 2 && WEB_DEBUG_STEP2_MINIMAL ? (
+          <Text>Step 2 test</Text>
+        ) : (
+        <>
         {showHeaderSection ? (
         <>
         <View style={styles.createHeader}>
@@ -2850,6 +2855,8 @@ function CrearScreenContent() {
             </View>
           </Modal>
         ) : null}
+        </>
+        )}
       </ScrollView>
 
       {Platform.OS === 'web' && pickerMode !== null ? (
