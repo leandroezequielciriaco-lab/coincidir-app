@@ -72,7 +72,6 @@ import { uploadGroupPhoto } from '../../lib/groupPhotos'
 import { notifyActivityUpdated } from '../../lib/notifications'
 import { requireVerifiedParticipation } from '../../utils/authParticipation'
 import { formatGroupMemberCount, getGroupMemberCount } from '../../utils/groupMembership'
-import { WEB_APP_VERSION, canUseWebStorage, clearCreateActivityTemporaryState, getCreateActivityTemporaryStorageKeys } from '../../utils/webVersion'
 
 type PickerMode = 'category' | 'subcategory' | 'date' | 'time' | 'currency' | null
 type CreateStep = 1 | 2 | 3 | 4 | 5
@@ -102,7 +101,7 @@ type LocationSelection = {
 }
 
 type ActivityData = Record<string, unknown>
-type CreateWebPrecheckState = 'ready' | 'resetting'
+type CreateRenderDiagnostics = Record<string, unknown>
 
 type ActivityFormPayload = {
   name: string
@@ -160,56 +159,16 @@ const monthNames = [
   'diciembre',
 ]
 
-function getCreateWebPrecheckResetKey() {
-  if (!canUseWebStorage()) return ''
+const createRenderDiagnosticsKey = '__COINCIDIR_CREATE_RENDER_DIAGNOSTICS__'
 
-  const pathKey = `${window.location.pathname}${window.location.search}`
-  return `coincidir:createWebPrecheckReset:${WEB_APP_VERSION}:${pathKey}`
+function setCreateRenderDiagnostics(value: CreateRenderDiagnostics) {
+  if (Platform.OS !== 'web') return
+  ;(globalThis as typeof globalThis & Record<string, unknown>)[createRenderDiagnosticsKey] = value
 }
 
-function runCreateWebPrecheck(): CreateWebPrecheckState {
-  if (!canUseWebStorage()) return 'ready'
-
-  try {
-    const resetKey = getCreateWebPrecheckResetKey()
-    const alreadyReset = resetKey ? window.sessionStorage.getItem(resetKey) === '1' : true
-    const temporaryKeys = getCreateActivityTemporaryStorageKeys()
-    const existingTemporaryKeys = temporaryKeys.filter((key) => window.localStorage.getItem(key) !== null)
-
-    console.log('[CREATE WEB PRECHECK]', {
-      alreadyReset,
-      existingTemporaryKeys,
-      path: window.location.pathname,
-      search: window.location.search,
-      version: WEB_APP_VERSION,
-    })
-
-    if (!alreadyReset && existingTemporaryKeys.length > 0) {
-      const clearedKeys = clearCreateActivityTemporaryState()
-      if (resetKey) window.sessionStorage.setItem(resetKey, '1')
-
-      console.log('[CREATE WEB PRECHECK RESET]', {
-        clearedKeys,
-        reason: 'temporary-create-state',
-        target: window.location.href,
-      })
-
-      window.location.replace(window.location.href)
-      return 'resetting'
-    }
-
-    console.log('[CREATE WEB PRECHECK OK]', {
-      alreadyReset,
-      existingTemporaryKeys,
-    })
-  } catch (error) {
-    console.warn('[CREATE WEB ERROR DETAIL]', {
-      errorMessage: error instanceof Error ? error.message : String(error),
-      phase: 'precheck',
-    })
-  }
-
-  return 'ready'
+function getCreateRenderDiagnostics() {
+  if (Platform.OS !== 'web') return null
+  return ((globalThis as typeof globalThis & Record<string, unknown>)[createRenderDiagnosticsKey] ?? null) as CreateRenderDiagnostics | null
 }
 
 function getCategoryIcon(categoryId: CategoryId) {
@@ -496,18 +455,6 @@ function mergeAvailableGroups(...groupLists: AvailableGroup[][]) {
 }
 
 export default function CrearScreen() {
-  const [webPrecheckState] = useState<CreateWebPrecheckState>(runCreateWebPrecheck)
-
-  if (webPrecheckState === 'resetting') {
-    return (
-      <SafeAreaView edges={['top', 'left', 'right']} style={styles.screen}>
-        <View style={styles.createLoadingState}>
-          <ActivityIndicator color="#0E5A44" />
-        </View>
-      </SafeAreaView>
-    )
-  }
-
   return (
     <CrearScreenErrorBoundary>
       <CrearScreenContent />
@@ -1622,6 +1569,40 @@ function CrearScreenContent() {
     latitude: initialLocationRegion.latitude,
     longitude: initialLocationRegion.longitude,
   }
+  setCreateRenderDiagnostics({
+    activityType: activityKind,
+    availableGroupsCount: availableGroups.length,
+    category: category
+      ? {
+        id: category.id,
+        label: category.label,
+        subcategoriesType: Array.isArray(category.subcategories) ? 'array' : typeof category.subcategories,
+        subcategoriesCount: Array.isArray(category.subcategories) ? category.subcategories.length : null,
+      }
+      : null,
+    currentStep,
+    draftState: {
+      date,
+      descriptionLength: description.length,
+      groupDescriptionLength: groupDraftDescription.length,
+      groupLocation: groupDraftLocation,
+      groupName: groupDraftName,
+      location,
+      name,
+      quickSettingsType: Array.isArray(quickSettings) ? 'array' : typeof quickSettings,
+      time,
+    },
+    flowMode,
+    groupContext,
+    isEditMode,
+    isGroupContext,
+    kind,
+    mode,
+    routeActivityId: activityId,
+    selectedGroup,
+    selectedGroupId,
+    subcategory,
+  })
 
   useEffect(() => {
     console.log('[CREATE MAP CONFIG]', {
@@ -2756,40 +2737,41 @@ type CrearScreenErrorBoundaryProps = {
 }
 
 type CrearScreenErrorBoundaryState = {
+  componentStack: string
+  errorMessage: string
+  errorStack: string
   hasError: boolean
-  resetKey: number
 }
 
 class CrearScreenErrorBoundary extends Component<CrearScreenErrorBoundaryProps, CrearScreenErrorBoundaryState> {
   state: CrearScreenErrorBoundaryState = {
+    componentStack: '',
+    errorMessage: '',
+    errorStack: '',
     hasError: false,
-    resetKey: 0,
   }
 
-  static getDerivedStateFromError() {
-    return { hasError: true }
+  static getDerivedStateFromError(error: Error) {
+    return {
+      errorMessage: error?.message ?? String(error),
+      errorStack: error?.stack ?? '',
+      hasError: true,
+    }
   }
 
   componentDidCatch(error: Error, errorInfo: ErrorInfo) {
-    console.warn('[CREATE WEB ERROR DETAIL]', {
+    const renderDiagnostics = getCreateRenderDiagnostics()
+    console.error('[CREATE WEB ERROR DETAIL]', error)
+    console.error('[CREATE WEB ERROR STACK]', error?.stack)
+    console.error('[CREATE WEB COMPONENT STACK]', {
       componentStack: errorInfo.componentStack,
       errorMessage: error.message,
       phase: 'render',
     })
-  }
-
-  retry = () => {
-    clearCreateActivityTemporaryState()
-
-    if (Platform.OS === 'web' && typeof window !== 'undefined') {
-      window.location.replace('/crear')
-      return
-    }
-
-    this.setState((state) => ({
-      hasError: false,
-      resetKey: state.resetKey + 1,
-    }))
+    console.error('[CREATE WEB RENDER STATE]', renderDiagnostics)
+    this.setState({
+      componentStack: errorInfo.componentStack ?? '',
+    })
   }
 
   render() {
@@ -2797,16 +2779,17 @@ class CrearScreenErrorBoundary extends Component<CrearScreenErrorBoundaryProps, 
       return (
         <SafeAreaView edges={['top', 'left', 'right']} style={styles.screen}>
           <View style={styles.createErrorFallback}>
-            <Text style={styles.createErrorFallbackText}>No pudimos cargar el formulario. Tocá Reintentar.</Text>
-            <Pressable accessibilityRole="button" onPress={this.retry} style={styles.createErrorRetryButton}>
-              <Text style={styles.createErrorRetryText}>Reintentar</Text>
-            </Pressable>
+            <Text style={styles.createErrorFallbackText}>No pudimos cargar el formulario.</Text>
+            <Text selectable style={styles.createErrorDetailText}>{this.state.errorMessage || 'Error sin mensaje'}</Text>
+            {this.state.componentStack ? (
+              <Text selectable style={styles.createErrorStackText}>{this.state.componentStack}</Text>
+            ) : null}
           </View>
         </SafeAreaView>
       )
     }
 
-    return <View key={this.state.resetKey} style={styles.errorBoundaryContent}>{this.props.children}</View>
+    return <View style={styles.errorBoundaryContent}>{this.props.children}</View>
   }
 }
 
@@ -2966,20 +2949,21 @@ const styles = StyleSheet.create({
     marginBottom: 18,
     textAlign: 'center',
   },
-  createErrorRetryButton: {
-    alignItems: 'center',
-    backgroundColor: '#0E5A44',
-    borderRadius: 14,
-    justifyContent: 'center',
-    minHeight: 50,
-    minWidth: 150,
-    paddingHorizontal: 18,
-  },
-  createErrorRetryText: {
-    color: '#FFFFFF',
-    fontSize: 16,
-    fontWeight: '900',
+  createErrorDetailText: {
+    color: '#B42318',
+    fontSize: 14,
+    fontWeight: '800',
     lineHeight: 20,
+    marginBottom: 14,
+    maxWidth: 640,
+    textAlign: 'center',
+  },
+  createErrorStackText: {
+    color: '#394A45',
+    fontSize: 11,
+    lineHeight: 16,
+    maxWidth: 640,
+    textAlign: 'left',
   },
   createScrollContent: {
     flexGrow: 1,
