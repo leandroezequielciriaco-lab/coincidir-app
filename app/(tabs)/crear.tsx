@@ -131,6 +131,7 @@ type Step2DebugKey =
   | 'groupCard'
   | 'approvalCard'
   | 'helpText'
+  | 'footer'
 
 type ActivityData = Record<string, unknown>
 type CreateRenderDiagnostics = Record<string, unknown>
@@ -206,6 +207,7 @@ const STEP2_DEBUG: Record<Step2DebugKey, boolean> = {
   groupCard: true,
   approvalCard: false,
   helpText: false,
+  footer: false,
 }
 const WEB_DEBUG_STEP2_MINIMAL = false
 const weekDays = ['L', 'M', 'M', 'J', 'V', 'S', 'D']
@@ -2461,6 +2463,35 @@ function CrearScreenContent() {
                 <Text style={[styles.groupOptionText, styles.groupCreateText]}>Crear grupo</Text>
               </Pressable>
             </View>
+          ) : null}
+          {STEP2_DEBUG.footer ? (
+            <>
+              {message ? <Text style={styles.createMessageText}>{message}</Text> : null}
+
+              {currentStep !== firstVisibleStep ? (
+                <Pressable accessibilityLabel="Volver al paso anterior" accessibilityRole="button" onPress={goToPreviousStep} style={styles.createSecondaryButton}>
+                  <ChevronLeft color="#0E5A44" size={24} strokeWidth={2.4} />
+                  <Text style={styles.createSecondaryText}>AtrÃ¡s</Text>
+                </Pressable>
+              ) : null}
+
+              <Pressable
+                accessibilityLabel={currentStep === lastVisibleStep ? (isEditMode ? 'Guardar cambios' : 'Publicar actividad') : 'Continuar'}
+                accessibilityRole="button"
+                disabled={isSaving}
+                onPress={currentStep === lastVisibleStep ? saveActivity : goToNextStep}
+                style={[styles.createSubmitButton, isSaving && styles.createSubmitButtonDisabled]}
+              >
+                {isSaving ? (
+                  <ActivityIndicator color="#FFFFFF" />
+                ) : (
+                  <>
+                    <Text style={styles.createSubmitText}>{currentStep === lastVisibleStep ? (isEditMode ? 'Guardar cambios' : 'Publicar actividad') : 'Continuar'}</Text>
+                    <ArrowRight color="#FFFFFF" size={32} strokeWidth={2.2} style={styles.createSubmitArrow} />
+                  </>
+                )}
+              </Pressable>
+            </>
           ) : null}
         </View>
       </CreateRootFrame>
