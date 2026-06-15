@@ -146,7 +146,7 @@ const shouldUseWebMapFallback = Platform.OS === 'web'
 const DEBUG_WEB_CREATE_SAFE_MODE = Platform.OS === 'web'
 const DEBUG_WEB_CREATE_BLOCKS = {
   activityType: false,
-  basicInfo: false,
+  basicInfo: true,
   categoryPicker: false,
   footer: true,
 }
