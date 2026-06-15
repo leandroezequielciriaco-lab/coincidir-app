@@ -179,7 +179,7 @@ const WEB_DEBUG_STEP2: Record<WebDebugStep2Key, boolean> = {
   approvalCard: false,
   helpText: false,
 }
-const WEB_DEBUG_STEP2_MINIMAL = true
+const WEB_DEBUG_STEP2_MINIMAL = false
 const weekDays = ['L', 'M', 'M', 'J', 'V', 'S', 'D']
 const monthNames = [
   'enero',
