@@ -145,7 +145,7 @@ const shouldShowMapConfigNotice = Platform.OS === 'android' && !hasGoogleMapsKey
 const shouldUseWebMapFallback = Platform.OS === 'web'
 const DEBUG_WEB_CREATE_SAFE_MODE = Platform.OS === 'web'
 const DEBUG_WEB_CREATE_BLOCKS = {
-  activityType: false,
+  activityType: true,
   basicInfo: true,
   categoryPicker: true,
   footer: true,
