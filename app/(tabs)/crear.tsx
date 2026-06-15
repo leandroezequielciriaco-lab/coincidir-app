@@ -207,7 +207,7 @@ const STEP2_DEBUG: Record<Step2DebugKey, boolean> = {
   groupCard: true,
   approvalCard: false,
   helpText: false,
-  footer: false,
+  footer: true,
 }
 const WEB_DEBUG_STEP2_MINIMAL = false
 const weekDays = ['L', 'M', 'M', 'J', 'V', 'S', 'D']
