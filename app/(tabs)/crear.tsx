@@ -156,7 +156,7 @@ const shouldShowMapConfigNotice = Platform.OS === 'android' && !hasGoogleMapsKey
 const shouldUseWebMapFallback = Platform.OS === 'web'
 const WEB_DEBUG_SECTIONS: Record<WebDebugSectionKey, boolean> = {
   header: true,
-  stepIndicator: false,
+  stepIndicator: true,
   basicInfoSection: false,
   categorySection: false,
   activityTypeSection: false,
