@@ -2739,38 +2739,53 @@ type CrearScreenErrorBoundaryProps = {
 type CrearScreenErrorBoundaryState = {
   componentStack: string
   errorMessage: string
+  errorName: string
   errorStack: string
   hasError: boolean
+}
+
+function firstErrorLines(value: unknown, limit = 10) {
+  return String(value ?? '')
+    .split('\n')
+    .slice(0, limit)
+    .join('\n')
 }
 
 class CrearScreenErrorBoundary extends Component<CrearScreenErrorBoundaryProps, CrearScreenErrorBoundaryState> {
   state: CrearScreenErrorBoundaryState = {
     componentStack: '',
     errorMessage: '',
+    errorName: '',
     errorStack: '',
     hasError: false,
   }
 
   static getDerivedStateFromError(error: Error) {
     return {
-      errorMessage: error?.message ?? String(error),
-      errorStack: error?.stack ?? '',
+      errorMessage: String(error?.message || error),
+      errorName: error?.name ?? '',
+      errorStack: firstErrorLines(error?.stack),
       hasError: true,
     }
   }
 
   componentDidCatch(error: Error, errorInfo: ErrorInfo) {
     const renderDiagnostics = getCreateRenderDiagnostics()
+    const componentStack = firstErrorLines(errorInfo.componentStack)
+    const errorMessage = String(error?.message || error)
+    const errorName = error?.name ?? ''
+    const errorStack = firstErrorLines(error?.stack)
     console.error('[CREATE WEB ERROR DETAIL]', error)
-    console.error('[CREATE WEB ERROR STACK]', error?.stack)
-    console.error('[CREATE WEB COMPONENT STACK]', {
-      componentStack: errorInfo.componentStack,
-      errorMessage: error.message,
-      phase: 'render',
-    })
+    console.error('[CREATE WEB ERROR NAME]', errorName)
+    console.error('[CREATE WEB ERROR MESSAGE]', errorMessage)
+    console.error('[CREATE WEB ERROR STACK]', errorStack)
+    console.error('[CREATE WEB COMPONENT STACK]', componentStack)
     console.error('[CREATE WEB RENDER STATE]', renderDiagnostics)
     this.setState({
-      componentStack: errorInfo.componentStack ?? '',
+      componentStack,
+      errorMessage,
+      errorName,
+      errorStack,
     })
   }
 
@@ -2780,9 +2795,21 @@ class CrearScreenErrorBoundary extends Component<CrearScreenErrorBoundaryProps, 
         <SafeAreaView edges={['top', 'left', 'right']} style={styles.screen}>
           <View style={styles.createErrorFallback}>
             <Text style={styles.createErrorFallbackText}>No pudimos cargar el formulario.</Text>
+            <Text selectable style={styles.createErrorLabelText}>ERROR NAME:</Text>
+            <Text selectable style={styles.createErrorDetailText}>{this.state.errorName || 'Error'}</Text>
+            <Text selectable style={styles.createErrorLabelText}>ERROR MESSAGE:</Text>
             <Text selectable style={styles.createErrorDetailText}>{this.state.errorMessage || 'Error sin mensaje'}</Text>
             {this.state.componentStack ? (
-              <Text selectable style={styles.createErrorStackText}>{this.state.componentStack}</Text>
+              <>
+                <Text selectable style={styles.createErrorLabelText}>COMPONENT STACK:</Text>
+                <Text selectable style={styles.createErrorStackText}>{this.state.componentStack}</Text>
+              </>
+            ) : null}
+            {this.state.errorStack ? (
+              <>
+                <Text selectable style={styles.createErrorLabelText}>ERROR STACK:</Text>
+                <Text selectable style={styles.createErrorStackText}>{this.state.errorStack}</Text>
+              </>
             ) : null}
           </View>
         </SafeAreaView>
@@ -2936,10 +2963,11 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   createErrorFallback: {
-    alignItems: 'center',
+    alignItems: 'stretch',
     flex: 1,
-    justifyContent: 'center',
+    justifyContent: 'flex-start',
     paddingHorizontal: 24,
+    paddingTop: 32,
   },
   createErrorFallbackText: {
     color: '#123F38',
@@ -2949,6 +2977,15 @@ const styles = StyleSheet.create({
     marginBottom: 18,
     textAlign: 'center',
   },
+  createErrorLabelText: {
+    color: '#123F38',
+    fontSize: 12,
+    fontWeight: '900',
+    letterSpacing: 0,
+    lineHeight: 16,
+    marginBottom: 4,
+    maxWidth: 640,
+  },
   createErrorDetailText: {
     color: '#B42318',
     fontSize: 14,
@@ -2956,12 +2993,13 @@ const styles = StyleSheet.create({
     lineHeight: 20,
     marginBottom: 14,
     maxWidth: 640,
-    textAlign: 'center',
+    textAlign: 'left',
   },
   createErrorStackText: {
     color: '#394A45',
     fontSize: 11,
     lineHeight: 16,
+    marginBottom: 14,
     maxWidth: 640,
     textAlign: 'left',
   },
