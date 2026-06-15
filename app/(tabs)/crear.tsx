@@ -380,6 +380,29 @@ function formatDate(value: Date) {
   return `${day}/${month}/${year}`
 }
 
+function parseWebDateInput(value: string) {
+  const cleanValue = value.trim()
+  const isoMatch = /^(\d{4})-(\d{2})-(\d{2})$/.exec(cleanValue)
+  const localMatch = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec(cleanValue)
+
+  const year = isoMatch ? Number(isoMatch[1]) : localMatch ? Number(localMatch[3]) : NaN
+  const month = isoMatch ? Number(isoMatch[2]) : localMatch ? Number(localMatch[2]) : NaN
+  const day = isoMatch ? Number(isoMatch[3]) : localMatch ? Number(localMatch[1]) : NaN
+
+  if (!Number.isInteger(year) || !Number.isInteger(month) || !Number.isInteger(day)) return null
+
+  const parsedDate = new Date(year, month - 1, day)
+  if (
+    parsedDate.getFullYear() !== year
+    || parsedDate.getMonth() !== month - 1
+    || parsedDate.getDate() !== day
+  ) {
+    return null
+  }
+
+  return startOfDay(parsedDate)
+}
+
 function generateTimeOptions(startHour: number, endHour: number, intervalMinutes: number) {
   const options: string[] = []
   const startMinutes = startHour * 60
@@ -1686,6 +1709,18 @@ function CrearScreenContent() {
     setMessage('')
   }
 
+  const changeWebDate = (value: string) => {
+    setDate(value)
+    setSelectedDate(parseWebDateInput(value))
+    if (message) setMessage('')
+  }
+
+  const changeWebLocation = (value: string) => {
+    setLocation(value)
+    setSelectedLocation(null)
+    if (message) setMessage('')
+  }
+
   const moveCalendarMonth = (offset: number) => {
     setCalendarMonth((value) => new Date(value.getFullYear(), value.getMonth() + offset, 1))
   }
@@ -2400,16 +2435,6 @@ function CrearScreenContent() {
     })
   }
 
-  if (Platform.OS === 'web' && currentStep === 4) {
-    return (
-      <CreateRootFrame>
-        <View>
-          <Text>PASO 4 ANULACIÓN COMPLETA</Text>
-        </View>
-      </CreateRootFrame>
-    )
-  }
-
   if (Platform.OS === 'web' && currentStep === 2) {
     return (
       <CreateRootFrame>
@@ -2753,7 +2778,61 @@ function CrearScreenContent() {
           </View>
         ) : null}
 
-        {currentStep === 4 && showDateLocationSection ? <View style={styles.createCard}>
+        {currentStep === 4 && Platform.OS === 'web' ? (
+          <>
+            <View style={styles.createCard}>
+              <Text style={styles.createSectionTitle}>Â¿CuÃ¡ndo y dÃ³nde?</Text>
+              <View style={styles.createTwoColumnRow}>
+                <View style={styles.createColumn}>
+                  <Text style={styles.createFieldLabel}>Fecha</Text>
+                  <TextInput
+                    autoCapitalize="none"
+                    onChangeText={changeWebDate}
+                    placeholder="YYYY-MM-DD o DD/MM/AAAA"
+                    placeholderTextColor="#7A8790"
+                    style={styles.createTextInput}
+                    underlineColorAndroid="transparent"
+                    value={date}
+                  />
+                </View>
+                <View style={styles.createColumn}>
+                  <Text style={styles.createFieldLabel}>Hora</Text>
+                  <TextInput
+                    autoCapitalize="none"
+                    onChangeText={(value) => {
+                      setTime(value)
+                      if (message) setMessage('')
+                    }}
+                    placeholder="Ej: 18:30"
+                    placeholderTextColor="#7A8790"
+                    style={styles.createTextInput}
+                    underlineColorAndroid="transparent"
+                    value={time}
+                  />
+                </View>
+              </View>
+            </View>
+
+            <View style={styles.createCard}>
+              <View style={styles.createSectionHeader}>
+                <Text style={styles.createSectionTitle}>UbicaciÃ³n</Text>
+              </View>
+              <TextInput
+                maxLength={120}
+                multiline
+                onChangeText={changeWebLocation}
+                placeholder="Ej: Plaza Independencia, Tandil"
+                placeholderTextColor="#7A8790"
+                style={[styles.createTextInput, styles.createDescriptionInput]}
+                textAlignVertical="top"
+                underlineColorAndroid="transparent"
+                value={location}
+              />
+            </View>
+          </>
+        ) : null}
+
+        {currentStep === 4 && Platform.OS !== 'web' && showDateLocationSection ? <View style={styles.createCard}>
           <Text style={styles.createSectionTitle}>¿Cuándo y dónde?</Text>
           <View style={styles.createTwoColumnRow}>
             <View style={styles.createColumn}>
@@ -2773,12 +2852,11 @@ function CrearScreenContent() {
           </View>
         </View> : null}
 
-        {currentStep === 4 && showDateLocationSection ? <View style={styles.createCard}>
+        {currentStep === 4 && Platform.OS !== 'web' && showDateLocationSection ? <View style={styles.createCard}>
           <View style={styles.createSectionHeader}>
             <MapPin color="#0E5A44" size={25} strokeWidth={2.2} />
             <Text style={styles.createSectionTitle}>Ubicación</Text>
           </View>
-          {Platform.OS !== 'web' ? (
           <Pressable
             accessibilityLabel="Seleccionar ubicación en el mapa"
             accessibilityRole="button"
@@ -2814,7 +2892,6 @@ function CrearScreenContent() {
             )}
             {selectedLocation && shouldShowMapConfigNotice ? <MapConfigNotice compact /> : null}
           </Pressable>
-          ) : null}
           <Pressable accessibilityLabel="Seleccionar ubicación" accessibilityRole="button" onPress={openLocationPicker} style={styles.createLocationField}>
             <Text numberOfLines={2} style={location ? styles.createSelectText : styles.createPlaceholder}>
               {location || 'Tocá para definir el punto de encuentro'}
