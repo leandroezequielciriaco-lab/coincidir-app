@@ -118,6 +118,13 @@ type WebDebugStep2Key =
   | 'approvalCard'
   | 'helpText'
 
+type WebDebugStep2HeaderKey =
+  | 'title'
+  | 'subtitle'
+  | 'icon'
+  | 'decorativeCircle'
+  | 'extraText'
+
 type ActivityData = Record<string, unknown>
 type CreateRenderDiagnostics = Record<string, unknown>
 
@@ -179,6 +186,13 @@ const WEB_DEBUG_STEP2: Record<WebDebugStep2Key, boolean> = {
   approvalCard: false,
   helpText: false,
 }
+const WEB_DEBUG_STEP2_HEADER: Record<WebDebugStep2HeaderKey, boolean> = {
+  title: true,
+  subtitle: false,
+  icon: false,
+  decorativeCircle: false,
+  extraText: false,
+}
 const WEB_DEBUG_STEP2_MINIMAL = false
 const weekDays = ['L', 'M', 'M', 'J', 'V', 'S', 'D']
 const monthNames = [
@@ -218,6 +232,10 @@ function shouldRenderWebDebugSection(section: WebDebugSectionKey) {
 
 function shouldRenderWebDebugStep2(section: WebDebugStep2Key) {
   return Platform.OS !== 'web' || WEB_DEBUG_STEP2[section]
+}
+
+function shouldRenderWebDebugStep2Header(section: WebDebugStep2HeaderKey) {
+  return Platform.OS !== 'web' || WEB_DEBUG_STEP2_HEADER[section]
 }
 
 function logCreateWebDiagnostic(message: string, payload?: Record<string, unknown>) {
@@ -2345,6 +2363,12 @@ function CrearScreenContent() {
   const showDateLocationSection = shouldRenderWebDebugSection('dateLocationSection')
   const showAdditionalSection = shouldRenderWebDebugSection('additionalSection')
   const showFooterSection = shouldRenderWebDebugSection('footerSection')
+  const isWebStep2HeaderDebug = Platform.OS === 'web' && currentStep === 2
+  const showStep2HeaderTitle = !isWebStep2HeaderDebug || shouldRenderWebDebugStep2Header('title')
+  const showStep2HeaderSubtitle = !isWebStep2HeaderDebug || shouldRenderWebDebugStep2Header('subtitle')
+  const showStep2HeaderIcon = !isWebStep2HeaderDebug || shouldRenderWebDebugStep2Header('icon')
+  const showStep2HeaderDecorativeCircle = !isWebStep2HeaderDebug || shouldRenderWebDebugStep2Header('decorativeCircle')
+  const showStep2HeaderExtraText = !isWebStep2HeaderDebug || shouldRenderWebDebugStep2Header('extraText')
   const showStepOneCard = currentStep === 1 && (
     showBasicInfoSection
     || showCategorySection
@@ -2387,8 +2411,9 @@ function CrearScreenContent() {
         </View>
 
         <View style={styles.createTitleRow}>
+          {showStep2HeaderDecorativeCircle ? (
           <View style={styles.additionalTitleIcon}>
-            {currentStep === 2 ? (
+            {showStep2HeaderIcon && currentStep === 2 ? (
               activityKind === 'group'
                 ? <UsersRound color="#0E5A44" size={25} strokeWidth={2.4} />
                 : <ShieldCheck color="#0E5A44" size={25} strokeWidth={2.4} />
@@ -2397,6 +2422,8 @@ function CrearScreenContent() {
             {currentStep === 5 ? <SlidersHorizontal color="#0E5A44" size={25} strokeWidth={2.4} /> : null}
             {currentStep !== 2 && currentStep !== 4 && currentStep !== 5 ? <Sparkles color="#0E5A44" size={25} strokeWidth={2.4} /> : null}
           </View>
+          ) : null}
+          {showStep2HeaderTitle ? (
           <Text style={styles.createScreenTitle}>
             {currentStep === 1 ? 'Información básica' : null}
             {currentStep === 2 ? (activityKind === 'group' ? 'Elegí un grupo' : 'Visibilidad') : null}
@@ -2404,7 +2431,9 @@ function CrearScreenContent() {
             {currentStep === 4 ? '¿Cuándo y dónde?' : null}
             {currentStep === 5 ? 'Ajustes adicionales (opcionales)' : null}
           </Text>
+          ) : null}
         </View>
+        {showStep2HeaderSubtitle ? (
         <Text style={styles.createSubtitle}>
           {currentStep === 1 ? (isGroupContext ? 'Completá los datos principales de la actividad.' : 'Completá los datos principales y el tipo de actividad.') : null}
           {currentStep === 2 ? (activityKind === 'group' ? 'Seleccioná el grupo al que pertenece esta actividad.' : 'Elegí el nivel de visibilidad de tu actividad.') : null}
@@ -2412,8 +2441,9 @@ function CrearScreenContent() {
           {currentStep === 4 ? 'Elegí la fecha, hora y el lugar del encuentro.' : null}
           {currentStep === 5 ? 'Completá los detalles opcionales para que otros sepan qué esperar.' : null}
         </Text>
+        ) : null}
 
-        {isGroupContext ? (
+        {showStep2HeaderExtraText && isGroupContext ? (
           <View style={styles.groupContextChip}>
             <UsersRound color="#4B348A" size={18} strokeWidth={2.4} />
             <Text numberOfLines={2} style={styles.groupContextChipText}>Actividad del grupo: {selectedGroup || readString(preselectedGroupName, 'Grupo')}</Text>
