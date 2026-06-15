@@ -11,13 +11,15 @@ import {
   Pressable,
   ScrollView,
   StyleSheet,
+  type StyleProp,
   Text,
   TextInput,
   View,
+  type ViewStyle,
 } from 'react-native'
 import * as ImagePicker from 'expo-image-picker'
 import * as Location from 'expo-location'
-import { useLocalSearchParams, useRouter } from 'expo-router'
+import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router'
 import { onAuthStateChanged } from 'firebase/auth'
 import { addDoc, collection, deleteField, doc, getDoc, onSnapshot, serverTimestamp, setDoc, updateDoc } from 'firebase/firestore'
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
@@ -180,26 +182,26 @@ const WEB_DEBUG_SECTIONS: Record<WebDebugSectionKey, boolean> = {
   header: true,
   stepIndicator: true,
   basicInfoSection: true,
-  categorySection: false,
-  activityTypeSection: false,
-  groupSection: false,
-  dateLocationSection: false,
-  additionalSection: false,
+  categorySection: true,
+  activityTypeSection: true,
+  groupSection: true,
+  dateLocationSection: true,
+  additionalSection: true,
   footerSection: true,
 }
 const WEB_DEBUG_STEP2: Record<WebDebugStep2Key, boolean> = {
   visibilityHeader: true,
-  publicCard: false,
-  groupCard: false,
-  approvalCard: false,
-  helpText: false,
+  publicCard: true,
+  groupCard: true,
+  approvalCard: true,
+  helpText: true,
 }
 const WEB_DEBUG_STEP2_HEADER: Record<WebDebugStep2HeaderKey, boolean> = {
   title: true,
-  subtitle: false,
-  icon: false,
-  decorativeCircle: false,
-  extraText: false,
+  subtitle: true,
+  icon: true,
+  decorativeCircle: true,
+  extraText: true,
 }
 const STEP2_DEBUG: Record<Step2DebugKey, boolean> = {
   header: true,
@@ -210,6 +212,7 @@ const STEP2_DEBUG: Record<Step2DebugKey, boolean> = {
   footer: true,
 }
 const WEB_DEBUG_STEP2_MINIMAL = false
+const WEB_STEP2_USE_DEBUG_OVERRIDE = false
 const weekDays = ['L', 'M', 'M', 'J', 'V', 'S', 'D']
 const monthNames = [
   'enero',
@@ -263,9 +266,348 @@ function logCreateWebDiagnostic(message: string, payload?: Record<string, unknow
   console.log(message)
 }
 
-function createWebSafeLucideIcon(Icon: LucideIcon): LucideIcon {
+type WebIconName =
+  | 'arrow-left'
+  | 'arrow-right'
+  | 'badge-dollar'
+  | 'bar-chart'
+  | 'car'
+  | 'chevron-down'
+  | 'chevron-left'
+  | 'chevron-right'
+  | 'cloud-rain'
+  | 'dumbbell'
+  | 'globe'
+  | 'heart'
+  | 'image'
+  | 'leaf'
+  | 'lightbulb'
+  | 'lock'
+  | 'map-pin'
+  | 'minus'
+  | 'paw'
+  | 'plus'
+  | 'search'
+  | 'shield'
+  | 'sliders'
+  | 'sparkles'
+  | 'star'
+  | 'tag'
+  | 'trash'
+  | 'users'
+  | 'wallet'
+  | 'zap'
+
+type WebIconProps = {
+  color?: string
+  name: WebIconName
+  size?: number
+  style?: StyleProp<ViewStyle>
+}
+
+function WebIcon({ color = '#0E5A44', name, size = 24, style }: WebIconProps) {
+  const stroke = Math.max(2, Math.round(size / 11))
+  const line = (extraStyle: StyleProp<ViewStyle>) => (
+    <View style={[styles.webIconLine, { backgroundColor: color, borderRadius: stroke, height: stroke }, extraStyle]} />
+  )
+  const outline = (extraStyle: StyleProp<ViewStyle>) => (
+    <View style={[styles.webIconOutline, { borderColor: color, borderRadius: size, borderWidth: stroke }, extraStyle]} />
+  )
+  const dot = (diameter: number, extraStyle: StyleProp<ViewStyle>) => (
+    <View style={[styles.webIconDot, { backgroundColor: color, borderRadius: diameter / 2, height: diameter, width: diameter }, extraStyle]} />
+  )
+
+  let content: ReactNode
+
+  if (name === 'arrow-right') {
+    content = (
+      <>
+        {line({ left: size * 0.18, top: size * 0.49, width: size * 0.58 })}
+        {line({ right: size * 0.18, top: size * 0.35, transform: [{ rotate: '45deg' }], width: size * 0.3 })}
+        {line({ right: size * 0.18, top: size * 0.62, transform: [{ rotate: '-45deg' }], width: size * 0.3 })}
+      </>
+    )
+  } else if (name === 'arrow-left') {
+    content = (
+      <>
+        {line({ right: size * 0.18, top: size * 0.49, width: size * 0.58 })}
+        {line({ left: size * 0.18, top: size * 0.35, transform: [{ rotate: '-45deg' }], width: size * 0.3 })}
+        {line({ left: size * 0.18, top: size * 0.62, transform: [{ rotate: '45deg' }], width: size * 0.3 })}
+      </>
+    )
+  } else if (name === 'chevron-left') {
+    content = (
+      <>
+        {line({ left: size * 0.28, top: size * 0.29, transform: [{ rotate: '-45deg' }], width: size * 0.34 })}
+        {line({ left: size * 0.28, top: size * 0.58, transform: [{ rotate: '45deg' }], width: size * 0.34 })}
+      </>
+    )
+  } else if (name === 'chevron-right') {
+    content = (
+      <>
+        {line({ left: size * 0.35, top: size * 0.29, transform: [{ rotate: '45deg' }], width: size * 0.34 })}
+        {line({ left: size * 0.35, top: size * 0.58, transform: [{ rotate: '-45deg' }], width: size * 0.34 })}
+      </>
+    )
+  } else if (name === 'chevron-down') {
+    content = (
+      <>
+        {line({ left: size * 0.25, top: size * 0.42, transform: [{ rotate: '45deg' }], width: size * 0.32 })}
+        {line({ right: size * 0.25, top: size * 0.42, transform: [{ rotate: '-45deg' }], width: size * 0.32 })}
+      </>
+    )
+  } else if (name === 'search') {
+    content = (
+      <>
+        {outline({ height: size * 0.48, left: size * 0.15, top: size * 0.14, width: size * 0.48 })}
+        {line({ left: size * 0.58, top: size * 0.62, transform: [{ rotate: '45deg' }], width: size * 0.28 })}
+      </>
+    )
+  } else if (name === 'plus') {
+    content = (
+      <>
+        {line({ left: size * 0.22, top: size * 0.48, width: size * 0.56 })}
+        {line({ left: size * 0.22, top: size * 0.48, transform: [{ rotate: '90deg' }], width: size * 0.56 })}
+      </>
+    )
+  } else if (name === 'minus') {
+    content = line({ left: size * 0.22, top: size * 0.48, width: size * 0.56 })
+  } else if (name === 'users') {
+    content = (
+      <>
+        {outline({ height: size * 0.3, left: size * 0.14, top: size * 0.16, width: size * 0.3 })}
+        {outline({ height: size * 0.3, right: size * 0.14, top: size * 0.16, width: size * 0.3 })}
+        {outline({ borderRadius: size * 0.22, height: size * 0.34, left: size * 0.07, top: size * 0.55, width: size * 0.38 })}
+        {outline({ borderRadius: size * 0.22, height: size * 0.34, right: size * 0.07, top: size * 0.55, width: size * 0.38 })}
+      </>
+    )
+  } else if (name === 'globe') {
+    content = (
+      <>
+        {outline({ height: size * 0.72, left: size * 0.14, top: size * 0.14, width: size * 0.72 })}
+        {line({ left: size * 0.2, top: size * 0.49, width: size * 0.6 })}
+        {line({ left: size * 0.28, top: size * 0.49, transform: [{ rotate: '90deg' }], width: size * 0.44 })}
+      </>
+    )
+  } else if (name === 'shield') {
+    content = (
+      <>
+        {outline({ borderRadius: size * 0.18, height: size * 0.68, left: size * 0.2, top: size * 0.12, width: size * 0.6 })}
+        {line({ left: size * 0.34, top: size * 0.49, transform: [{ rotate: '45deg' }], width: size * 0.18 })}
+        {line({ left: size * 0.46, top: size * 0.46, transform: [{ rotate: '-45deg' }], width: size * 0.28 })}
+      </>
+    )
+  } else if (name === 'leaf') {
+    content = (
+      <>
+        {outline({ borderBottomLeftRadius: size * 0.06, borderTopRightRadius: size * 0.42, height: size * 0.54, left: size * 0.22, top: size * 0.18, transform: [{ rotate: '-28deg' }], width: size * 0.54 })}
+        {line({ left: size * 0.32, top: size * 0.58, transform: [{ rotate: '-28deg' }], width: size * 0.42 })}
+      </>
+    )
+  } else if (name === 'map-pin') {
+    content = (
+      <>
+        {outline({ height: size * 0.62, left: size * 0.2, top: size * 0.1, width: size * 0.6 })}
+        {dot(size * 0.16, { left: size * 0.42, top: size * 0.32 })}
+        {line({ left: size * 0.36, top: size * 0.72, transform: [{ rotate: '55deg' }], width: size * 0.24 })}
+        {line({ right: size * 0.36, top: size * 0.72, transform: [{ rotate: '-55deg' }], width: size * 0.24 })}
+      </>
+    )
+  } else if (name === 'tag') {
+    content = (
+      <>
+        {outline({ borderRadius: size * 0.12, height: size * 0.52, left: size * 0.24, top: size * 0.22, transform: [{ rotate: '45deg' }], width: size * 0.52 })}
+        {dot(size * 0.11, { left: size * 0.34, top: size * 0.26 })}
+      </>
+    )
+  } else if (name === 'badge-dollar') {
+    content = (
+      <>
+        {outline({ height: size * 0.68, left: size * 0.16, top: size * 0.16, width: size * 0.68 })}
+        {line({ left: size * 0.34, top: size * 0.36, width: size * 0.32 })}
+        {line({ left: size * 0.34, top: size * 0.58, width: size * 0.32 })}
+        {line({ left: size * 0.24, top: size * 0.49, transform: [{ rotate: '90deg' }], width: size * 0.48 })}
+      </>
+    )
+  } else if (name === 'wallet') {
+    content = (
+      <>
+        {outline({ borderRadius: size * 0.12, height: size * 0.52, left: size * 0.14, top: size * 0.26, width: size * 0.72 })}
+        {line({ left: size * 0.2, top: size * 0.42, width: size * 0.5 })}
+        {dot(size * 0.1, { right: size * 0.2, top: size * 0.5 })}
+      </>
+    )
+  } else if (name === 'bar-chart') {
+    content = (
+      <>
+        {line({ left: size * 0.16, top: size * 0.78, width: size * 0.68 })}
+        {line({ left: size * 0.22, top: size * 0.46, transform: [{ rotate: '90deg' }], width: size * 0.36 })}
+        {line({ left: size * 0.44, top: size * 0.34, transform: [{ rotate: '90deg' }], width: size * 0.48 })}
+        {line({ left: size * 0.66, top: size * 0.22, transform: [{ rotate: '90deg' }], width: size * 0.6 })}
+      </>
+    )
+  } else if (name === 'car') {
+    content = (
+      <>
+        {outline({ borderRadius: size * 0.14, height: size * 0.34, left: size * 0.16, top: size * 0.38, width: size * 0.68 })}
+        {line({ left: size * 0.28, top: size * 0.28, width: size * 0.44 })}
+        {dot(size * 0.16, { left: size * 0.24, top: size * 0.66 })}
+        {dot(size * 0.16, { right: size * 0.24, top: size * 0.66 })}
+      </>
+    )
+  } else if (name === 'cloud-rain') {
+    content = (
+      <>
+        {outline({ height: size * 0.42, left: size * 0.16, top: size * 0.24, width: size * 0.68 })}
+        {line({ left: size * 0.32, top: size * 0.72, transform: [{ rotate: '90deg' }], width: size * 0.18 })}
+        {line({ left: size * 0.5, top: size * 0.72, transform: [{ rotate: '90deg' }], width: size * 0.18 })}
+        {line({ left: size * 0.68, top: size * 0.72, transform: [{ rotate: '90deg' }], width: size * 0.18 })}
+      </>
+    )
+  } else if (name === 'dumbbell') {
+    content = (
+      <>
+        {line({ left: size * 0.2, top: size * 0.49, width: size * 0.6 })}
+        {line({ left: size * 0.12, top: size * 0.38, transform: [{ rotate: '90deg' }], width: size * 0.24 })}
+        {line({ right: size * 0.12, top: size * 0.38, transform: [{ rotate: '90deg' }], width: size * 0.24 })}
+      </>
+    )
+  } else if (name === 'heart') {
+    content = (
+      <>
+        {outline({ height: size * 0.34, left: size * 0.22, top: size * 0.2, width: size * 0.34 })}
+        {outline({ height: size * 0.34, right: size * 0.22, top: size * 0.2, width: size * 0.34 })}
+        {line({ left: size * 0.22, top: size * 0.58, transform: [{ rotate: '45deg' }], width: size * 0.36 })}
+        {line({ right: size * 0.22, top: size * 0.58, transform: [{ rotate: '-45deg' }], width: size * 0.36 })}
+      </>
+    )
+  } else if (name === 'image') {
+    content = (
+      <>
+        {outline({ borderRadius: size * 0.1, height: size * 0.58, left: size * 0.16, top: size * 0.2, width: size * 0.68 })}
+        {dot(size * 0.1, { right: size * 0.28, top: size * 0.3 })}
+        {line({ left: size * 0.22, top: size * 0.62, transform: [{ rotate: '-35deg' }], width: size * 0.3 })}
+        {line({ left: size * 0.44, top: size * 0.6, transform: [{ rotate: '30deg' }], width: size * 0.28 })}
+      </>
+    )
+  } else if (name === 'lightbulb') {
+    content = (
+      <>
+        {outline({ height: size * 0.5, left: size * 0.25, top: size * 0.12, width: size * 0.5 })}
+        {line({ left: size * 0.34, top: size * 0.7, width: size * 0.32 })}
+        {line({ left: size * 0.38, top: size * 0.82, width: size * 0.24 })}
+      </>
+    )
+  } else if (name === 'lock') {
+    content = (
+      <>
+        {outline({ height: size * 0.38, left: size * 0.2, top: size * 0.44, width: size * 0.6 })}
+        {outline({ borderBottomWidth: 0, height: size * 0.38, left: size * 0.3, top: size * 0.16, width: size * 0.4 })}
+      </>
+    )
+  } else if (name === 'paw') {
+    content = (
+      <>
+        {dot(size * 0.16, { left: size * 0.2, top: size * 0.22 })}
+        {dot(size * 0.16, { left: size * 0.42, top: size * 0.12 })}
+        {dot(size * 0.16, { right: size * 0.2, top: size * 0.22 })}
+        {outline({ height: size * 0.34, left: size * 0.33, top: size * 0.5, width: size * 0.34 })}
+      </>
+    )
+  } else if (name === 'sliders') {
+    content = (
+      <>
+        {line({ left: size * 0.16, top: size * 0.28, width: size * 0.68 })}
+        {line({ left: size * 0.16, top: size * 0.5, width: size * 0.68 })}
+        {line({ left: size * 0.16, top: size * 0.72, width: size * 0.68 })}
+        {dot(size * 0.14, { left: size * 0.32, top: size * 0.22 })}
+        {dot(size * 0.14, { right: size * 0.26, top: size * 0.44 })}
+        {dot(size * 0.14, { left: size * 0.48, top: size * 0.66 })}
+      </>
+    )
+  } else if (name === 'star') {
+    content = (
+      <>
+        {line({ left: size * 0.18, top: size * 0.49, width: size * 0.64 })}
+        {line({ left: size * 0.18, top: size * 0.49, transform: [{ rotate: '72deg' }], width: size * 0.64 })}
+        {line({ left: size * 0.18, top: size * 0.49, transform: [{ rotate: '-72deg' }], width: size * 0.64 })}
+      </>
+    )
+  } else if (name === 'trash') {
+    content = (
+      <>
+        {outline({ borderRadius: size * 0.08, height: size * 0.52, left: size * 0.26, top: size * 0.32, width: size * 0.48 })}
+        {line({ left: size * 0.22, top: size * 0.22, width: size * 0.56 })}
+        {line({ left: size * 0.4, top: size * 0.14, width: size * 0.2 })}
+      </>
+    )
+  } else if (name === 'zap') {
+    content = (
+      <>
+        {line({ left: size * 0.3, top: size * 0.22, transform: [{ rotate: '-58deg' }], width: size * 0.44 })}
+        {line({ left: size * 0.22, top: size * 0.46, width: size * 0.42 })}
+        {line({ left: size * 0.32, top: size * 0.66, transform: [{ rotate: '-58deg' }], width: size * 0.44 })}
+      </>
+    )
+  } else {
+    content = (
+      <>
+        {outline({ height: size * 0.68, left: size * 0.16, top: size * 0.16, width: size * 0.68 })}
+        {line({ left: size * 0.28, top: size * 0.49, width: size * 0.44 })}
+      </>
+    )
+  }
+
+  return (
+    <View accessibilityElementsHidden importantForAccessibility="no" style={[styles.webIconRoot, { height: size, width: size }, style]}>
+      <View style={[styles.webIconCanvas, { height: size, width: size }]}>
+        {content}
+      </View>
+    </View>
+  )
+}
+
+function getWebIconName(Icon: LucideIcon): WebIconName {
+  if (Icon === LucideArrowLeft) return 'arrow-left'
+  if (Icon === LucideArrowRight) return 'arrow-right'
+  if (Icon === LucideBadgeDollarSign) return 'badge-dollar'
+  if (Icon === LucideBarChart3) return 'bar-chart'
+  if (Icon === LucideCar) return 'car'
+  if (Icon === LucideChevronDown) return 'chevron-down'
+  if (Icon === LucideChevronLeft) return 'chevron-left'
+  if (Icon === LucideChevronRight) return 'chevron-right'
+  if (Icon === LucideCloudRain) return 'cloud-rain'
+  if (Icon === LucideDumbbell) return 'dumbbell'
+  if (Icon === LucideGlobe2) return 'globe'
+  if (Icon === LucideHeart) return 'heart'
+  if (Icon === LucideImageIcon) return 'image'
+  if (Icon === LucideLeaf) return 'leaf'
+  if (Icon === LucideLightbulb) return 'lightbulb'
+  if (Icon === LucideLockKeyhole) return 'lock'
+  if (Icon === LucideMapPin) return 'map-pin'
+  if (Icon === LucideMinus) return 'minus'
+  if (Icon === LucidePawPrint) return 'paw'
+  if (Icon === LucidePlus) return 'plus'
+  if (Icon === LucideSearch) return 'search'
+  if (Icon === LucideShieldCheck) return 'shield'
+  if (Icon === LucideSlidersHorizontal) return 'sliders'
+  if (Icon === LucideSparkles) return 'sparkles'
+  if (Icon === LucideStar) return 'star'
+  if (Icon === LucideTag) return 'tag'
+  if (Icon === LucideTrash2) return 'trash'
+  if (Icon === LucideUsersRound) return 'users'
+  if (Icon === LucideWalletCards) return 'wallet'
+  if (Icon === LucideZap) return 'zap'
+  return 'sparkles'
+}
+
+
+function createWebSafeLucideIcon(Icon: LucideIcon, fallback = '•'): LucideIcon {
   const SafeIcon = ((props) => {
-    if (Platform.OS === 'web') return null
+    if (Platform.OS === 'web') {
+      const iconProps = props as { color?: string; size?: number; style?: StyleProp<ViewStyle> }
+      return <WebIcon color={iconProps.color} name={getWebIconName(Icon)} size={iconProps.size} style={iconProps.style} />
+    }
 
     return <Icon {...props} />
   }) as LucideIcon
@@ -273,36 +615,36 @@ function createWebSafeLucideIcon(Icon: LucideIcon): LucideIcon {
   return SafeIcon
 }
 
-const ArrowLeft = createWebSafeLucideIcon(LucideArrowLeft)
-const ArrowRight = createWebSafeLucideIcon(LucideArrowRight)
-const BadgeDollarSign = createWebSafeLucideIcon(LucideBadgeDollarSign)
-const BarChart3 = createWebSafeLucideIcon(LucideBarChart3)
-const Car = createWebSafeLucideIcon(LucideCar)
-const ChevronDown = createWebSafeLucideIcon(LucideChevronDown)
-const ChevronLeft = createWebSafeLucideIcon(LucideChevronLeft)
-const ChevronRight = createWebSafeLucideIcon(LucideChevronRight)
-const CloudRain = createWebSafeLucideIcon(LucideCloudRain)
-const Dumbbell = createWebSafeLucideIcon(LucideDumbbell)
-const Globe2 = createWebSafeLucideIcon(LucideGlobe2)
-const Heart = createWebSafeLucideIcon(LucideHeart)
-const ImageIcon = createWebSafeLucideIcon(LucideImageIcon)
-const Leaf = createWebSafeLucideIcon(LucideLeaf)
-const Lightbulb = createWebSafeLucideIcon(LucideLightbulb)
-const LockKeyhole = createWebSafeLucideIcon(LucideLockKeyhole)
-const MapPin = createWebSafeLucideIcon(LucideMapPin)
-const Minus = createWebSafeLucideIcon(LucideMinus)
-const PawPrint = createWebSafeLucideIcon(LucidePawPrint)
-const Plus = createWebSafeLucideIcon(LucidePlus)
-const Search = createWebSafeLucideIcon(LucideSearch)
-const ShieldCheck = createWebSafeLucideIcon(LucideShieldCheck)
-const SlidersHorizontal = createWebSafeLucideIcon(LucideSlidersHorizontal)
-const Sparkles = createWebSafeLucideIcon(LucideSparkles)
-const Star = createWebSafeLucideIcon(LucideStar)
-const Tag = createWebSafeLucideIcon(LucideTag)
-const Trash2 = createWebSafeLucideIcon(LucideTrash2)
-const UsersRound = createWebSafeLucideIcon(LucideUsersRound)
-const WalletCards = createWebSafeLucideIcon(LucideWalletCards)
-const Zap = createWebSafeLucideIcon(LucideZap)
+const ArrowLeft = createWebSafeLucideIcon(LucideArrowLeft, '←')
+const ArrowRight = createWebSafeLucideIcon(LucideArrowRight, '→')
+const BadgeDollarSign = createWebSafeLucideIcon(LucideBadgeDollarSign, '$')
+const BarChart3 = createWebSafeLucideIcon(LucideBarChart3, '▥')
+const Car = createWebSafeLucideIcon(LucideCar, '▰')
+const ChevronDown = createWebSafeLucideIcon(LucideChevronDown, '⌄')
+const ChevronLeft = createWebSafeLucideIcon(LucideChevronLeft, '‹')
+const ChevronRight = createWebSafeLucideIcon(LucideChevronRight, '›')
+const CloudRain = createWebSafeLucideIcon(LucideCloudRain, '☔')
+const Dumbbell = createWebSafeLucideIcon(LucideDumbbell, '⌁')
+const Globe2 = createWebSafeLucideIcon(LucideGlobe2, '◎')
+const Heart = createWebSafeLucideIcon(LucideHeart, '♡')
+const ImageIcon = createWebSafeLucideIcon(LucideImageIcon, '▧')
+const Leaf = createWebSafeLucideIcon(LucideLeaf, '⌑')
+const Lightbulb = createWebSafeLucideIcon(LucideLightbulb, '◌')
+const LockKeyhole = createWebSafeLucideIcon(LucideLockKeyhole, '◈')
+const MapPin = createWebSafeLucideIcon(LucideMapPin, '⌖')
+const Minus = createWebSafeLucideIcon(LucideMinus, '−')
+const PawPrint = createWebSafeLucideIcon(LucidePawPrint, '◌')
+const Plus = createWebSafeLucideIcon(LucidePlus, '+')
+const Search = createWebSafeLucideIcon(LucideSearch, '⌕')
+const ShieldCheck = createWebSafeLucideIcon(LucideShieldCheck, '◈')
+const SlidersHorizontal = createWebSafeLucideIcon(LucideSlidersHorizontal, '☷')
+const Sparkles = createWebSafeLucideIcon(LucideSparkles, '✦')
+const Star = createWebSafeLucideIcon(LucideStar, '☆')
+const Tag = createWebSafeLucideIcon(LucideTag, '◇')
+const Trash2 = createWebSafeLucideIcon(LucideTrash2, '×')
+const UsersRound = createWebSafeLucideIcon(LucideUsersRound, '♙')
+const WalletCards = createWebSafeLucideIcon(LucideWalletCards, '▤')
+const Zap = createWebSafeLucideIcon(LucideZap, '↯')
 
 function getCategoryIcon(categoryId: CategoryId) {
   if (categoryId === 'outdoor') return Leaf
@@ -728,6 +1070,63 @@ function CrearScreenContent() {
   const calendarDays = useMemo(
     () => getCalendarDays(calendarMonth),
     [calendarMonth],
+  )
+
+  const resetCreateActivityForm = useCallback(() => {
+    const cleanGroupName = readString(preselectedGroupName)
+    const cleanGroupId = readString(preselectedGroupId)
+    const shouldKeepGroupContext = isGroupContext && Boolean(cleanGroupId)
+    const shouldStartGroupActivity = !isEditMode && kind === 'group' && Boolean(cleanGroupName) && Boolean(cleanGroupId)
+    const groupCategory = shouldStartGroupActivity
+      ? findActivityCategory({ categoryId: 'groups' }) ?? categories[0] ?? null
+      : null
+
+    setFlowMode(isEditMode || shouldKeepGroupContext || shouldStartGroupActivity ? 'activity' : 'choice')
+    setActivityKind(shouldKeepGroupContext || shouldStartGroupActivity ? 'group' : 'individual')
+    setName(shouldStartGroupActivity && !shouldKeepGroupContext ? cleanGroupName : '')
+    setCategory(groupCategory)
+    setSubcategory(groupCategory?.subcategories[0] ?? '')
+    setActivitySearchQuery('')
+    setSelectedActivitySearchLabel('')
+    setDescription('')
+    setDate('')
+    setSelectedDate(null)
+    setCalendarMonth(startOfDay(new Date()))
+    setTime('')
+    setLocation('')
+    setSelectedLocation(null)
+    setMapRegion(initialLocationRegion)
+    setDraftPin({
+      latitude: initialLocationRegion.latitude,
+      longitude: initialLocationRegion.longitude,
+    })
+    setPickerMode(null)
+    setMessage('')
+    setCurrentStep(shouldStartGroupActivity && !shouldKeepGroupContext ? 3 : 1)
+    setIsAdditionalVisible(false)
+    setIsLocationPickerVisible(false)
+    setIsResolvingLocation(false)
+    setPrivacy('Pública')
+    setSelectedGroup(shouldKeepGroupContext || shouldStartGroupActivity ? cleanGroupName : '')
+    setSelectedGroupId(shouldKeepGroupContext || shouldStartGroupActivity ? cleanGroupId : '')
+    setIsCreateGroupVisible(false)
+    setNewGroupName('')
+    setMaxParticipants(10)
+    setLevel('Principiante')
+    setEnvironment('Tranquilo')
+    setCost('Gratis')
+    setPrice('')
+    setCurrency('ARS')
+    setQuickSettings(['Mascotas permitidas'])
+  }, [isEditMode, isGroupContext, kind, preselectedGroupId, preselectedGroupName])
+
+  useFocusEffect(
+    useCallback(() => {
+      if (Platform.OS !== 'web' || isEditMode) return undefined
+
+      resetCreateActivityForm()
+      return undefined
+    }, [isEditMode, resetCreateActivityForm]),
   )
 
   useEffect(() => {
@@ -1303,6 +1702,7 @@ function CrearScreenContent() {
         })
       }
 
+      if (Platform.OS === 'web') resetCreateActivityForm()
       router.replace('/home')
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error)
@@ -2135,7 +2535,7 @@ function CrearScreenContent() {
                 setLocation(value)
                 if (message) setMessage('')
               }}
-              placeholder="Ej: Plaza Independencia, Tandil"
+              placeholder="Ej: Lago del Fuerte, Parque Independencia, zona centro"
               placeholderTextColor="#7A8790"
               style={styles.locationWebAddressInput}
               underlineColorAndroid="transparent"
@@ -2476,11 +2876,12 @@ function CrearScreenContent() {
         }}
         onContinue={continueFromWebStep4}
         time={time}
+        visibleActivitySteps={visibleActivitySteps}
       />
     )
   }
 
-  if (Platform.OS === 'web' && currentStep === 2) {
+  if (WEB_STEP2_USE_DEBUG_OVERRIDE && Platform.OS === 'web' && currentStep === 2) {
     return (
       <CreateRootFrame>
         <View>
@@ -3372,6 +3773,7 @@ type CreateStep4WebSimpleProps = {
   onChangeTime: (value: string) => void
   onContinue: () => void
   time: string
+  visibleActivitySteps: CreateStep[]
 }
 
 function CreateStep4WebSimple({
@@ -3384,57 +3786,108 @@ function CreateStep4WebSimple({
   onChangeTime,
   onContinue,
   time,
+  visibleActivitySteps,
 }: CreateStep4WebSimpleProps) {
+  const [activePicker, setActivePicker] = useState<'date' | 'time' | null>(null)
+  const [calendarMonth, setCalendarMonth] = useState(() => parseWebDateInput(date) ?? startOfDay(new Date()))
+  const calendarDays = useMemo(() => getCalendarDays(calendarMonth), [calendarMonth])
+  const selectedDateForPicker = parseWebDateInput(date)
+  const selectedDateLabel = selectedDateForPicker ? formatDate(selectedDateForPicker) : 'Elegir'
+  const selectedTimeLabel = time.trim() || 'Elegir'
+
+  const moveCalendarMonth = (direction: -1 | 1) => {
+    setCalendarMonth((currentMonth) => new Date(currentMonth.getFullYear(), currentMonth.getMonth() + direction, 1))
+  }
+
+  const selectDate = (value: Date) => {
+    onChangeDate(formatDate(value))
+    setCalendarMonth(value)
+    setActivePicker(null)
+  }
+
+  const selectTime = (value: string) => {
+    onChangeTime(value)
+    setActivePicker(null)
+  }
+
   return (
     <View style={styles.screen}>
-      <View style={[styles.createScrollContent, styles.webStep4SimpleContent]}>
+      <ScrollView
+        contentContainerStyle={[styles.createScrollContent, styles.webStep4SimpleContent]}
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
+      >
+        <View style={styles.createHeader}>
+          <Pressable accessibilityLabel="Volver" accessibilityRole="button" onPress={onBack} style={styles.createBackButton}>
+            <ArrowLeft color="#0E5A44" size={33} strokeWidth={2.2} />
+          </Pressable>
+          <View style={styles.createLogo}>
+            <CoincidirLogo compact markSize={48} textSize={18} />
+          </View>
+        </View>
+
+        <View style={styles.createTitleRow}>
+          <View style={styles.additionalTitleIcon}>
+            <MapPin color="#0E5A44" size={25} strokeWidth={2.4} />
+          </View>
+          <Text style={styles.createScreenTitle}>¿Cuándo y dónde?</Text>
+        </View>
+        <Text style={styles.createSubtitle}>Elegí la fecha, hora y el lugar del encuentro.</Text>
+
+        <View style={styles.createStepPills}>
+          {visibleActivitySteps.map((step, index) => (
+            <View key={step} style={[styles.createStepPill, step === 4 && styles.createStepPillActive, step < 4 && styles.createStepPillDone]}>
+              <Text style={[styles.createStepPillText, step === 4 && styles.createStepPillTextActive, step < 4 && styles.createStepPillTextDone]}>{index + 1}</Text>
+            </View>
+          ))}
+        </View>
         <View style={styles.createCard}>
           <Text style={styles.createSectionTitle}>¿Cuándo y dónde?</Text>
           <View style={styles.createTwoColumnRow}>
             <View style={styles.createColumn}>
-              <View style={styles.webStep4InputCard}>
+              <Pressable
+                accessibilityLabel="Elegir fecha"
+                accessibilityRole="button"
+                onPress={() => setActivePicker('date')}
+                style={styles.webStep4SelectCard}
+              >
                 <Text style={styles.createFieldLabel}>Fecha</Text>
-                <TextInput
-                  autoCapitalize="none"
-                  onChangeText={onChangeDate}
-                  placeholder="DD/MM/AAAA"
-                  placeholderTextColor="#7A8790"
-                  style={styles.webStep4TextInput}
-                  underlineColorAndroid="transparent"
-                  value={date}
-                />
+                <View style={styles.webStep4SelectRow}>
+                  <Text style={[styles.webStep4SelectValue, !selectedDateForPicker && styles.webStep4SelectPlaceholder]}>{selectedDateLabel}</Text>
+                  <ChevronDown color="#0E5A44" size={22} strokeWidth={2.4} />
+                </View>
                 <Text style={styles.webStep4HelpText}>Ej: 25/06/2026</Text>
-              </View>
+              </Pressable>
             </View>
             <View style={styles.createColumn}>
-              <View style={styles.webStep4InputCard}>
+              <Pressable
+                accessibilityLabel="Elegir hora"
+                accessibilityRole="button"
+                onPress={() => setActivePicker('time')}
+                style={styles.webStep4SelectCard}
+              >
                 <Text style={styles.createFieldLabel}>Hora</Text>
-                <TextInput
-                  autoCapitalize="none"
-                  onChangeText={onChangeTime}
-                  placeholder="HH:MM"
-                  placeholderTextColor="#7A8790"
-                  style={styles.webStep4TextInput}
-                  underlineColorAndroid="transparent"
-                  value={time}
-                />
+                <View style={styles.webStep4SelectRow}>
+                  <Text style={[styles.webStep4SelectValue, !time.trim() && styles.webStep4SelectPlaceholder]}>{selectedTimeLabel}</Text>
+                  <ChevronDown color="#0E5A44" size={22} strokeWidth={2.4} />
+                </View>
                 <Text style={styles.webStep4HelpText}>Ej: 08:30</Text>
-              </View>
+              </Pressable>
             </View>
           </View>
         </View>
 
         <View style={styles.createCard}>
           <Text style={styles.createSectionTitle}>Ubicación</Text>
-          <View style={styles.webStep4InputCard}>
+          <View style={styles.webStep4AddressCard}>
             <Text style={styles.createFieldLabel}>Dirección o punto de encuentro</Text>
             <TextInput
               maxLength={120}
               multiline
               onChangeText={onChangeLocation}
-              placeholder="Ej: Plaza Independencia, Tandil"
+              placeholder="Ej: Lago del Fuerte, Parque Independencia, zona centro"
               placeholderTextColor="#7A8790"
-              style={[styles.webStep4TextInput, styles.webStep4AddressInput]}
+              style={[styles.webStep4TextInput, styles.webStep4AddressInput, styles.webStep4AddressTextInput]}
               textAlignVertical="top"
               underlineColorAndroid="transparent"
               value={location}
@@ -3447,13 +3900,84 @@ function CreateStep4WebSimple({
 
         <View style={styles.webStep4ButtonStack}>
           <Pressable accessibilityLabel="Volver al paso anterior" accessibilityRole="button" onPress={onBack} style={styles.createSecondaryButton}>
+            <ChevronLeft color="#0E5A44" size={24} strokeWidth={2.4} />
             <Text style={styles.createSecondaryText}>Atrás</Text>
           </Pressable>
           <Pressable accessibilityLabel="Continuar" accessibilityRole="button" onPress={onContinue} style={styles.createSubmitButton}>
             <Text style={styles.createSubmitText}>Continuar</Text>
+            <ArrowRight color="#FFFFFF" size={32} strokeWidth={2.2} style={styles.createSubmitArrow} />
           </Pressable>
         </View>
-      </View>
+      </ScrollView>
+
+      {activePicker ? (
+        <View style={styles.webStep4PickerOverlay}>
+          <Pressable accessibilityLabel="Cerrar selector" onPress={() => setActivePicker(null)} style={styles.webStep4PickerBackdrop} />
+          <View style={styles.webPickerSheet}>
+            <Text style={styles.webPickerTitle}>{activePicker === 'date' ? 'Elegí una fecha' : 'Elegí una hora'}</Text>
+
+            {activePicker === 'date' ? (
+              <View>
+                <View style={styles.webPickerCalendarHeader}>
+                  <Pressable accessibilityLabel="Mes anterior" accessibilityRole="button" onPress={() => moveCalendarMonth(-1)} style={styles.webPickerNavButton}>
+                    <ChevronLeft color="#0E5A44" size={24} strokeWidth={2.4} />
+                  </Pressable>
+                  <Text style={styles.webPickerMonthTitle}>{getCalendarMonthTitle(calendarMonth)}</Text>
+                  <Pressable accessibilityLabel="Mes siguiente" accessibilityRole="button" onPress={() => moveCalendarMonth(1)} style={styles.webPickerNavButton}>
+                    <ChevronRight color="#0E5A44" size={24} strokeWidth={2.4} />
+                  </Pressable>
+                </View>
+
+                <View style={styles.webPickerWeekRow}>
+                  {weekDays.map((item, index) => (
+                    <Text key={`${item}-${index}`} style={styles.webPickerWeekText}>{item}</Text>
+                  ))}
+                </View>
+
+                <View style={styles.webPickerCalendarGrid}>
+                  {calendarDays.map((item, index) => {
+                    const isSelected = Boolean(item && selectedDateForPicker && isSameDay(item, selectedDateForPicker))
+                    const isToday = Boolean(item && isSameDay(item, new Date()))
+
+                    return (
+                      <Pressable
+                        accessibilityLabel={item ? `Elegir ${formatDate(item)}` : undefined}
+                        accessibilityRole={item ? 'button' : undefined}
+                        disabled={!item}
+                        key={item ? item.toISOString() : `empty-${index}`}
+                        onPress={() => item && selectDate(item)}
+                        style={[
+                          styles.webPickerDay,
+                          isToday && styles.webPickerDayToday,
+                          isSelected && styles.webPickerDaySelected,
+                        ]}
+                      >
+                        {item ? (
+                          <Text style={[styles.webPickerDayText, isSelected && styles.webPickerDayTextSelected]}>{item.getDate()}</Text>
+                        ) : null}
+                      </Pressable>
+                    )
+                  })}
+                </View>
+              </View>
+            ) : null}
+
+            {activePicker === 'time' ? (
+              <ScrollView contentContainerStyle={styles.webTimeList} showsVerticalScrollIndicator={false}>
+                {timeOptions.map((item) => {
+                  const isSelected = item === time
+
+                  return (
+                    <Pressable key={item} onPress={() => selectTime(item)} style={[styles.webTimeItem, isSelected && styles.webTimeItemSelected]}>
+                      <Text style={[styles.webTimeItemText, isSelected && styles.webTimeItemTextSelected]}>{item}</Text>
+                    </Pressable>
+                  )
+                })}
+              </ScrollView>
+            ) : null}
+          </View>
+        </View>
+      ) : null}
     </View>
   )
 }
@@ -3734,6 +4258,30 @@ const styles = StyleSheet.create({
     maxWidth: 720,
     width: '100%',
   },
+  webSafeLucideText: {
+    color: '#0E5A44',
+    fontSize: 24,
+    fontWeight: '900',
+    lineHeight: 28,
+    textAlign: 'center',
+  },
+  webIconRoot: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  webIconCanvas: {
+    position: 'relative',
+  },
+  webIconLine: {
+    position: 'absolute',
+  },
+  webIconOutline: {
+    backgroundColor: 'transparent',
+    position: 'absolute',
+  },
+  webIconDot: {
+    position: 'absolute',
+  },
   webStep4SimpleContent: {
     alignSelf: 'center',
     flexGrow: 1,
@@ -3744,10 +4292,63 @@ const styles = StyleSheet.create({
     paddingTop: 28,
     width: '100%',
   },
+  webStep4BackArrow: {
+    color: '#0E5A44',
+    fontSize: 34,
+    fontWeight: '900',
+    lineHeight: 38,
+  },
+  webStep4TitleIcon: {
+    fontSize: 25,
+    lineHeight: 30,
+  },
+  webStep4Card: {
+    marginBottom: 22,
+  },
+  webStep4SelectCard: {
+    backgroundColor: '#FCFAF8',
+    borderColor: '#E2E6E3',
+    borderRadius: 14,
+    borderWidth: 1,
+    minHeight: 86,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+  },
+  webStep4SelectRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    minHeight: 34,
+  },
+  webStep4SelectValue: {
+    color: '#123F38',
+    flex: 1,
+    fontSize: 17,
+    fontWeight: '900',
+    lineHeight: 22,
+  },
+  webStep4SelectPlaceholder: {
+    color: '#7A8790',
+  },
+  webStep4Chevron: {
+    color: '#0E5A44',
+    fontSize: 25,
+    fontWeight: '900',
+    lineHeight: 26,
+    marginLeft: 10,
+  },
   webStep4InputCard: {
     backgroundColor: '#FCFAF8',
     borderColor: '#E2E6E3',
     borderRadius: 12,
+    borderWidth: 1,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+  },
+  webStep4AddressCard: {
+    backgroundColor: '#FCFAF8',
+    borderColor: '#E2E6E3',
+    borderRadius: 14,
     borderWidth: 1,
     paddingHorizontal: 14,
     paddingVertical: 12,
@@ -3764,6 +4365,9 @@ const styles = StyleSheet.create({
   webStep4AddressInput: {
     minHeight: 86,
   },
+  webStep4AddressTextInput: {
+    marginBottom: 0,
+  },
   webStep4HelpText: {
     color: '#64736D',
     fontSize: 13,
@@ -3771,8 +4375,150 @@ const styles = StyleSheet.create({
     lineHeight: 18,
     marginTop: 4,
   },
+  webStep4SectionIcon: {
+    color: '#0E5A44',
+    fontSize: 22,
+    fontWeight: '900',
+    lineHeight: 25,
+    marginBottom: 12,
+    marginRight: 8,
+  },
   webStep4ButtonStack: {
     gap: 12,
+  },
+  webStep4ButtonIcon: {
+    color: '#0E5A44',
+    fontSize: 26,
+    fontWeight: '900',
+    lineHeight: 28,
+  },
+  webStep4PickerOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    elevation: 40,
+    justifyContent: 'flex-end',
+    zIndex: 40,
+  },
+  webStep4PickerBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(15, 21, 18, 0.36)',
+  },
+  webPickerSheet: {
+    alignSelf: 'center',
+    backgroundColor: '#FFFFFF',
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
+    maxHeight: '82%',
+    maxWidth: 720,
+    paddingBottom: 30,
+    paddingHorizontal: 24,
+    paddingTop: 28,
+    shadowColor: '#0E5A44',
+    shadowOffset: { width: 0, height: -8 },
+    shadowOpacity: 0.12,
+    shadowRadius: 22,
+    width: '100%',
+  },
+  webPickerTitle: {
+    color: '#0E5A44',
+    fontSize: 23,
+    fontWeight: '900',
+    lineHeight: 29,
+    marginBottom: 20,
+    textAlign: 'center',
+  },
+  webPickerCalendarHeader: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 18,
+  },
+  webPickerNavButton: {
+    alignItems: 'center',
+    height: 42,
+    justifyContent: 'center',
+    width: 42,
+  },
+  webPickerNavText: {
+    color: '#0E5A44',
+    fontSize: 35,
+    fontWeight: '800',
+    lineHeight: 38,
+  },
+  webPickerMonthTitle: {
+    color: '#0E5A44',
+    fontSize: 20,
+    fontWeight: '900',
+    lineHeight: 25,
+    textTransform: 'capitalize',
+  },
+  webPickerWeekRow: {
+    flexDirection: 'row',
+    marginBottom: 10,
+  },
+  webPickerWeekText: {
+    color: '#6E7B74',
+    flex: 1,
+    fontSize: 14,
+    fontWeight: '900',
+    lineHeight: 18,
+    textAlign: 'center',
+  },
+  webPickerCalendarGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+  },
+  webPickerDay: {
+    alignItems: 'center',
+    borderRadius: 14,
+    height: 42,
+    justifyContent: 'center',
+    marginBottom: 6,
+    width: `${100 / 7}%`,
+  },
+  webPickerDayToday: {
+    backgroundColor: '#EFF7EB',
+  },
+  webPickerDaySelected: {
+    backgroundColor: '#0E5A44',
+  },
+  webPickerDayText: {
+    color: '#123F38',
+    fontSize: 16,
+    fontWeight: '900',
+    lineHeight: 20,
+  },
+  webPickerDayTextSelected: {
+    color: '#FFFFFF',
+  },
+  webTimeList: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    paddingBottom: 4,
+  },
+  webTimeItem: {
+    alignItems: 'center',
+    backgroundColor: '#FCFAF8',
+    borderColor: '#E2E6E3',
+    borderRadius: 14,
+    borderWidth: 1,
+    minHeight: 44,
+    justifyContent: 'center',
+    paddingHorizontal: 14,
+    width: '31%',
+  },
+  webTimeItemSelected: {
+    backgroundColor: '#0E5A44',
+    borderColor: '#0E5A44',
+  },
+  webTimeItemText: {
+    color: '#123F38',
+    fontSize: 15,
+    fontWeight: '900',
+    lineHeight: 20,
+  },
+  webTimeItemTextSelected: {
+    color: '#FFFFFF',
   },
   groupCreatedScrollContent: {
     flexGrow: 1,
