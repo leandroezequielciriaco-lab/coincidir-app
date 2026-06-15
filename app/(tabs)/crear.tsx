@@ -2400,6 +2400,16 @@ function CrearScreenContent() {
     })
   }
 
+  if (Platform.OS === 'web' && currentStep === 4) {
+    return (
+      <CreateRootFrame>
+        <View>
+          <Text>PASO 4 ANULACIÓN COMPLETA</Text>
+        </View>
+      </CreateRootFrame>
+    )
+  }
+
   if (Platform.OS === 'web' && currentStep === 2) {
     return (
       <CreateRootFrame>
