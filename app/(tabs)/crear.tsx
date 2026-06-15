@@ -143,6 +143,13 @@ const hasGoogleMapsKey = Boolean(process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY?.tr
 const canUseNativeMap = Platform.OS !== 'web' && (Platform.OS !== 'android' || hasGoogleMapsKey)
 const shouldShowMapConfigNotice = Platform.OS === 'android' && !hasGoogleMapsKey
 const shouldUseWebMapFallback = Platform.OS === 'web'
+const DEBUG_WEB_CREATE_SAFE_MODE = Platform.OS === 'web'
+const DEBUG_WEB_CREATE_BLOCKS = {
+  activityType: false,
+  basicInfo: false,
+  categoryPicker: false,
+  footer: true,
+}
 const weekDays = ['L', 'M', 'M', 'J', 'V', 'S', 'D']
 const monthNames = [
   'enero',
@@ -169,6 +176,11 @@ function setCreateRenderDiagnostics(value: CreateRenderDiagnostics) {
 function getCreateRenderDiagnostics() {
   if (Platform.OS !== 'web') return null
   return ((globalThis as typeof globalThis & Record<string, unknown>)[createRenderDiagnosticsKey] ?? null) as CreateRenderDiagnostics | null
+}
+
+function logCreateWebRenderBlock(blockName: string) {
+  if (!DEBUG_WEB_CREATE_SAFE_MODE) return
+  console.log('[CREATE WEB RENDER BLOCK]', blockName)
 }
 
 function getCategoryIcon(categoryId: CategoryId) {
@@ -1729,6 +1741,27 @@ function CrearScreenContent() {
     </>
   )
 
+  if (DEBUG_WEB_CREATE_SAFE_MODE) {
+    const safeGoToNextStep = () => {
+      setMessage('')
+      setCurrentStep((step) => {
+        const currentIndex = visibleActivitySteps.indexOf(step)
+        return visibleActivitySteps[Math.min(currentIndex + 1, visibleActivitySteps.length - 1)] ?? lastVisibleStep
+      })
+    }
+
+    return (
+      <CreateWebSafeMode
+        activityKind={activityKind}
+        categoryLabel={category?.label ?? ''}
+        currentStep={currentStep}
+        onContinue={safeGoToNextStep}
+        selectedGroup={selectedGroup}
+        subcategory={subcategory}
+      />
+    )
+  }
+
   if (isLoadingEditActivity) {
     return (
       <SafeAreaView edges={['top']} style={styles.screen}>
@@ -2738,6 +2771,66 @@ type CrearScreenErrorBoundaryProps = {
   children: ReactNode
 }
 
+type CreateWebSafeModeProps = {
+  activityKind: ActivityKind
+  categoryLabel: string
+  currentStep: CreateStep
+  onContinue: () => void
+  selectedGroup: string
+  subcategory: string
+}
+
+function CreateWebSafeMode({
+  activityKind,
+  categoryLabel,
+  currentStep,
+  onContinue,
+  selectedGroup,
+  subcategory,
+}: CreateWebSafeModeProps) {
+  if (DEBUG_WEB_CREATE_BLOCKS.basicInfo) logCreateWebRenderBlock('basic-info')
+  if (DEBUG_WEB_CREATE_BLOCKS.categoryPicker) logCreateWebRenderBlock('category-picker')
+  if (DEBUG_WEB_CREATE_BLOCKS.activityType) logCreateWebRenderBlock('activity-type')
+  if (DEBUG_WEB_CREATE_BLOCKS.footer) logCreateWebRenderBlock('footer')
+
+  return (
+    <SafeAreaView edges={['top', 'left', 'right']} style={styles.screen}>
+      <View style={styles.webCreateSafeContent}>
+        <Text style={styles.webCreateSafeTitle}>Crear actividad</Text>
+        <Text style={styles.webCreateSafeStep}>Paso actual: {currentStep}</Text>
+
+        {DEBUG_WEB_CREATE_BLOCKS.basicInfo ? (
+          <View style={styles.webCreateSafeBlock}>
+            <Text style={styles.webCreateSafeBlockTitle}>basic-info</Text>
+          </View>
+        ) : null}
+
+        {DEBUG_WEB_CREATE_BLOCKS.categoryPicker ? (
+          <View style={styles.webCreateSafeBlock}>
+            <Text style={styles.webCreateSafeBlockTitle}>category-picker</Text>
+            <Text style={styles.webCreateSafeBlockText}>{categoryLabel || 'Sin categoria'}</Text>
+            <Text style={styles.webCreateSafeBlockText}>{subcategory || 'Sin subcategoria'}</Text>
+          </View>
+        ) : null}
+
+        {DEBUG_WEB_CREATE_BLOCKS.activityType ? (
+          <View style={styles.webCreateSafeBlock}>
+            <Text style={styles.webCreateSafeBlockTitle}>activity-type</Text>
+            <Text style={styles.webCreateSafeBlockText}>{activityKind}</Text>
+            <Text style={styles.webCreateSafeBlockText}>{selectedGroup || 'Sin grupo'}</Text>
+          </View>
+        ) : null}
+
+        {DEBUG_WEB_CREATE_BLOCKS.footer ? (
+          <Pressable accessibilityRole="button" onPress={onContinue} style={styles.webCreateSafeButton}>
+            <Text style={styles.webCreateSafeButtonText}>Continuar</Text>
+          </Pressable>
+        ) : null}
+      </View>
+    </SafeAreaView>
+  )
+}
+
 type CreateGroupModalFrameProps = {
   children: ReactNode
 }
@@ -2983,6 +3076,68 @@ const styles = StyleSheet.create({
   },
   errorBoundaryContent: {
     flex: 1,
+  },
+  webCreateSafeContent: {
+    alignSelf: 'center',
+    flex: 1,
+    maxWidth: 520,
+    paddingHorizontal: 24,
+    paddingTop: 40,
+    width: '100%',
+  },
+  webCreateSafeTitle: {
+    color: '#123F38',
+    fontSize: 28,
+    fontWeight: '900',
+    letterSpacing: 0,
+    lineHeight: 34,
+    marginBottom: 12,
+  },
+  webCreateSafeStep: {
+    color: '#34445F',
+    fontSize: 16,
+    fontWeight: '800',
+    letterSpacing: 0,
+    lineHeight: 22,
+    marginBottom: 24,
+  },
+  webCreateSafeBlock: {
+    borderColor: '#D7E7D7',
+    borderRadius: 8,
+    borderWidth: 1,
+    marginBottom: 14,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+  },
+  webCreateSafeBlockTitle: {
+    color: '#0E5A44',
+    fontSize: 14,
+    fontWeight: '900',
+    letterSpacing: 0,
+    lineHeight: 18,
+    marginBottom: 6,
+  },
+  webCreateSafeBlockText: {
+    color: '#34445F',
+    fontSize: 14,
+    fontWeight: '700',
+    letterSpacing: 0,
+    lineHeight: 19,
+  },
+  webCreateSafeButton: {
+    alignItems: 'center',
+    backgroundColor: '#00613F',
+    borderRadius: 8,
+    justifyContent: 'center',
+    minHeight: 54,
+    paddingHorizontal: 18,
+  },
+  webCreateSafeButtonText: {
+    color: '#FFFFFF',
+    fontSize: 17,
+    fontWeight: '900',
+    letterSpacing: 0,
+    lineHeight: 22,
   },
   createErrorFallback: {
     alignItems: 'stretch',
