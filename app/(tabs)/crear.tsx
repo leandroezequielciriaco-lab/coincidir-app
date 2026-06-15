@@ -2274,7 +2274,8 @@ function CrearScreenContent() {
             </>
           )}
         </Pressable>
-        <Modal animationType="slide" visible={isLocationPickerVisible} onRequestClose={() => setIsLocationPickerVisible(false)}>
+        {(Platform.OS !== 'web' || isLocationPickerVisible) ? (
+        <Modal animationType={Platform.OS === 'web' ? 'none' : 'slide'} visible={isLocationPickerVisible} onRequestClose={() => setIsLocationPickerVisible(false)}>
           <SafeAreaView edges={['top', 'bottom']} style={styles.locationPickerScreen}>
             <View style={[styles.locationPickerHeader, Platform.OS === 'web' && styles.webLocationPickerColumn]}>
               <Pressable
@@ -2379,13 +2380,11 @@ function CrearScreenContent() {
             </View>
           </SafeAreaView>
         </Modal>
+        ) : null}
 
-        <Modal animationType="fade" transparent visible={isCreateGroupVisible} onRequestClose={closeCreateGroup}>
-          <KeyboardAvoidingView
-            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-            keyboardVerticalOffset={Platform.OS === 'ios' ? 12 : 0}
-            style={styles.groupModalAvoidingView}
-          >
+        {(Platform.OS !== 'web' || isCreateGroupVisible) ? (
+        <Modal animationType={Platform.OS === 'web' ? 'none' : 'fade'} transparent visible={isCreateGroupVisible} onRequestClose={closeCreateGroup}>
+          <CreateGroupModalFrame>
             <View style={styles.modalBackdrop}>
               <Pressable style={StyleSheet.absoluteFill} onPress={closeCreateGroup} />
               <View style={[styles.groupModalCard, { paddingBottom: Math.max(insets.bottom + 24, 36) }]}>
@@ -2412,10 +2411,12 @@ function CrearScreenContent() {
                 </Pressable>
               </View>
             </View>
-          </KeyboardAvoidingView>
+          </CreateGroupModalFrame>
         </Modal>
+        ) : null}
 
-        <Modal animationType="fade" transparent visible={pickerMode !== null} onRequestClose={() => setPickerMode(null)}>
+        {(Platform.OS !== 'web' || pickerMode !== null) ? (
+        <Modal animationType={Platform.OS === 'web' ? 'none' : 'fade'} transparent visible={pickerMode !== null} onRequestClose={() => setPickerMode(null)}>
           <View style={[styles.modalBackdrop, isWebDateTimePicker && styles.webPickerBackdrop]}>
             <Pressable style={StyleSheet.absoluteFill} onPress={() => setPickerMode(null)} />
             <View style={[
@@ -2537,6 +2538,7 @@ function CrearScreenContent() {
             </View>
           </View>
         </Modal>
+        ) : null}
       </ScrollView>
 
       {isAdditionalVisible ? (
@@ -2734,6 +2736,26 @@ function CrearScreenContent() {
 
 type CrearScreenErrorBoundaryProps = {
   children: ReactNode
+}
+
+type CreateGroupModalFrameProps = {
+  children: ReactNode
+}
+
+function CreateGroupModalFrame({ children }: CreateGroupModalFrameProps) {
+  if (Platform.OS === 'web') {
+    return <View style={styles.groupModalAvoidingView}>{children}</View>
+  }
+
+  return (
+    <KeyboardAvoidingView
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      keyboardVerticalOffset={Platform.OS === 'ios' ? 12 : 0}
+      style={styles.groupModalAvoidingView}
+    >
+      {children}
+    </KeyboardAvoidingView>
+  )
 }
 
 type CrearScreenErrorBoundaryState = {
