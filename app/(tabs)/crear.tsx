@@ -111,6 +111,13 @@ type WebDebugSectionKey =
   | 'additionalSection'
   | 'footerSection'
 
+type WebDebugStep2Key =
+  | 'visibilityHeader'
+  | 'publicCard'
+  | 'groupCard'
+  | 'approvalCard'
+  | 'helpText'
+
 type ActivityData = Record<string, unknown>
 type CreateRenderDiagnostics = Record<string, unknown>
 
@@ -165,6 +172,13 @@ const WEB_DEBUG_SECTIONS: Record<WebDebugSectionKey, boolean> = {
   additionalSection: false,
   footerSection: true,
 }
+const WEB_DEBUG_STEP2: Record<WebDebugStep2Key, boolean> = {
+  visibilityHeader: true,
+  publicCard: false,
+  groupCard: false,
+  approvalCard: false,
+  helpText: false,
+}
 const weekDays = ['L', 'M', 'M', 'J', 'V', 'S', 'D']
 const monthNames = [
   'enero',
@@ -199,6 +213,10 @@ function shouldUseCreateNativeModal() {
 
 function shouldRenderWebDebugSection(section: WebDebugSectionKey) {
   return Platform.OS !== 'web' || WEB_DEBUG_SECTIONS[section]
+}
+
+function shouldRenderWebDebugStep2(section: WebDebugStep2Key) {
+  return Platform.OS !== 'web' || WEB_DEBUG_STEP2[section]
 }
 
 function logCreateWebDiagnostic(message: string, payload?: Record<string, unknown>) {
@@ -2518,15 +2536,20 @@ function CrearScreenContent() {
           ) : null}
         </View> : null}
 
-        {currentStep === 2 && showGroupSection ? (
+        {currentStep === 2 && (Platform.OS === 'web' ? shouldRenderWebDebugStep2('visibilityHeader') : showGroupSection) ? (
           <View style={styles.createCard}>
             {activityKind === 'individual' ? (
               <View style={styles.additionalGrid}>
-                {privacyDetails.map((item) => (
+                {privacyDetails.filter((item) => {
+                  const visibility = getVisibilityFromPrivacy(item.label)
+                  if (visibility === 'public') return shouldRenderWebDebugStep2('publicCard')
+                  if (visibility === 'approval') return shouldRenderWebDebugStep2('approvalCard')
+                  return true
+                }).map((item) => (
                   <AdditionalChoiceCard active={privacy === item.label} description={item.description} Icon={item.Icon} key={item.label} label={item.label} onPress={() => setPrivacy(item.label)} />
                 ))}
               </View>
-            ) : (
+            ) : shouldRenderWebDebugStep2('groupCard') ? (
               <View style={styles.groupPickerBlock}>
                 <Text style={styles.createFieldLabel}>Elegí un grupo</Text>
                 {availableGroups.map((group) => (
@@ -2549,7 +2572,7 @@ function CrearScreenContent() {
                   <Text style={[styles.groupOptionText, styles.groupCreateText]}>Crear grupo</Text>
                 </Pressable>
               </View>
-            )}
+            ) : null}
           </View>
         ) : null}
 
