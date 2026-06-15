@@ -171,6 +171,10 @@ function getCreateRenderDiagnostics() {
   return ((globalThis as typeof globalThis & Record<string, unknown>)[createRenderDiagnosticsKey] ?? null) as CreateRenderDiagnostics | null
 }
 
+function shouldUseCreateNativeModal() {
+  return Platform.OS !== 'web'
+}
+
 function getCategoryIcon(categoryId: CategoryId) {
   if (categoryId === 'outdoor') return Leaf
   if (categoryId === 'sports') return Dumbbell
@@ -1842,6 +1846,143 @@ function CrearScreenContent() {
     </ScrollView>
   )
 
+  const renderLocationPickerContent = () => (
+    <SafeAreaView edges={['top', 'bottom']} style={styles.locationPickerScreen}>
+      <View style={[styles.locationPickerHeader, Platform.OS === 'web' && styles.webLocationPickerColumn]}>
+        <Pressable
+          accessibilityLabel="Cerrar selector de ubicaciÃ³n"
+          accessibilityRole="button"
+          onPress={() => setIsLocationPickerVisible(false)}
+          style={styles.locationPickerBack}
+        >
+          <Text style={styles.locationPickerBackText}>â†</Text>
+        </Pressable>
+        <View style={styles.locationPickerCopy}>
+          <Text style={styles.locationPickerTitle}>ElegÃ­ la ubicaciÃ³n</Text>
+          <Text style={styles.locationPickerSubtitle}>
+            {Platform.OS === 'web'
+              ? 'Escribi la direccion o referencia manual para guardar la ubicacion.'
+              : 'TocÃ¡ el mapa o arrastrÃ¡ el pin.'}
+          </Text>
+        </View>
+      </View>
+
+      {Platform.OS !== 'web' ? (
+      <View style={styles.locationPickerMapFrame}>
+        {canUseNativeMap || shouldUseWebMapFallback ? (
+          <LocationPicker
+            address={location}
+            markerCoordinate={draftPin}
+            onMapPress={updateDraftPin}
+            onMarkerDragEnd={(coordinate) => {
+              setDraftPin(coordinate)
+              setMapRegion((value) => ({
+                ...value,
+                latitude: coordinate.latitude,
+                longitude: coordinate.longitude,
+              }))
+            }}
+            onRegionChangeComplete={setMapRegion}
+            region={mapRegion}
+            style={styles.locationPickerMap}
+          />
+        ) : (
+          <Pressable
+            accessibilityLabel="Selector alternativo de ubicaciÃ³n"
+            accessibilityRole="button"
+            onLayout={(event) => setFallbackMapSize(event.nativeEvent.layout)}
+            onPress={moveFallbackPin}
+            style={styles.locationFallbackMap}
+          >
+            <FallbackMapArtwork />
+            <Text style={styles.mapFallbackText}>TocÃ¡ el Ã¡rea para ajustar el punto.</Text>
+          </Pressable>
+        )}
+        <View pointerEvents="none" style={styles.locationCenterPin}>
+          <MapPin color="#00613F" fill="#00613F" size={38} strokeWidth={2.2} />
+        </View>
+        {shouldShowMapConfigNotice ? <MapConfigNotice /> : null}
+      </View>
+      ) : null}
+
+      <View style={[
+        styles.locationPickerFooter,
+        Platform.OS === 'web' && styles.webLocationPickerColumn,
+        { paddingBottom: Math.max(insets.bottom + 16, 24) },
+      ]}>
+        {Platform.OS === 'web' ? (
+          <View style={styles.locationWebAddressBlock}>
+            <Text style={styles.locationWebAddressLabel}>DirecciÃ³n o punto de encuentro</Text>
+            <TextInput
+              autoCapitalize="sentences"
+              onChangeText={(value) => {
+                setLocation(value)
+                if (message) setMessage('')
+              }}
+              placeholder="Ej: Plaza Independencia, Tandil"
+              placeholderTextColor="#7A8790"
+              style={styles.locationWebAddressInput}
+              underlineColorAndroid="transparent"
+              value={location}
+            />
+          </View>
+        ) : null}
+        {Platform.OS === 'web' && message ? (
+          <Text accessibilityRole="alert" style={styles.locationPickerError}>{message}</Text>
+        ) : null}
+        {shouldUseCreateNativeModal() ? (
+          <Text numberOfLines={2} style={styles.locationPickerHint}>
+            Pin: {formatCoordinateAddress(draftPin.latitude, draftPin.longitude)}
+          </Text>
+        ) : null}
+        <Pressable
+          accessibilityLabel="Confirmar ubicaciÃ³n"
+          accessibilityRole="button"
+          disabled={isResolvingLocation}
+          onPress={confirmLocation}
+          style={styles.confirmLocationButton}
+        >
+          {isResolvingLocation ? (
+            <ActivityIndicator color="#FFFFFF" />
+          ) : (
+            <Text style={styles.confirmLocationText}>Confirmar ubicaciÃ³n</Text>
+          )}
+        </Pressable>
+      </View>
+    </SafeAreaView>
+  )
+
+  const renderCreateGroupDialog = () => (
+    <CreateGroupModalFrame>
+      <View style={styles.modalBackdrop}>
+        <Pressable style={StyleSheet.absoluteFill} onPress={closeCreateGroup} />
+        <View style={[styles.groupModalCard, { paddingBottom: Math.max(insets.bottom + 24, 36) }]}>
+          <Text style={styles.modalTitle}>Crear grupo</Text>
+          <TextInput
+            autoCapitalize="words"
+            autoFocus={Platform.OS !== 'web'}
+            maxLength={60}
+            onChangeText={setNewGroupName}
+            onSubmitEditing={createLocalGroup}
+            placeholder="Ej: Club de lectura"
+            placeholderTextColor="#7A8790"
+            returnKeyType="done"
+            style={styles.createTextInput}
+            underlineColorAndroid="transparent"
+            value={newGroupName}
+          />
+          <Pressable accessibilityRole="button" onPress={createLocalGroup} style={styles.groupModalPrimaryButton}>
+            <Text style={styles.groupModalPrimaryText}>Crear grupo</Text>
+            <Plus color="#FFFFFF" size={22} strokeWidth={2.5} />
+          </Pressable>
+          <Pressable accessibilityRole="button" onPress={closeCreateGroup} style={styles.groupModalSecondaryButton}>
+            <Text style={styles.groupModalSecondaryText}>Cancelar</Text>
+          </Pressable>
+        </View>
+      </View>
+    </CreateGroupModalFrame>
+  )
+
   if (isLoadingEditActivity) {
     return (
       <SafeAreaView edges={['top']} style={styles.screen}>
@@ -2387,8 +2528,8 @@ function CrearScreenContent() {
             </>
           )}
         </Pressable>
-        {(Platform.OS !== 'web' || isLocationPickerVisible) ? (
-        <Modal animationType={Platform.OS === 'web' ? 'none' : 'slide'} visible={isLocationPickerVisible} onRequestClose={() => setIsLocationPickerVisible(false)}>
+        {shouldUseCreateNativeModal() ? (
+        <Modal animationType="slide" visible={isLocationPickerVisible} onRequestClose={() => setIsLocationPickerVisible(false)}>
           <SafeAreaView edges={['top', 'bottom']} style={styles.locationPickerScreen}>
             <View style={[styles.locationPickerHeader, Platform.OS === 'web' && styles.webLocationPickerColumn]}>
               <Pressable
@@ -2495,8 +2636,8 @@ function CrearScreenContent() {
         </Modal>
         ) : null}
 
-        {(Platform.OS !== 'web' || isCreateGroupVisible) ? (
-        <Modal animationType={Platform.OS === 'web' ? 'none' : 'fade'} transparent visible={isCreateGroupVisible} onRequestClose={closeCreateGroup}>
+        {Platform.OS !== 'web' ? (
+        <Modal animationType="fade" transparent visible={isCreateGroupVisible} onRequestClose={closeCreateGroup}>
           <CreateGroupModalFrame>
             <View style={styles.modalBackdrop}>
               <Pressable style={StyleSheet.absoluteFill} onPress={closeCreateGroup} />
@@ -2504,7 +2645,7 @@ function CrearScreenContent() {
                 <Text style={styles.modalTitle}>Crear grupo</Text>
                 <TextInput
                   autoCapitalize="words"
-                  autoFocus
+                  autoFocus={shouldUseCreateNativeModal()}
                   maxLength={60}
                   onChangeText={setNewGroupName}
                   onSubmitEditing={createLocalGroup}
@@ -2528,7 +2669,7 @@ function CrearScreenContent() {
         </Modal>
         ) : null}
 
-        {Platform.OS !== 'web' && pickerMode !== null ? (
+        {shouldUseCreateNativeModal() && pickerMode !== null ? (
           <Modal animationType="fade" transparent visible={pickerMode !== null} onRequestClose={() => setPickerMode(null)}>
             <View style={styles.modalBackdrop}>
               <Pressable style={StyleSheet.absoluteFill} onPress={() => setPickerMode(null)} />
@@ -2555,6 +2696,18 @@ function CrearScreenContent() {
             <Text style={styles.modalTitle}>{pickerTitle}</Text>
             {renderPickerContent()}
           </View>
+        </View>
+      ) : null}
+
+      {Platform.OS === 'web' && isLocationPickerVisible ? (
+        <View style={styles.webLocationOverlay}>
+          {renderLocationPickerContent()}
+        </View>
+      ) : null}
+
+      {Platform.OS === 'web' && isCreateGroupVisible ? (
+        <View style={styles.webPickerOverlay}>
+          {renderCreateGroupDialog()}
         </View>
       ) : null}
 
@@ -4292,6 +4445,12 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 12 },
     shadowOpacity: 0.12,
     shadowRadius: 24,
+  },
+  webLocationOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: '#FCFAF3',
+    elevation: 30,
+    zIndex: 30,
   },
   webPickerOptionsContent: {
     paddingBottom: 0,
