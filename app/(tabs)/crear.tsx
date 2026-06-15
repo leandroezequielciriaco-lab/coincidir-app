@@ -22,36 +22,36 @@ import { onAuthStateChanged } from 'firebase/auth'
 import { addDoc, collection, deleteField, doc, getDoc, onSnapshot, serverTimestamp, setDoc, updateDoc } from 'firebase/firestore'
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import {
-  ArrowLeft,
-  ArrowRight,
-  BadgeDollarSign,
-  BarChart3,
-  Car,
-  ChevronDown,
-  ChevronLeft,
-  ChevronRight,
-  CloudRain,
-  Dumbbell,
-  Globe2,
-  Heart,
-  Image as ImageIcon,
-  Leaf,
-  Lightbulb,
-  LockKeyhole,
-  MapPin,
-  Minus,
-  PawPrint,
-  Plus,
-  Search,
-  ShieldCheck,
-  SlidersHorizontal,
-  Sparkles,
-  Star,
-  Tag,
-  Trash2,
-  UsersRound,
-  WalletCards,
-  Zap,
+  ArrowLeft as LucideArrowLeft,
+  ArrowRight as LucideArrowRight,
+  BadgeDollarSign as LucideBadgeDollarSign,
+  BarChart3 as LucideBarChart3,
+  Car as LucideCar,
+  ChevronDown as LucideChevronDown,
+  ChevronLeft as LucideChevronLeft,
+  ChevronRight as LucideChevronRight,
+  CloudRain as LucideCloudRain,
+  Dumbbell as LucideDumbbell,
+  Globe2 as LucideGlobe2,
+  Heart as LucideHeart,
+  Image as LucideImageIcon,
+  Leaf as LucideLeaf,
+  Lightbulb as LucideLightbulb,
+  LockKeyhole as LucideLockKeyhole,
+  MapPin as LucideMapPin,
+  Minus as LucideMinus,
+  PawPrint as LucidePawPrint,
+  Plus as LucidePlus,
+  Search as LucideSearch,
+  ShieldCheck as LucideShieldCheck,
+  SlidersHorizontal as LucideSlidersHorizontal,
+  Sparkles as LucideSparkles,
+  Star as LucideStar,
+  Tag as LucideTag,
+  Trash2 as LucideTrash2,
+  UsersRound as LucideUsersRound,
+  WalletCards as LucideWalletCards,
+  Zap as LucideZap,
 } from 'lucide-react-native'
 import type { LucideIcon } from 'lucide-react-native'
 
@@ -174,6 +174,47 @@ function getCreateRenderDiagnostics() {
 function shouldUseCreateNativeModal() {
   return Platform.OS !== 'web'
 }
+
+function createWebSafeLucideIcon(Icon: LucideIcon): LucideIcon {
+  const SafeIcon = ((props) => {
+    if (Platform.OS === 'web') return null
+
+    return <Icon {...props} />
+  }) as LucideIcon
+
+  return SafeIcon
+}
+
+const ArrowLeft = createWebSafeLucideIcon(LucideArrowLeft)
+const ArrowRight = createWebSafeLucideIcon(LucideArrowRight)
+const BadgeDollarSign = createWebSafeLucideIcon(LucideBadgeDollarSign)
+const BarChart3 = createWebSafeLucideIcon(LucideBarChart3)
+const Car = createWebSafeLucideIcon(LucideCar)
+const ChevronDown = createWebSafeLucideIcon(LucideChevronDown)
+const ChevronLeft = createWebSafeLucideIcon(LucideChevronLeft)
+const ChevronRight = createWebSafeLucideIcon(LucideChevronRight)
+const CloudRain = createWebSafeLucideIcon(LucideCloudRain)
+const Dumbbell = createWebSafeLucideIcon(LucideDumbbell)
+const Globe2 = createWebSafeLucideIcon(LucideGlobe2)
+const Heart = createWebSafeLucideIcon(LucideHeart)
+const ImageIcon = createWebSafeLucideIcon(LucideImageIcon)
+const Leaf = createWebSafeLucideIcon(LucideLeaf)
+const Lightbulb = createWebSafeLucideIcon(LucideLightbulb)
+const LockKeyhole = createWebSafeLucideIcon(LucideLockKeyhole)
+const MapPin = createWebSafeLucideIcon(LucideMapPin)
+const Minus = createWebSafeLucideIcon(LucideMinus)
+const PawPrint = createWebSafeLucideIcon(LucidePawPrint)
+const Plus = createWebSafeLucideIcon(LucidePlus)
+const Search = createWebSafeLucideIcon(LucideSearch)
+const ShieldCheck = createWebSafeLucideIcon(LucideShieldCheck)
+const SlidersHorizontal = createWebSafeLucideIcon(LucideSlidersHorizontal)
+const Sparkles = createWebSafeLucideIcon(LucideSparkles)
+const Star = createWebSafeLucideIcon(LucideStar)
+const Tag = createWebSafeLucideIcon(LucideTag)
+const Trash2 = createWebSafeLucideIcon(LucideTrash2)
+const UsersRound = createWebSafeLucideIcon(LucideUsersRound)
+const WalletCards = createWebSafeLucideIcon(LucideWalletCards)
+const Zap = createWebSafeLucideIcon(LucideZap)
 
 function getCategoryIcon(categoryId: CategoryId) {
   if (categoryId === 'outdoor') return Leaf
