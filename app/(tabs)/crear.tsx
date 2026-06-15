@@ -2384,6 +2384,16 @@ function CrearScreenContent() {
     })
   }
 
+  if (Platform.OS === 'web' && currentStep === 2) {
+    return (
+      <CreateRootFrame>
+        <View>
+          <Text>STEP 2 HARD OVERRIDE</Text>
+        </View>
+      </CreateRootFrame>
+    )
+  }
+
   return (
     <CreateRootFrame>
       <ScrollView
