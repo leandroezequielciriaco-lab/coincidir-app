@@ -100,6 +100,17 @@ type LocationSelection = {
   longitude: number
 }
 
+type WebDebugSectionKey =
+  | 'header'
+  | 'stepIndicator'
+  | 'basicInfoSection'
+  | 'categorySection'
+  | 'activityTypeSection'
+  | 'groupSection'
+  | 'dateLocationSection'
+  | 'additionalSection'
+  | 'footerSection'
+
 type ActivityData = Record<string, unknown>
 type CreateRenderDiagnostics = Record<string, unknown>
 
@@ -143,6 +154,17 @@ const hasGoogleMapsKey = Boolean(process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY?.tr
 const canUseNativeMap = Platform.OS !== 'web' && (Platform.OS !== 'android' || hasGoogleMapsKey)
 const shouldShowMapConfigNotice = Platform.OS === 'android' && !hasGoogleMapsKey
 const shouldUseWebMapFallback = Platform.OS === 'web'
+const WEB_DEBUG_SECTIONS: Record<WebDebugSectionKey, boolean> = {
+  header: true,
+  stepIndicator: false,
+  basicInfoSection: false,
+  categorySection: false,
+  activityTypeSection: false,
+  groupSection: false,
+  dateLocationSection: false,
+  additionalSection: false,
+  footerSection: true,
+}
 const weekDays = ['L', 'M', 'M', 'J', 'V', 'S', 'D']
 const monthNames = [
   'enero',
@@ -173,6 +195,10 @@ function getCreateRenderDiagnostics() {
 
 function shouldUseCreateNativeModal() {
   return Platform.OS !== 'web'
+}
+
+function shouldRenderWebDebugSection(section: WebDebugSectionKey) {
+  return Platform.OS !== 'web' || WEB_DEBUG_SECTIONS[section]
 }
 
 function createWebSafeLucideIcon(Icon: LucideIcon): LucideIcon {
@@ -2256,6 +2282,21 @@ function CrearScreenContent() {
     )
   }
 
+  const showHeaderSection = shouldRenderWebDebugSection('header')
+  const showStepIndicatorSection = shouldRenderWebDebugSection('stepIndicator')
+  const showBasicInfoSection = shouldRenderWebDebugSection('basicInfoSection')
+  const showCategorySection = shouldRenderWebDebugSection('categorySection')
+  const showActivityTypeSection = shouldRenderWebDebugSection('activityTypeSection')
+  const showGroupSection = shouldRenderWebDebugSection('groupSection')
+  const showDateLocationSection = shouldRenderWebDebugSection('dateLocationSection')
+  const showAdditionalSection = shouldRenderWebDebugSection('additionalSection')
+  const showFooterSection = shouldRenderWebDebugSection('footerSection')
+  const showStepOneCard = currentStep === 1 && (
+    showBasicInfoSection
+    || showCategorySection
+    || showActivityTypeSection
+  )
+
   return (
     <CreateRootFrame>
       <ScrollView
@@ -2267,6 +2308,8 @@ function CrearScreenContent() {
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >
+        {showHeaderSection ? (
+        <>
         <View style={styles.createHeader}>
           <Pressable accessibilityLabel="Volver" accessibilityRole="button" onPress={isEditMode ? safeBack : () => setFlowMode('choice')} style={styles.createBackButton}>
             <ArrowLeft color="#0E5A44" size={33} strokeWidth={2.2} />
@@ -2309,7 +2352,10 @@ function CrearScreenContent() {
             <Text numberOfLines={2} style={styles.groupContextChipText}>Actividad del grupo: {selectedGroup || readString(preselectedGroupName, 'Grupo')}</Text>
           </View>
         ) : null}
+        </>
+        ) : null}
 
+        {showStepIndicatorSection ? (
         <View style={styles.createStepPills}>
           {visibleActivitySteps.map((step, index) => (
             <View key={step} style={[styles.createStepPill, currentStep === step && styles.createStepPillActive, index < currentVisibleStepIndex && styles.createStepPillDone]}>
@@ -2317,8 +2363,11 @@ function CrearScreenContent() {
             </View>
           ))}
         </View>
+        ) : null}
 
-        {currentStep === 1 ? <View style={styles.createCard}>
+        {showStepOneCard ? <View style={styles.createCard}>
+          {showBasicInfoSection ? (
+          <>
           <Text style={styles.createFieldLabel}>Nombre de la actividad</Text>
           <TextInput
             maxLength={70}
@@ -2367,7 +2416,10 @@ function CrearScreenContent() {
               })}
             </View>
           ) : null}
+          </>
+          ) : null}
 
+          {showCategorySection ? (
           <View style={styles.createTwoColumnRow}>
             <View style={styles.createColumn}>
               <Text style={styles.createFieldLabel}>Categoría</Text>
@@ -2402,7 +2454,8 @@ function CrearScreenContent() {
               </Pressable>
             </View>
           </View>
-          {!isGroupContext ? (
+          ) : null}
+          {showActivityTypeSection && !isGroupContext ? (
             <View style={styles.groupPickerBlock}>
               <Text style={styles.createFieldLabel}>Tipo de actividad</Text>
               <View style={styles.additionalGrid}>
@@ -2421,7 +2474,7 @@ function CrearScreenContent() {
           ) : null}
         </View> : null}
 
-        {currentStep === 2 ? (
+        {currentStep === 2 && showGroupSection ? (
           <View style={styles.createCard}>
             {activityKind === 'individual' ? (
               <View style={styles.additionalGrid}>
@@ -2456,7 +2509,7 @@ function CrearScreenContent() {
           </View>
         ) : null}
 
-        {currentStep === 3 ? (
+        {currentStep === 3 && showBasicInfoSection ? (
           <View style={styles.createCard}>
             <Text style={styles.createFieldLabel}>Descripción de la actividad</Text>
             <TextInput
@@ -2474,7 +2527,7 @@ function CrearScreenContent() {
           </View>
         ) : null}
 
-        {currentStep === 4 ? <View style={styles.createCard}>
+        {currentStep === 4 && showDateLocationSection ? <View style={styles.createCard}>
           <Text style={styles.createSectionTitle}>¿Cuándo y dónde?</Text>
           <View style={styles.createTwoColumnRow}>
             <View style={styles.createColumn}>
@@ -2494,7 +2547,7 @@ function CrearScreenContent() {
           </View>
         </View> : null}
 
-        {currentStep === 4 ? <View style={styles.createCard}>
+        {currentStep === 4 && showDateLocationSection ? <View style={styles.createCard}>
           <View style={styles.createSectionHeader}>
             <MapPin color="#0E5A44" size={25} strokeWidth={2.2} />
             <Text style={styles.createSectionTitle}>Ubicación</Text>
@@ -2544,8 +2597,10 @@ function CrearScreenContent() {
           </Pressable>
         </View> : null}
 
-        {currentStep === 5 ? renderAdditionalSettings() : null}
+        {currentStep === 5 && showAdditionalSection ? renderAdditionalSettings() : null}
 
+        {showFooterSection ? (
+        <>
         {message ? <Text style={styles.createMessageText}>{message}</Text> : null}
 
         {currentStep !== firstVisibleStep ? (
@@ -2571,6 +2626,8 @@ function CrearScreenContent() {
             </>
           )}
         </Pressable>
+        </>
+        ) : null}
         {shouldUseCreateNativeModal() ? (
         <Modal animationType="slide" visible={isLocationPickerVisible} onRequestClose={() => setIsLocationPickerVisible(false)}>
           <SafeAreaView edges={['top', 'bottom']} style={styles.locationPickerScreen}>
