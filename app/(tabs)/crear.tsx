@@ -125,6 +125,13 @@ type WebDebugStep2HeaderKey =
   | 'decorativeCircle'
   | 'extraText'
 
+type Step2DebugKey =
+  | 'header'
+  | 'publicCard'
+  | 'groupCard'
+  | 'approvalCard'
+  | 'helpText'
+
 type ActivityData = Record<string, unknown>
 type CreateRenderDiagnostics = Record<string, unknown>
 
@@ -192,6 +199,13 @@ const WEB_DEBUG_STEP2_HEADER: Record<WebDebugStep2HeaderKey, boolean> = {
   icon: false,
   decorativeCircle: false,
   extraText: false,
+}
+const STEP2_DEBUG: Record<Step2DebugKey, boolean> = {
+  header: true,
+  publicCard: false,
+  groupCard: false,
+  approvalCard: false,
+  helpText: false,
 }
 const WEB_DEBUG_STEP2_MINIMAL = false
 const weekDays = ['L', 'M', 'M', 'J', 'V', 'S', 'D']
@@ -2388,7 +2402,66 @@ function CrearScreenContent() {
     return (
       <CreateRootFrame>
         <View>
-          <Text>STEP 2 HARD OVERRIDE</Text>
+          {STEP2_DEBUG.header ? (
+            <>
+              <View style={styles.createHeader}>
+                <Pressable accessibilityLabel="Volver" accessibilityRole="button" onPress={isEditMode ? safeBack : () => setFlowMode('choice')} style={styles.createBackButton}>
+                  <ArrowLeft color="#0E5A44" size={33} strokeWidth={2.2} />
+                </Pressable>
+                <View style={styles.createLogo}>
+                  <CoincidirLogo compact markSize={48} textSize={18} />
+                </View>
+              </View>
+
+              <View style={styles.createTitleRow}>
+                <View style={styles.additionalTitleIcon}>
+                  {activityKind === 'group'
+                    ? <UsersRound color="#0E5A44" size={25} strokeWidth={2.4} />
+                    : <ShieldCheck color="#0E5A44" size={25} strokeWidth={2.4} />}
+                </View>
+                <Text style={styles.createScreenTitle}>
+                  {activityKind === 'group' ? 'ElegÃ­ un grupo' : 'Visibilidad'}
+                </Text>
+              </View>
+              <Text style={styles.createSubtitle}>
+                {activityKind === 'group' ? 'SeleccionÃ¡ el grupo al que pertenece esta actividad.' : 'ElegÃ­ el nivel de visibilidad de tu actividad.'}
+              </Text>
+            </>
+          ) : null}
+          {STEP2_DEBUG.publicCard ? (
+            privacyDetails.filter((item) => getVisibilityFromPrivacy(item.label) === 'public').map((item) => (
+              <AdditionalChoiceCard active={privacy === item.label} description={item.description} Icon={item.Icon} key={item.label} label={item.label} onPress={() => setPrivacy(item.label)} />
+            ))
+          ) : null}
+          {STEP2_DEBUG.approvalCard ? (
+            privacyDetails.filter((item) => getVisibilityFromPrivacy(item.label) === 'approval').map((item) => (
+              <AdditionalChoiceCard active={privacy === item.label} description={item.description} Icon={item.Icon} key={item.label} label={item.label} onPress={() => setPrivacy(item.label)} />
+            ))
+          ) : null}
+          {STEP2_DEBUG.groupCard ? (
+            <View style={styles.groupPickerBlock}>
+              <Text style={styles.createFieldLabel}>ElegÃ­ un grupo</Text>
+              {availableGroups.map((group) => (
+                <Pressable accessibilityRole="button" key={group.id} onPress={() => selectFirestoreGroup(group)} style={[styles.groupOptionCard, selectedGroupId === group.id && styles.groupOptionCardActive]}>
+                  <UsersRound color={selectedGroupId === group.id ? '#0E5A44' : '#7A8790'} size={21} strokeWidth={2.2} />
+                  <View style={styles.groupOptionCopy}>
+                    <Text style={[styles.groupOptionText, selectedGroupId === group.id && styles.groupOptionTextActive]}>{group.name}</Text>
+                    <View style={styles.groupOptionMembersRow}>
+                      <UsersRound color={selectedGroupId === group.id ? '#0E5A44' : '#7A8790'} size={14} strokeWidth={2.3} />
+                      <Text style={[styles.groupOptionMembersText, selectedGroupId === group.id && styles.groupOptionTextActive]}>
+                        {formatGroupMemberCount(group.memberCount ?? 0)}
+                      </Text>
+                    </View>
+                  </View>
+                  {selectedGroupId === group.id ? <View style={styles.additionalCheck}><Text style={styles.additionalCheckText}>âœ“</Text></View> : null}
+                </Pressable>
+              ))}
+              <Pressable accessibilityRole="button" onPress={openCreateGroup} style={[styles.groupOptionCard, styles.groupCreateCard]}>
+                <Plus color="#0E5A44" size={21} strokeWidth={2.5} />
+                <Text style={[styles.groupOptionText, styles.groupCreateText]}>Crear grupo</Text>
+              </Pressable>
+            </View>
+          ) : null}
         </View>
       </CreateRootFrame>
     )
