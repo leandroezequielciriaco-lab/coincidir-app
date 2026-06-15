@@ -157,7 +157,7 @@ const shouldUseWebMapFallback = Platform.OS === 'web'
 const WEB_DEBUG_SECTIONS: Record<WebDebugSectionKey, boolean> = {
   header: true,
   stepIndicator: true,
-  basicInfoSection: false,
+  basicInfoSection: true,
   categorySection: false,
   activityTypeSection: false,
   groupSection: false,
