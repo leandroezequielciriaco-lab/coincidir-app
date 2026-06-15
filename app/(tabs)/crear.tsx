@@ -147,7 +147,7 @@ const DEBUG_WEB_CREATE_SAFE_MODE = Platform.OS === 'web'
 const DEBUG_WEB_CREATE_BLOCKS = {
   activityType: false,
   basicInfo: true,
-  categoryPicker: false,
+  categoryPicker: true,
   footer: true,
 }
 const weekDays = ['L', 'M', 'M', 'J', 'V', 'S', 'D']
