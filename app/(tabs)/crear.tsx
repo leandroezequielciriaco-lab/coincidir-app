@@ -1755,7 +1755,16 @@ function CrearScreenContent() {
         activityKind={activityKind}
         categoryLabel={category?.label ?? ''}
         currentStep={currentStep}
+        onClosePickerModalTest={() => {
+          console.log('[CREATE WEB PICKER MODAL TEST CLOSE]')
+          setPickerMode(null)
+        }}
         onContinue={safeGoToNextStep}
+        onOpenPickerModalTest={() => {
+          console.log('[CREATE WEB PICKER MODAL TEST OPEN]')
+          setPickerMode('currency')
+        }}
+        pickerMode={pickerMode}
         selectedGroup={selectedGroup}
         subcategory={subcategory}
       />
@@ -2775,7 +2784,10 @@ type CreateWebSafeModeProps = {
   activityKind: ActivityKind
   categoryLabel: string
   currentStep: CreateStep
+  onClosePickerModalTest: () => void
   onContinue: () => void
+  onOpenPickerModalTest: () => void
+  pickerMode: PickerMode
   selectedGroup: string
   subcategory: string
 }
@@ -2784,7 +2796,10 @@ function CreateWebSafeMode({
   activityKind,
   categoryLabel,
   currentStep,
+  onClosePickerModalTest,
   onContinue,
+  onOpenPickerModalTest,
+  pickerMode,
   selectedGroup,
   subcategory,
 }: CreateWebSafeModeProps) {
@@ -2792,6 +2807,7 @@ function CreateWebSafeMode({
   if (DEBUG_WEB_CREATE_BLOCKS.categoryPicker) logCreateWebRenderBlock('category-picker')
   if (DEBUG_WEB_CREATE_BLOCKS.activityType) logCreateWebRenderBlock('activity-type')
   if (DEBUG_WEB_CREATE_BLOCKS.footer) logCreateWebRenderBlock('footer')
+  if (pickerMode !== null) console.log('[CREATE WEB PICKER MODAL TEST RENDER]')
 
   return (
     <SafeAreaView edges={['top', 'left', 'right']} style={styles.screen}>
@@ -2822,11 +2838,28 @@ function CreateWebSafeMode({
         ) : null}
 
         {DEBUG_WEB_CREATE_BLOCKS.footer ? (
-          <Pressable accessibilityRole="button" onPress={onContinue} style={styles.webCreateSafeButton}>
-            <Text style={styles.webCreateSafeButtonText}>Continuar</Text>
-          </Pressable>
+          <>
+            <Pressable accessibilityRole="button" onPress={onOpenPickerModalTest} style={styles.webCreateSafeSecondaryButton}>
+              <Text style={styles.webCreateSafeSecondaryButtonText}>Probar picker modal</Text>
+            </Pressable>
+            <Pressable accessibilityRole="button" onPress={onContinue} style={styles.webCreateSafeButton}>
+              <Text style={styles.webCreateSafeButtonText}>Continuar</Text>
+            </Pressable>
+          </>
         ) : null}
       </View>
+      {pickerMode !== null ? (
+        <Modal animationType="none" transparent visible={pickerMode !== null} onRequestClose={onClosePickerModalTest}>
+          <View style={styles.modalBackdrop}>
+            <View style={styles.webCreateSafePickerCard}>
+              <Text style={styles.modalTitle}>Picker test</Text>
+              <Pressable accessibilityRole="button" onPress={onClosePickerModalTest} style={styles.webCreateSafeButton}>
+                <Text style={styles.webCreateSafeButtonText}>Cerrar</Text>
+              </Pressable>
+            </View>
+          </View>
+        </Modal>
+      ) : null}
     </SafeAreaView>
   )
 }
@@ -3129,6 +3162,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#00613F',
     borderRadius: 8,
     justifyContent: 'center',
+    marginTop: 10,
     minHeight: 54,
     paddingHorizontal: 18,
   },
@@ -3138,6 +3172,30 @@ const styles = StyleSheet.create({
     fontWeight: '900',
     letterSpacing: 0,
     lineHeight: 22,
+  },
+  webCreateSafeSecondaryButton: {
+    alignItems: 'center',
+    borderColor: '#0E5A44',
+    borderRadius: 8,
+    borderWidth: 1,
+    justifyContent: 'center',
+    minHeight: 50,
+    paddingHorizontal: 18,
+  },
+  webCreateSafeSecondaryButtonText: {
+    color: '#0E5A44',
+    fontSize: 16,
+    fontWeight: '900',
+    letterSpacing: 0,
+    lineHeight: 21,
+  },
+  webCreateSafePickerCard: {
+    backgroundColor: '#FFFFFF',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    paddingBottom: 28,
+    paddingHorizontal: 20,
+    paddingTop: 20,
   },
   createErrorFallback: {
     alignItems: 'stretch',
