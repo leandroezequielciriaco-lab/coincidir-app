@@ -3387,51 +3387,72 @@ function CreateStep4WebSimple({
 }: CreateStep4WebSimpleProps) {
   return (
     <View style={styles.screen}>
-      <View style={styles.createScrollContent}>
+      <View style={[styles.createScrollContent, styles.webStep4SimpleContent]}>
         <View style={styles.createCard}>
           <Text style={styles.createSectionTitle}>¿Cuándo y dónde?</Text>
-          <Text style={styles.createFieldLabel}>Fecha</Text>
-          <TextInput
-            autoCapitalize="none"
-            onChangeText={onChangeDate}
-            placeholder="DD/MM/AAAA"
-            placeholderTextColor="#7A8790"
-            style={styles.createTextInput}
-            underlineColorAndroid="transparent"
-            value={date}
-          />
-          <Text style={styles.createFieldLabel}>Hora</Text>
-          <TextInput
-            autoCapitalize="none"
-            onChangeText={onChangeTime}
-            placeholder="HH:MM"
-            placeholderTextColor="#7A8790"
-            style={styles.createTextInput}
-            underlineColorAndroid="transparent"
-            value={time}
-          />
-          <Text style={styles.createFieldLabel}>Dirección o punto de encuentro</Text>
-          <TextInput
-            maxLength={120}
-            multiline
-            onChangeText={onChangeLocation}
-            placeholder="Ej: Plaza Independencia, Tandil"
-            placeholderTextColor="#7A8790"
-            style={[styles.createTextInput, styles.createDescriptionInput]}
-            textAlignVertical="top"
-            underlineColorAndroid="transparent"
-            value={location}
-          />
+          <View style={styles.createTwoColumnRow}>
+            <View style={styles.createColumn}>
+              <View style={styles.webStep4InputCard}>
+                <Text style={styles.createFieldLabel}>Fecha</Text>
+                <TextInput
+                  autoCapitalize="none"
+                  onChangeText={onChangeDate}
+                  placeholder="DD/MM/AAAA"
+                  placeholderTextColor="#7A8790"
+                  style={styles.webStep4TextInput}
+                  underlineColorAndroid="transparent"
+                  value={date}
+                />
+                <Text style={styles.webStep4HelpText}>Ej: 25/06/2026</Text>
+              </View>
+            </View>
+            <View style={styles.createColumn}>
+              <View style={styles.webStep4InputCard}>
+                <Text style={styles.createFieldLabel}>Hora</Text>
+                <TextInput
+                  autoCapitalize="none"
+                  onChangeText={onChangeTime}
+                  placeholder="HH:MM"
+                  placeholderTextColor="#7A8790"
+                  style={styles.webStep4TextInput}
+                  underlineColorAndroid="transparent"
+                  value={time}
+                />
+                <Text style={styles.webStep4HelpText}>Ej: 08:30</Text>
+              </View>
+            </View>
+          </View>
+        </View>
+
+        <View style={styles.createCard}>
+          <Text style={styles.createSectionTitle}>Ubicación</Text>
+          <View style={styles.webStep4InputCard}>
+            <Text style={styles.createFieldLabel}>Dirección o punto de encuentro</Text>
+            <TextInput
+              maxLength={120}
+              multiline
+              onChangeText={onChangeLocation}
+              placeholder="Ej: Plaza Independencia, Tandil"
+              placeholderTextColor="#7A8790"
+              style={[styles.webStep4TextInput, styles.webStep4AddressInput]}
+              textAlignVertical="top"
+              underlineColorAndroid="transparent"
+              value={location}
+            />
+            <Text style={styles.webStep4HelpText}>Escribí una referencia clara para encontrarse.</Text>
+          </View>
         </View>
 
         {message ? <Text style={styles.createMessageText}>{message}</Text> : null}
 
-        <Pressable accessibilityLabel="Volver al paso anterior" accessibilityRole="button" onPress={onBack} style={styles.createSecondaryButton}>
-          <Text style={styles.createSecondaryText}>Atrás</Text>
-        </Pressable>
-        <Pressable accessibilityLabel="Continuar" accessibilityRole="button" onPress={onContinue} style={styles.createSubmitButton}>
-          <Text style={styles.createSubmitText}>Continuar</Text>
-        </Pressable>
+        <View style={styles.webStep4ButtonStack}>
+          <Pressable accessibilityLabel="Volver al paso anterior" accessibilityRole="button" onPress={onBack} style={styles.createSecondaryButton}>
+            <Text style={styles.createSecondaryText}>Atrás</Text>
+          </Pressable>
+          <Pressable accessibilityLabel="Continuar" accessibilityRole="button" onPress={onContinue} style={styles.createSubmitButton}>
+            <Text style={styles.createSubmitText}>Continuar</Text>
+          </Pressable>
+        </View>
       </View>
     </View>
   )
@@ -3712,6 +3733,46 @@ const styles = StyleSheet.create({
     alignSelf: 'center',
     maxWidth: 720,
     width: '100%',
+  },
+  webStep4SimpleContent: {
+    alignSelf: 'center',
+    flexGrow: 1,
+    gap: 14,
+    maxWidth: 720,
+    paddingBottom: 120,
+    paddingHorizontal: 16,
+    paddingTop: 28,
+    width: '100%',
+  },
+  webStep4InputCard: {
+    backgroundColor: '#FCFAF8',
+    borderColor: '#E2E6E3',
+    borderRadius: 12,
+    borderWidth: 1,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+  },
+  webStep4TextInput: {
+    color: '#12211B',
+    fontSize: 17,
+    fontWeight: '800',
+    lineHeight: 22,
+    minHeight: 42,
+    paddingHorizontal: 0,
+    paddingVertical: 6,
+  },
+  webStep4AddressInput: {
+    minHeight: 86,
+  },
+  webStep4HelpText: {
+    color: '#64736D',
+    fontSize: 13,
+    fontWeight: '700',
+    lineHeight: 18,
+    marginTop: 4,
+  },
+  webStep4ButtonStack: {
+    gap: 12,
   },
   groupCreatedScrollContent: {
     flexGrow: 1,
