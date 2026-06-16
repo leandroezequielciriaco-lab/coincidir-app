@@ -1,4 +1,4 @@
-import { Component, useCallback, useEffect, useMemo, useState } from 'react'
+import { Component, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { ErrorInfo, ReactNode } from 'react'
 import {
   ActivityIndicator,
@@ -264,6 +264,14 @@ function logCreateWebDiagnostic(message: string, payload?: Record<string, unknow
     return
   }
   console.log(message)
+}
+
+function isWebMobileViewportSnapshot() {
+  if (Platform.OS !== 'web') return false
+  const webWindow = globalThis as typeof globalThis & { innerHeight?: number; innerWidth?: number }
+  const width = webWindow.innerWidth ?? 1024
+  const height = webWindow.innerHeight ?? 1024
+  return Math.min(width, height) < 768
 }
 
 type WebIconName =
@@ -966,6 +974,8 @@ function CrearScreenContent() {
   const insets = useSafeAreaInsets()
   const isEditMode = mode === 'edit'
   const isGroupContext = !isEditMode && groupContext === '1' && kind === 'group' && Boolean(readString(preselectedGroupId))
+  const isWebMobile = isWebMobileViewportSnapshot()
+  const hasResetOnFocusRef = useRef(false)
   const safeBack = useCallback(() => {
     if (router.canGoBack()) {
       router.back()
@@ -1124,8 +1134,26 @@ function CrearScreenContent() {
     useCallback(() => {
       if (Platform.OS !== 'web' || isEditMode) return undefined
 
-      resetCreateActivityForm()
-      return undefined
+      if (!hasResetOnFocusRef.current) {
+        const webWindow = globalThis as typeof globalThis & { innerHeight?: number; innerWidth?: number }
+        const focusWindowWidth = webWindow.innerWidth ?? 0
+        const focusWindowHeight = webWindow.innerHeight ?? 0
+        const focusIsWebMobile = Math.min(focusWindowWidth, focusWindowHeight) < 768
+
+        if (__DEV__ && focusIsWebMobile) {
+          console.log('[CREATE WEB MOBILE INIT]', {
+            height: focusWindowHeight,
+            width: focusWindowWidth,
+          })
+        }
+
+        resetCreateActivityForm()
+        hasResetOnFocusRef.current = true
+      }
+
+      return () => {
+        hasResetOnFocusRef.current = false
+      }
     }, [isEditMode, resetCreateActivityForm]),
   )
 
@@ -2260,11 +2288,13 @@ function CrearScreenContent() {
     logCreateWebDiagnostic('[CREATE WEB STEP CHANGE]', {
       activityKind,
       currentStep,
+      flowMode,
       isGroupContext,
+      isWebMobile,
       showGroupSection: shouldRenderWebDebugSection('groupSection'),
       visibleActivitySteps,
     })
-  }, [activityKind, currentStep, isGroupContext, visibleActivitySteps])
+  }, [activityKind, currentStep, flowMode, isGroupContext, isWebMobile, visibleActivitySteps])
 
   const renderAdditionalSettings = () => (
     <>
@@ -2855,10 +2885,44 @@ function CrearScreenContent() {
     logCreateWebDiagnostic('[CREATE WEB RENDER STEP 2]', {
       activityKind,
       isGroupContext,
+      isWebMobile,
       selectedGroup,
       selectedGroupId,
       showGroupSection,
     })
+  }
+
+  if (Platform.OS === 'web' && isWebMobile && currentStep === 2) {
+    logCreateWebDiagnostic('[CREATE WEB STEP2 RENDER]', {
+      activityKind,
+      availableGroupsCount: availableGroups.length,
+      selectedGroupId,
+    })
+
+    return (
+      <CreateStep2WebSimple
+        activityKind={activityKind}
+        availableGroups={availableGroups}
+        currentStep={currentStep}
+        firstVisibleStep={firstVisibleStep}
+        goToNextStep={goToNextStep}
+        goToPreviousStep={goToPreviousStep}
+        isEditMode={isEditMode}
+        isGroupContext={isGroupContext}
+        isSaving={isSaving}
+        lastVisibleStep={lastVisibleStep}
+        message={message}
+        onBackToChoice={() => setFlowMode('choice')}
+        onCreateGroup={openCreateGroup}
+        onSaveActivity={saveActivity}
+        privacy={privacy}
+        safeBack={safeBack}
+        selectedGroupId={selectedGroupId}
+        selectFirestoreGroup={selectFirestoreGroup}
+        setPrivacy={setPrivacy}
+        visibleActivitySteps={visibleActivitySteps}
+      />
+    )
   }
 
   if (Platform.OS === 'web' && currentStep === 4) {
@@ -3776,6 +3840,184 @@ type CreateStep4WebSimpleProps = {
   visibleActivitySteps: CreateStep[]
 }
 
+type CreateStep2WebSimpleProps = {
+  activityKind: ActivityKind
+  availableGroups: AvailableGroup[]
+  currentStep: CreateStep
+  firstVisibleStep: CreateStep
+  goToNextStep: () => void
+  goToPreviousStep: () => void
+  isEditMode: boolean
+  isGroupContext: boolean
+  isSaving: boolean
+  lastVisibleStep: CreateStep
+  message: string
+  onBackToChoice: () => void
+  onCreateGroup: () => void
+  onSaveActivity: () => void
+  privacy: string
+  safeBack: () => void
+  selectedGroupId: string
+  selectFirestoreGroup: (group: AvailableGroup) => void
+  setPrivacy: (value: string) => void
+  visibleActivitySteps: CreateStep[]
+}
+
+function CreateStep2WebSimple({
+  activityKind,
+  availableGroups,
+  currentStep,
+  firstVisibleStep,
+  goToNextStep,
+  goToPreviousStep,
+  isEditMode,
+  isGroupContext,
+  isSaving,
+  lastVisibleStep,
+  message,
+  onBackToChoice,
+  onCreateGroup,
+  onSaveActivity,
+  privacy,
+  safeBack,
+  selectedGroupId,
+  selectFirestoreGroup,
+  setPrivacy,
+  visibleActivitySteps,
+}: CreateStep2WebSimpleProps) {
+  const currentVisibleStepIndex = Math.max(visibleActivitySteps.indexOf(currentStep), 0)
+
+  return (
+    <CreateRootFrame>
+      <ScrollView
+        contentContainerStyle={[styles.createScrollContent, styles.webCreateContent, styles.webStep2SimpleContent]}
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
+      >
+        <View style={styles.createHeader}>
+          <Pressable accessibilityLabel="Volver" accessibilityRole="button" onPress={isEditMode ? safeBack : onBackToChoice} style={styles.createBackButton}>
+            <ArrowLeft color="#0E5A44" size={33} strokeWidth={2.2} />
+          </Pressable>
+          <View style={styles.createLogo}>
+            <CoincidirLogo compact markSize={48} textSize={18} />
+          </View>
+        </View>
+
+        <View style={styles.createTitleRow}>
+          <View style={styles.additionalTitleIcon}>
+            {activityKind === 'group'
+              ? <UsersRound color="#0E5A44" size={25} strokeWidth={2.4} />
+              : <ShieldCheck color="#0E5A44" size={25} strokeWidth={2.4} />}
+          </View>
+          <Text style={styles.createScreenTitle}>{activityKind === 'group' ? 'Elegí un grupo' : 'Visibilidad'}</Text>
+        </View>
+        <Text style={styles.createSubtitle}>{activityKind === 'group' ? 'Seleccioná el grupo al que pertenece esta actividad.' : 'Elegí el nivel de visibilidad de tu actividad.'}</Text>
+
+        <View style={styles.createStepPills}>
+          {visibleActivitySteps.map((step, index) => (
+            <View key={step} style={[styles.createStepPill, currentStep === step && styles.createStepPillActive, index < currentVisibleStepIndex && styles.createStepPillDone]}>
+              <Text style={[styles.createStepPillText, currentStep === step && styles.createStepPillTextActive, index < currentVisibleStepIndex && styles.createStepPillTextDone]}>{index + 1}</Text>
+            </View>
+          ))}
+        </View>
+
+        <View style={styles.createCard}>
+          {activityKind === 'individual' ? (
+            <View style={styles.webStep2OptionStack}>
+              {privacyDetails.map((item) => {
+                const Icon = item.Icon
+                const active = privacy === item.label
+
+                return (
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityState={{ selected: active }}
+                    key={item.label}
+                    onPress={() => {
+                      logCreateWebDiagnostic('[CREATE WEB STEP2 PRESS]', { option: item.label })
+                      setPrivacy(item.label)
+                    }}
+                    style={[styles.webStep2OptionCard, active && styles.webStep2OptionCardActive]}
+                  >
+                    <Icon color="#0E5A44" size={31} strokeWidth={2.1} />
+                    <View style={styles.webStep2OptionCopy}>
+                      <Text style={styles.additionalChoiceTitle}>{item.label}</Text>
+                      <Text style={styles.additionalChoiceDescription}>{item.description}</Text>
+                    </View>
+                    {active ? <View style={styles.additionalCheck}><Text style={styles.additionalCheckText}>✓</Text></View> : null}
+                  </Pressable>
+                )
+              })}
+            </View>
+          ) : (
+            <View style={styles.webStep2OptionStack}>
+              <Text style={styles.createFieldLabel}>Elegí un grupo</Text>
+              {availableGroups.map((group) => {
+                const active = selectedGroupId === group.id
+
+                return (
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityState={{ selected: active }}
+                    key={group.id}
+                    onPress={() => {
+                      logCreateWebDiagnostic('[CREATE WEB STEP2 PRESS]', { groupId: group.id, option: 'group' })
+                      selectFirestoreGroup(group)
+                    }}
+                    style={[styles.groupOptionCard, active && styles.groupOptionCardActive]}
+                  >
+                    <UsersRound color={active ? '#0E5A44' : '#7A8790'} size={21} strokeWidth={2.2} />
+                    <View style={styles.groupOptionCopy}>
+                      <Text style={[styles.groupOptionText, active && styles.groupOptionTextActive]}>{group.name}</Text>
+                      <View style={styles.groupOptionMembersRow}>
+                        <UsersRound color={active ? '#0E5A44' : '#7A8790'} size={14} strokeWidth={2.3} />
+                        <Text style={[styles.groupOptionMembersText, active && styles.groupOptionTextActive]}>{formatGroupMemberCount(group.memberCount ?? 0)}</Text>
+                      </View>
+                    </View>
+                    {active ? <View style={styles.additionalCheck}><Text style={styles.additionalCheckText}>✓</Text></View> : null}
+                  </Pressable>
+                )
+              })}
+              {!isGroupContext ? (
+                <Pressable accessibilityRole="button" onPress={onCreateGroup} style={[styles.groupOptionCard, styles.groupCreateCard]}>
+                  <Plus color="#0E5A44" size={21} strokeWidth={2.5} />
+                  <Text style={[styles.groupOptionText, styles.groupCreateText]}>Crear grupo</Text>
+                </Pressable>
+              ) : null}
+            </View>
+          )}
+        </View>
+
+        {message ? <Text style={styles.createMessageText}>{message}</Text> : null}
+
+        {currentStep !== firstVisibleStep ? (
+          <Pressable accessibilityLabel="Volver al paso anterior" accessibilityRole="button" onPress={goToPreviousStep} style={styles.createSecondaryButton}>
+            <ChevronLeft color="#0E5A44" size={24} strokeWidth={2.4} />
+            <Text style={styles.createSecondaryText}>Atrás</Text>
+          </Pressable>
+        ) : null}
+
+        <Pressable
+          accessibilityLabel={currentStep === lastVisibleStep ? (isEditMode ? 'Guardar cambios' : 'Publicar actividad') : 'Continuar'}
+          accessibilityRole="button"
+          disabled={isSaving}
+          onPress={currentStep === lastVisibleStep ? onSaveActivity : goToNextStep}
+          style={[styles.createSubmitButton, isSaving && styles.createSubmitButtonDisabled]}
+        >
+          {isSaving ? (
+            <ActivityIndicator color="#FFFFFF" />
+          ) : (
+            <>
+              <Text style={styles.createSubmitText}>{currentStep === lastVisibleStep ? (isEditMode ? 'Guardar cambios' : 'Publicar actividad') : 'Continuar'}</Text>
+              <ArrowRight color="#FFFFFF" size={32} strokeWidth={2.2} style={styles.createSubmitArrow} />
+            </>
+          )}
+        </Pressable>
+      </ScrollView>
+    </CreateRootFrame>
+  )
+}
+
 function CreateStep4WebSimple({
   date,
   location,
@@ -4281,6 +4523,33 @@ const styles = StyleSheet.create({
   },
   webIconDot: {
     position: 'absolute',
+  },
+  webStep2SimpleContent: {
+    paddingBottom: 150,
+    paddingTop: 28,
+  },
+  webStep2OptionStack: {
+    gap: 12,
+  },
+  webStep2OptionCard: {
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    borderColor: '#E2E6E3',
+    borderRadius: 14,
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: 14,
+    minHeight: 112,
+    paddingHorizontal: 16,
+    paddingVertical: 16,
+  },
+  webStep2OptionCardActive: {
+    backgroundColor: '#F1FAF0',
+    borderColor: '#70B97A',
+  },
+  webStep2OptionCopy: {
+    flex: 1,
+    minWidth: 0,
   },
   webStep4SimpleContent: {
     alignSelf: 'center',
