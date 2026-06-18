@@ -73,6 +73,7 @@ import { getFirebaseServices } from '../../firebaseConfig'
 import { uploadGroupPhoto } from '../../lib/groupPhotos'
 import { notifyActivityUpdated } from '../../lib/notifications'
 import { requireVerifiedParticipation } from '../../utils/authParticipation'
+import { showContentModerationAlert, validateContentModerationFields } from '../../utils/contentModeration'
 import { formatGroupMemberCount, getGroupMemberCount } from '../../utils/groupMembership'
 
 type PickerMode = 'category' | 'subcategory' | 'date' | 'time' | 'currency' | null
@@ -1580,6 +1581,21 @@ function CrearScreenContent() {
     return missingFields
   }
 
+  const validateActivityModeration = () => {
+    const result = validateContentModerationFields([
+      { label: 'activity-title', value: name },
+      { label: 'activity-description', value: description },
+      { label: 'activity-location', value: selectedLocation?.address ?? location },
+    ])
+
+    if (!result.ok) {
+      showContentModerationAlert()
+      return false
+    }
+
+    return true
+  }
+
   const saveActivity = async () => {
     const missingFields = getMissingActivityFields()
     if (missingFields.length > 0) {
@@ -1610,6 +1626,8 @@ function CrearScreenContent() {
       setMessage('Ingresá el precio de la actividad.')
       return
     }
+
+    if (!validateActivityModeration()) return
 
     setIsSaving(true)
     setMessage('')
@@ -1907,6 +1925,16 @@ function CrearScreenContent() {
       return
     }
 
+    const moderationResult = validateContentModerationFields([
+      { label: 'group-name', value: cleanName },
+      { label: 'group-description', value: groupDraftDescription },
+      { label: 'group-location', value: groupDraftLocation },
+    ])
+    if (!moderationResult.ok) {
+      showContentModerationAlert()
+      return
+    }
+
     const { auth, db } = getFirebaseServices()
     const user = auth.currentUser
     if (!user) {
@@ -2008,6 +2036,14 @@ function CrearScreenContent() {
       return
     }
 
+    const moderationResult = validateContentModerationFields([
+      { label: 'group-name', value: cleanName },
+    ])
+    if (!moderationResult.ok) {
+      showContentModerationAlert()
+      return
+    }
+
     const { auth, db } = getFirebaseServices()
     const user = auth.currentUser
     if (!user) {
@@ -2066,6 +2102,16 @@ function CrearScreenContent() {
       return false
     }
 
+    if (currentStep === 1) {
+      const result = validateContentModerationFields([
+        { label: 'activity-title', value: name },
+      ])
+      if (!result.ok) {
+        showContentModerationAlert()
+        return false
+      }
+    }
+
     if (currentStep === 2 && activityKind === 'group' && !isGroupContext && (!selectedGroup || !selectedGroupId)) {
       setMessage('Seleccioná un grupo para continuar.')
       return false
@@ -2076,9 +2122,29 @@ function CrearScreenContent() {
       return false
     }
 
+    if (currentStep === 3) {
+      const result = validateContentModerationFields([
+        { label: 'activity-description', value: description },
+      ])
+      if (!result.ok) {
+        showContentModerationAlert()
+        return false
+      }
+    }
+
     if (currentStep === 4 && (!selectedDate || !time || (!selectedLocation && !location.trim()))) {
       setMessage('Seleccioná fecha, hora y ubicación para continuar.')
       return false
+    }
+
+    if (currentStep === 4) {
+      const result = validateContentModerationFields([
+        { label: 'activity-location', value: selectedLocation?.address ?? location },
+      ])
+      if (!result.ok) {
+        showContentModerationAlert()
+        return false
+      }
     }
 
     setMessage('')
@@ -2131,6 +2197,14 @@ function CrearScreenContent() {
 
     if (!parsedDate || !cleanTime || !cleanLocation) {
       setMessage('Seleccioná fecha, hora y ubicación para continuar.')
+      return
+    }
+
+    const moderationResult = validateContentModerationFields([
+      { label: 'activity-location', value: cleanLocation },
+    ])
+    if (!moderationResult.ok) {
+      showContentModerationAlert()
       return
     }
 

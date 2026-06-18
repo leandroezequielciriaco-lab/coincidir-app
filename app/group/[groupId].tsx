@@ -39,6 +39,7 @@ import { createNotification, deletePendingGroupJoinRequestNotifications } from '
 import { getActivityGroupMeta } from '../../utils/activityGroups'
 import { requireVerifiedParticipation } from '../../utils/authParticipation'
 import { getCategoryImage } from '../../utils/categoryImages'
+import { showContentModerationAlert, validateContentModerationFields } from '../../utils/contentModeration'
 import {
   formatGroupMemberCount,
   getGroupMemberCount,
@@ -619,6 +620,15 @@ export default function GroupDetailScreen() {
     const cleanName = draftGroupName.trim()
     if (!cleanName) {
       Alert.alert('Nombre requerido', 'Ingresá un nombre para el grupo.')
+      return
+    }
+
+    const moderationResult = validateContentModerationFields([
+      { label: 'group-name', value: cleanName },
+      { label: 'group-description', value: draftDescription },
+    ])
+    if (!moderationResult.ok) {
+      showContentModerationAlert()
       return
     }
 
