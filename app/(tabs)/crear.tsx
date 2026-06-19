@@ -73,7 +73,11 @@ import { getFirebaseServices } from '../../firebaseConfig'
 import { uploadGroupPhoto } from '../../lib/groupPhotos'
 import { notifyActivityUpdated } from '../../lib/notifications'
 import { requireVerifiedParticipation } from '../../utils/authParticipation'
-import { showContentModerationAlert, validateContentModerationFields } from '../../utils/contentModeration'
+import {
+  showContentValidationAlert,
+  validateActivityPayload,
+  validateGroupPayload,
+} from '../../utils/contentModeration'
 import { formatGroupMemberCount, getGroupMemberCount } from '../../utils/groupMembership'
 
 type PickerMode = 'category' | 'subcategory' | 'date' | 'time' | 'currency' | null
@@ -1582,14 +1586,14 @@ function CrearScreenContent() {
   }
 
   const validateActivityModeration = () => {
-    const result = validateContentModerationFields([
-      { label: 'activity-title', value: name },
-      { label: 'activity-description', value: description },
-      { label: 'activity-location', value: selectedLocation?.address ?? location },
-    ])
+    const result = validateActivityPayload({
+      name,
+      description,
+      location: selectedLocation?.address ?? location,
+    })
 
     if (!result.ok) {
-      showContentModerationAlert()
+      showContentValidationAlert(result)
       return false
     }
 
@@ -1925,13 +1929,12 @@ function CrearScreenContent() {
       return
     }
 
-    const moderationResult = validateContentModerationFields([
-      { label: 'group-name', value: cleanName },
-      { label: 'group-description', value: groupDraftDescription },
-      { label: 'group-location', value: groupDraftLocation },
-    ])
+    const moderationResult = validateGroupPayload({
+      name: cleanName,
+      description: groupDraftDescription,
+    })
     if (!moderationResult.ok) {
-      showContentModerationAlert()
+      showContentValidationAlert(moderationResult)
       return
     }
 
@@ -2036,11 +2039,9 @@ function CrearScreenContent() {
       return
     }
 
-    const moderationResult = validateContentModerationFields([
-      { label: 'group-name', value: cleanName },
-    ])
+    const moderationResult = validateGroupPayload({ name: cleanName })
     if (!moderationResult.ok) {
-      showContentModerationAlert()
+      showContentValidationAlert(moderationResult)
       return
     }
 
@@ -2103,11 +2104,9 @@ function CrearScreenContent() {
     }
 
     if (currentStep === 1) {
-      const result = validateContentModerationFields([
-        { label: 'activity-title', value: name },
-      ])
+      const result = validateActivityPayload({ name })
       if (!result.ok) {
-        showContentModerationAlert()
+        showContentValidationAlert(result)
         return false
       }
     }
@@ -2123,11 +2122,9 @@ function CrearScreenContent() {
     }
 
     if (currentStep === 3) {
-      const result = validateContentModerationFields([
-        { label: 'activity-description', value: description },
-      ])
+      const result = validateActivityPayload({ description })
       if (!result.ok) {
-        showContentModerationAlert()
+        showContentValidationAlert(result)
         return false
       }
     }
@@ -2138,11 +2135,9 @@ function CrearScreenContent() {
     }
 
     if (currentStep === 4) {
-      const result = validateContentModerationFields([
-        { label: 'activity-location', value: selectedLocation?.address ?? location },
-      ])
+      const result = validateActivityPayload({ location: selectedLocation?.address ?? location })
       if (!result.ok) {
-        showContentModerationAlert()
+        showContentValidationAlert(result)
         return false
       }
     }
@@ -2200,11 +2195,9 @@ function CrearScreenContent() {
       return
     }
 
-    const moderationResult = validateContentModerationFields([
-      { label: 'activity-location', value: cleanLocation },
-    ])
+    const moderationResult = validateActivityPayload({ location: cleanLocation })
     if (!moderationResult.ok) {
-      showContentModerationAlert()
+      showContentValidationAlert(moderationResult)
       return
     }
 

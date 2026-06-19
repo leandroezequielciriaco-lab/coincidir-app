@@ -39,7 +39,7 @@ import { createNotification, deletePendingGroupJoinRequestNotifications } from '
 import { getActivityGroupMeta } from '../../utils/activityGroups'
 import { requireVerifiedParticipation } from '../../utils/authParticipation'
 import { getCategoryImage } from '../../utils/categoryImages'
-import { showContentModerationAlert, validateContentModerationFields } from '../../utils/contentModeration'
+import { showContentValidationAlert, validateGroupPayload } from '../../utils/contentModeration'
 import {
   formatGroupMemberCount,
   getGroupMemberCount,
@@ -623,12 +623,12 @@ export default function GroupDetailScreen() {
       return
     }
 
-    const moderationResult = validateContentModerationFields([
-      { label: 'group-name', value: cleanName },
-      { label: 'group-description', value: draftDescription },
-    ])
+    const moderationResult = validateGroupPayload({
+      name: cleanName,
+      description: draftDescription,
+    })
     if (!moderationResult.ok) {
-      showContentModerationAlert()
+      showContentValidationAlert(moderationResult)
       return
     }
 
