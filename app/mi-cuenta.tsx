@@ -48,7 +48,7 @@ type GoogleSigninApi = {
   configure: (config: { iosClientId?: string; webClientId?: string }) => void
   getTokens: () => Promise<{ idToken?: string }>
   hasPlayServices: (options: { showPlayServicesUpdateDialog: boolean }) => Promise<boolean>
-  signIn: () => Promise<unknown>
+  signIn: () => Promise<{ data?: { idToken?: string }; type?: string } | unknown>
   signOut: () => Promise<unknown>
 }
 
@@ -69,6 +69,8 @@ type PasswordDraft = {
   newPassword: string
 }
 
+type DeleteProviderId = 'google.com' | 'password' | ''
+
 const fallbackAccount: AccountData = {
   city: 'Ciudad no configurada',
   email: 'Email no disponible',
@@ -82,10 +84,15 @@ const emptyPasswordDraft: PasswordDraft = {
   newPassword: '',
 }
 
-function logWebDeleteAccount(message: string, payload?: Record<string, unknown>) {
-  if (Platform.OS === 'web') {
-    console.log(message, payload ?? {})
+function logDeleteAccount(message: string, payload?: Record<string, unknown>, warn = false) {
+  if (!__DEV__) return
+
+  if (warn) {
+    console.warn(message, payload ?? {})
+    return
   }
+
+  console.log(message, payload ?? {})
 }
 
 function getAccountErrorMessage(error: unknown) {
@@ -129,7 +136,28 @@ async function getGoogleIdTokenForReauth() {
   }
 
   await GoogleSignin.signOut().catch(() => {})
-  await GoogleSignin.signIn()
+  const signInResult = await GoogleSignin.signIn()
+  if (
+    typeof signInResult === 'object' &&
+    signInResult &&
+    'type' in signInResult &&
+    signInResult.type === 'cancelled'
+  ) {
+    throw new Error('google-signin-cancelled')
+  }
+
+  if (
+    typeof signInResult === 'object' &&
+    signInResult &&
+    'data' in signInResult &&
+    signInResult.data &&
+    typeof signInResult.data === 'object' &&
+    'idToken' in signInResult.data &&
+    typeof signInResult.data.idToken === 'string'
+  ) {
+    return signInResult.data.idToken
+  }
+
   const tokens = await GoogleSignin.getTokens()
   return tokens.idToken
 }
@@ -174,6 +202,15 @@ function buildAccountData(
   }
 }
 
+function getAuthProviderId(user: { providerData?: Array<{ providerId?: string }> } | null | undefined): DeleteProviderId {
+  const providers = user?.providerData ?? []
+
+  if (providers.some((provider) => provider.providerId === 'password')) return 'password'
+  if (providers.some((provider) => provider.providerId === 'google.com')) return 'google.com'
+
+  return ''
+}
+
 export default function MiCuentaScreen() {
   const router = useRouter()
   const [account, setAccount] = useState<AccountData>(fallbackAccount)
@@ -186,6 +223,7 @@ export default function MiCuentaScreen() {
   const [passwordError, setPasswordError] = useState('')
   const [deletePassword, setDeletePassword] = useState('')
   const [deleteError, setDeleteError] = useState('')
+  const [deleteProviderId, setDeleteProviderId] = useState<DeleteProviderId>('')
 
   useEffect(() => {
     let mounted = true
@@ -197,9 +235,12 @@ export default function MiCuentaScreen() {
 
         if (!user) {
           setAccount(fallbackAccount)
+          setDeleteProviderId('')
           setIsLoading(false)
           return
         }
+
+        setDeleteProviderId(getAuthProviderId(user))
 
         try {
           const profileSnap = await getDoc(doc(db, 'users', user.uid))
@@ -252,18 +293,6 @@ export default function MiCuentaScreen() {
     setDeletePassword('')
     setDeleteError('')
     setIsDeleteModalVisible(false)
-  }
-
-  const getCurrentProviderId = () => {
-    try {
-      const { auth } = getFirebaseServices()
-      const providers = auth.currentUser?.providerData ?? []
-      return providers.find((provider) => provider.providerId === 'password' || provider.providerId === 'google.com')?.providerId
-        ?? providers[0]?.providerId
-        ?? ''
-    } catch {
-      return ''
-    }
   }
 
   const savePassword = async () => {
@@ -337,61 +366,66 @@ export default function MiCuentaScreen() {
       // TODO: Centralizar este flujo con app/privacidad.tsx para que ambos caminos borren Auth y Firestore igual.
       const { auth, db } = getFirebaseServices()
       const user = auth.currentUser
-      const providerId = getCurrentProviderId()
+      const providerId = getAuthProviderId(user) || deleteProviderId
       const logPayload = { providerId, uid: user?.uid ?? null }
+      logDeleteAccount('[DELETE ACCOUNT START]', logPayload)
+      logDeleteAccount('[DELETE ACCOUNT PROVIDER]', logPayload)
 
       if (!user) {
-        logWebDeleteAccount('[WEB DELETE ACCOUNT ERROR]', { ...logPayload, error: 'missing-current-user' })
+        logDeleteAccount('[DELETE ACCOUNT ERROR]', { ...logPayload, error: 'missing-current-user' }, true)
         setDeleteError('Necesitamos que vuelvas a iniciar sesión para eliminar la cuenta.')
         return
       }
 
       if (providerId === 'password') {
         if (!user.email || !deletePassword) {
-          logWebDeleteAccount('[WEB DELETE ACCOUNT ERROR]', { ...logPayload, error: 'missing-password-or-email' })
+          logDeleteAccount('[DELETE ACCOUNT ERROR]', { ...logPayload, error: 'missing-password-or-email' }, true)
           setDeleteError('Ingresá tu contraseña actual para confirmar.')
           return
         }
 
-        logWebDeleteAccount('[WEB DELETE ACCOUNT REAUTH START]', logPayload)
         await reauthenticateWithCredential(user, EmailAuthProvider.credential(user.email, deletePassword))
+        logDeleteAccount('[DELETE ACCOUNT REAUTH OK]', logPayload)
       } else if (providerId === 'google.com') {
         if (!googleWebClientId) {
-          logWebDeleteAccount('[WEB DELETE ACCOUNT ERROR]', { ...logPayload, error: 'missing-google-web-client-id' })
+          logDeleteAccount('[DELETE ACCOUNT ERROR]', { ...logPayload, error: 'missing-google-web-client-id' }, true)
           setDeleteError('Falta configurar Google para confirmar la eliminación.')
           return
         }
 
-        logWebDeleteAccount('[WEB DELETE ACCOUNT REAUTH START]', logPayload)
         const idToken = await getGoogleIdTokenForReauth()
         if (!idToken) {
-          logWebDeleteAccount('[WEB DELETE ACCOUNT ERROR]', { ...logPayload, error: 'missing-google-id-token' })
+          logDeleteAccount('[DELETE ACCOUNT ERROR]', { ...logPayload, error: 'missing-google-id-token' }, true)
           setDeleteError('Google no devolvió un token válido. No se eliminó nada.')
           return
         }
 
         await reauthenticateWithCredential(user, GoogleAuthProvider.credential(idToken))
+        logDeleteAccount('[DELETE ACCOUNT REAUTH OK]', logPayload)
       } else {
-        logWebDeleteAccount('[WEB DELETE ACCOUNT ERROR]', { ...logPayload, error: 'unknown-provider' })
+        logDeleteAccount('[DELETE ACCOUNT ERROR]', { ...logPayload, error: 'unknown-provider' }, true)
         setDeleteError('No pudimos detectar el método de ingreso de esta cuenta.')
         return
       }
 
-      logWebDeleteAccount('[WEB DELETE ACCOUNT DELETE START]', logPayload)
       await setDoc(doc(db, 'users', user.uid), {
         deletedAt: serverTimestamp(),
         isDeleted: true,
         status: 'deleted',
         updatedAt: serverTimestamp(),
       }, { merge: true })
+      logDeleteAccount('[DELETE ACCOUNT FIRESTORE MARK OK]', logPayload)
 
       await deleteUser(user)
+      logDeleteAccount('[DELETE ACCOUNT AUTH DELETE OK]', logPayload)
+      Alert.alert('Cuenta eliminada', 'Tu cuenta fue eliminada correctamente.')
       await signOut(auth).catch(() => {})
-      logWebDeleteAccount('[WEB DELETE ACCOUNT SUCCESS]', logPayload)
       router.replace(LOGIN_ROUTE)
     } catch (error) {
       const code = typeof error === 'object' && error && 'code' in error ? String(error.code) : ''
-      logWebDeleteAccount('[WEB DELETE ACCOUNT ERROR]', { code, error: getAccountErrorMessage(error) })
+      const normalizedCode = code.toLowerCase()
+      const message = error instanceof Error ? error.message : ''
+      logDeleteAccount('[DELETE ACCOUNT ERROR]', { code, error: getAccountErrorMessage(error) }, true)
 
       if (code === 'auth/wrong-password' || code === 'auth/invalid-credential' || code === 'auth/invalid-login-credentials') {
         setDeleteError('La reautenticación falló. No se eliminó nada.')
@@ -403,12 +437,16 @@ export default function MiCuentaScreen() {
         return
       }
 
-      if (code.includes('sign_in_cancelled') || code.includes('cancelled')) {
+      if (normalizedCode.includes('sign_in_cancelled') || normalizedCode.includes('cancelled') || normalizedCode.includes('cancel')) {
         setDeleteError('Cancelaste la confirmación con Google. No se eliminó nada.')
         return
       }
 
-      const message = error instanceof Error ? error.message : ''
+      if (message === 'google-signin-cancelled') {
+        setDeleteError('Cancelaste la confirmaciÃ³n con Google. No se eliminÃ³ nada.')
+        return
+      }
+
       if (message === 'google-signin-development-build-required' || message.includes('RNGoogleSignin')) {
         setDeleteError('Google Sign-In requiere development build.')
         return
@@ -419,32 +457,6 @@ export default function MiCuentaScreen() {
       setIsDeletingAccount(false)
     }
   }
-
-  const confirmDeleteAccount = () => {
-    logWebDeleteAccount('[WEB DELETE ACCOUNT PRESS]', { providerId: deleteProviderId })
-
-    if (Platform.OS === 'web') {
-      const confirmed = typeof window !== 'undefined'
-        ? window.confirm('Eliminar cuenta\n\nEsta acción eliminará tu cuenta y no se puede deshacer.')
-        : false
-
-      if (confirmed) {
-        void deleteAccount()
-      }
-      return
-    }
-
-    Alert.alert(
-      'Eliminar cuenta',
-      'Esta acción eliminará tu cuenta y no se puede deshacer.',
-      [
-        { text: 'Cancelar', style: 'cancel' },
-        { text: 'Eliminar cuenta', style: 'destructive', onPress: deleteAccount },
-      ],
-    )
-  }
-
-  const deleteProviderId = getCurrentProviderId()
 
   return (
     <SafeAreaView edges={['top']} style={styles.safeArea}>
@@ -506,14 +518,16 @@ export default function MiCuentaScreen() {
       />
       <DeleteAccountModal
         error={deleteError}
-        isPasswordProvider={deleteProviderId === 'password'}
+        providerId={deleteProviderId}
         isSaving={isDeletingAccount}
         onCancel={cancelDeleteAccount}
         onChangePassword={(value) => {
           setDeletePassword(value)
           if (deleteError) setDeleteError('')
         }}
-        onConfirm={confirmDeleteAccount}
+        onConfirm={() => {
+          void deleteAccount()
+        }}
         password={deletePassword}
         visible={isDeleteModalVisible}
       />
@@ -610,23 +624,29 @@ function ChangePasswordModal({
 
 function DeleteAccountModal({
   error,
-  isPasswordProvider,
   isSaving,
   onCancel,
   onChangePassword,
   onConfirm,
   password,
+  providerId,
   visible,
 }: {
   error: string
-  isPasswordProvider: boolean
   isSaving: boolean
   onCancel: () => void
   onChangePassword: (value: string) => void
   onConfirm: () => void
   password: string
+  providerId: DeleteProviderId
   visible: boolean
 }) {
+  const isPasswordProvider = providerId === 'password'
+  const isGoogleProvider = providerId === 'google.com'
+  const confirmLabel = isGoogleProvider ? 'Confirmar con Google' : 'Eliminar cuenta'
+  const passwordIsEmpty = isPasswordProvider && password.trim().length === 0
+  const isConfirmDisabled = isSaving || passwordIsEmpty
+
   return (
     <Modal animationType="slide" onRequestClose={onCancel} visible={visible}>
       <SafeAreaView edges={['top']} style={styles.safeArea}>
@@ -649,9 +669,9 @@ function DeleteAccountModal({
             <View style={styles.dangerIcon}>
               <AlertTriangle color="#B42318" size={34} strokeWidth={2.1} />
             </View>
-            <Text style={styles.passwordTitle}>Esta acción eliminará tu cuenta y no se puede deshacer.</Text>
+            <Text style={styles.passwordTitle}>Eliminar cuenta de forma permanente</Text>
             <Text style={styles.passwordSubtitle}>
-              Vamos a marcar tu perfil como eliminado y cerrar tu sesión. Confirmá tu identidad para continuar.
+              Esta acción elimina el acceso a COINCIDIR y marca tu perfil como eliminado. Antes de continuar, confirmá tu identidad.
             </Text>
 
             {isPasswordProvider ? (
@@ -664,15 +684,25 @@ function DeleteAccountModal({
               />
             ) : null}
 
+            {isGoogleProvider ? (
+              <Text style={styles.googleDeleteHint}>
+                Confirmar con Google: no necesitás ingresar contraseña. Te vamos a pedir que confirmes tu identidad con Google antes de eliminar la cuenta.
+              </Text>
+            ) : null}
+
             {error ? <Text style={styles.errorText}>{error}</Text> : null}
 
             <Pressable
               accessibilityRole="button"
-              disabled={isSaving}
+              disabled={isConfirmDisabled}
               onPress={onConfirm}
-              style={({ pressed }) => [styles.deleteButton, pressed && styles.deleteButtonPressed, isSaving && styles.saveButtonDisabled]}
+              style={({ pressed }) => [
+                styles.deleteButton,
+                pressed && !isConfirmDisabled && styles.deleteButtonPressed,
+                isConfirmDisabled && styles.saveButtonDisabled,
+              ]}
             >
-              {isSaving ? <ActivityIndicator color="#FFFFFF" /> : <Text style={styles.saveButtonText}>Eliminar cuenta</Text>}
+              {isSaving ? <ActivityIndicator color="#FFFFFF" /> : <Text style={styles.deleteButtonText}>{confirmLabel}</Text>}
             </Pressable>
 
             <Pressable accessibilityRole="button" disabled={isSaving} onPress={onCancel} style={styles.cancelButton}>
@@ -1046,6 +1076,22 @@ const styles = StyleSheet.create({
     marginBottom: 12,
     marginTop: -2,
   },
+  googleDeleteHint: {
+    alignSelf: 'stretch',
+    backgroundColor: '#FFF7ED',
+    borderColor: '#FDBA74',
+    borderRadius: 14,
+    borderWidth: 1,
+    color: '#7C2D12',
+    fontSize: 15,
+    fontWeight: '800',
+    letterSpacing: 0,
+    lineHeight: 21,
+    marginBottom: 16,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    textAlign: 'center',
+  },
   saveButton: {
     alignItems: 'center',
     alignSelf: 'stretch',
@@ -1060,9 +1106,11 @@ const styles = StyleSheet.create({
     alignSelf: 'stretch',
     backgroundColor: '#B42318',
     borderRadius: 999,
-    height: 50,
+    minHeight: 58,
     justifyContent: 'center',
-    marginTop: 4,
+    marginTop: 8,
+    paddingHorizontal: 20,
+    paddingVertical: 16,
   },
   deleteButtonPressed: {
     backgroundColor: '#8F1D14',
@@ -1075,6 +1123,13 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '900',
     letterSpacing: 0,
+  },
+  deleteButtonText: {
+    color: '#FFFFFF',
+    fontSize: 17,
+    fontWeight: '900',
+    letterSpacing: 0,
+    textAlign: 'center',
   },
   cancelButton: {
     alignItems: 'center',

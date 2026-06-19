@@ -13,6 +13,7 @@ import { canParticipate, isGoogleUser, reloadAuthUser } from '../utils/authParti
 const PUBLIC_ROUTES = new Set([
   '/',
   '/forgot-password',
+  '/delete-account',
   '/legal/privacy',
   '/legal/terms',
   '/login',
