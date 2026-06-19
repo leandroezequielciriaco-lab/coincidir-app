@@ -1084,10 +1084,15 @@ function ProfileGroupsSection({ currentUserId, currentUserName, groups, onOpen }
         ]}>
           {getGroupStatusText(group.status)}
         </Text>
-        <View style={styles.profileGroupOpen}>
+        <Pressable
+          accessibilityLabel={`Ver grupo ${group.name}`}
+          accessibilityRole="button"
+          onPress={() => onOpen(group)}
+          style={styles.profileGroupOpen}
+        >
           <Text style={[styles.profileGroupOpenText, { color: groupColors.color }]}>Ver grupo</Text>
           <ChevronRight color={groupColors.color} size={18} strokeWidth={2.5} />
-        </View>
+        </Pressable>
       </View>
       {group.status === 'none' ? (
         <Pressable
