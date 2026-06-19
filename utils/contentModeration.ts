@@ -74,6 +74,53 @@ const blockedTerms = [
   'sidosa',
 ] as const
 
+// Las amenazas se detectan por contexto para evitar bloquear usos inocentes de
+// palabras aisladas (por ejemplo, "entrenamiento fuerte"). Los verbos más
+// inequívocos, como "asesinar", también se bloquean por sí solos.
+const severeViolenceVerb = [
+  'matar(?:te|lo|la|los|las|le|les)?',
+  'asesinar(?:te|lo|la|los|las|le|les)?',
+  'golpear(?:te|lo|la|los|las|le|les)?',
+  'apunalar(?:te|lo|la|los|las|le|les)?',
+  'acuchillar(?:te|lo|la|los|las|le|les)?',
+  'degollar(?:te|lo|la|los|las|le|les)?',
+  'decapitar(?:te|lo|la|los|las|le|les)?',
+  'fusilar(?:te|lo|la|los|las|le|les)?',
+  'torturar(?:te|lo|la|los|las|le|les)?',
+  'linchar(?:te|lo|la|los|las|le|les)?',
+  'balear(?:te|lo|la|los|las|le|les)?',
+  'disparar(?:te|lo|la|los|las|le|les)?',
+].join('|')
+
+const personOrAuthorityTarget = [
+  'alguien',
+  'presidentes?',
+  'gobernadores?',
+  'intendentes?',
+  'policias?',
+  'maestros?',
+  'maestras?',
+  'profesores?',
+  'profesoras?',
+  'personas?',
+  'gente',
+  'mujeres?',
+  'hombres?',
+  'ninos?',
+  'ninas?',
+].join('|')
+
+const explicitViolencePatterns = [
+  // Amenaza o intención directa, incluso si todavía no se menciona el blanco.
+  new RegExp(`\\b(?:voy|vamos|quiero|queremos|pienso|pensamos|planeo|planeamos)\\s+(?:a\\s+)?(?:${severeViolenceVerb})\\b`),
+  // Construcciones explícitas solicitadas: "matar a/al/el/la...".
+  /\bmatar\s+(?:a|al|el|la|los|las)\b/,
+  // "Asesinar" es inequívoco aun sin un blanco escrito.
+  /\basesinar(?:te|lo|la|los|las|le|les)?\b/,
+  // Otros verbos violentos graves se bloquean al estar dirigidos a personas o cargos.
+  new RegExp(`\\b(?:${severeViolenceVerb})\\s+(?:(?:a|al|el|la|los|las|un|una)\\s+)?(?:\\w+\\s+){0,2}(?:${personOrAuthorityTarget})\\b`),
+] as const
+
 const genericNames = new Set(['1234', 'cro', 'hola', 'prueba', 'test'])
 
 function readString(value: unknown): string {
@@ -97,6 +144,10 @@ function countRealCharacters(value: unknown): number {
 
 function matchesBlockedTerm(normalizedText: string, normalizedTerm: string): boolean {
   return (` ${normalizedText} `).includes(` ${normalizedTerm} `)
+}
+
+function matchesExplicitViolence(normalizedText: string): boolean {
+  return explicitViolencePatterns.some((pattern) => pattern.test(normalizedText))
 }
 
 function validateSuspiciousContact(text: string): ContentModerationResult {
@@ -127,6 +178,14 @@ export function validateContent(text: string): ContentModerationResult {
   if (!contactResult.ok) return contactResult
 
   const normalized = normalizeText(text)
+  if (matchesExplicitViolence(normalized)) {
+    return {
+      ok: false,
+      reason: 'inappropriate-content',
+      matchedWord: 'explicit-violence',
+    }
+  }
+
   for (const term of blockedTerms) {
     const normalizedTerm = normalizeText(term)
     if (matchesBlockedTerm(normalized, normalizedTerm)) {
