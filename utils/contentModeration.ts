@@ -139,6 +139,101 @@ const personOrAuthorityTarget = [
   'ninas?',
 ].join('|')
 
+// Los nombres de colectivos no se bloquean por sí solos: se combinan con
+// expresiones de odio, exclusión, violencia o insulto. Esto permite usos
+// neutrales y educativos sobre diversidad, inclusión o antirracismo.
+const protectedGroupTarget = [
+  // Nacionalidades y procedencias frecuentes en la región.
+  'argentinos?',
+  'argentinas?',
+  'bolivianos?',
+  'bolivianas?',
+  'brasilenos?',
+  'brasilenas?',
+  'brasileros?',
+  'brasileras?',
+  'chilenos?',
+  'chilenas?',
+  'colombianos?',
+  'colombianas?',
+  'ecuatorianos?',
+  'ecuatorianas?',
+  'mexicanos?',
+  'mexicanas?',
+  'paraguayos?',
+  'paraguayas?',
+  'peruanos?',
+  'peruanas?',
+  'uruguayos?',
+  'uruguayas?',
+  'venezolanos?',
+  'venezolanas?',
+  'extranjeros?',
+  'extranjeras?',
+  'inmigrantes?',
+  'migrantes?',
+  'refugiados?',
+  'refugiadas?',
+  // Etnia, color de piel y pueblos originarios.
+  'negros?',
+  'negras?',
+  'blancos?',
+  'blancas?',
+  'afrodescendientes?',
+  'africanos?',
+  'africanas?',
+  'asiaticos?',
+  'asiaticas?',
+  'arabes?',
+  'gitanos?',
+  'gitanas?',
+  'indigenas?',
+  'pueblos?\\s+originarios?',
+  // Religiones.
+  'judios?',
+  'judias?',
+  'musulmanes?',
+  'musulmanas?',
+  'cristianos?',
+  'cristianas?',
+  'catolicos?',
+  'catolicas?',
+  'evangelicos?',
+  'evangelicas?',
+  // Discapacidad, género y orientación sexual.
+  'personas?\\s+con\\s+discapacidad',
+  'discapacitados?',
+  'discapacitadas?',
+  'mujeres?',
+  'hombres?',
+  'gays?',
+  'lesbianas?',
+  'homosexuales?',
+  'bisexuales?',
+  'transexuales?',
+  'transgeneros?',
+  'travestis?',
+  'personas?\\s+trans',
+  'personas?\\s+lgbt(?:qia?)?',
+].join('|')
+
+const protectedGroupReference = `(?:(?:a|al|hacia|contra|de)\\s+)?(?:(?:los|las|el|la|un|una|unos|unas)\\s+)?(?:${protectedGroupTarget})`
+
+const hateOrDiscriminationPatterns = [
+  // Odio explícito contra un colectivo.
+  new RegExp(`\\b(?:odio|odiar|detesto|detestar)\\s+${protectedGroupReference}\\b`),
+  // Exclusión o prohibición de ingreso/participación.
+  new RegExp(`\\b(?:no\\s+se\\s+(?:aceptan|admiten|permiten)|no\\s+(?:aceptamos|admitimos|permitimos))\\s+${protectedGroupReference}\\b`),
+  new RegExp(`\\bprohibid[oa]s?\\s+(?:(?:el\\s+ingreso|la\\s+entrada)\\s+)?${protectedGroupReference}\\b`),
+  new RegExp(`\\bfuera\\s+${protectedGroupReference}\\b`),
+  // Violencia, eliminación o expulsión dirigida a un colectivo.
+  new RegExp(`\\b(?:matar|eliminar|exterminar|expulsar)\\s+${protectedGroupReference}\\b`),
+  // Insultos y generalizaciones degradantes evidentes.
+  new RegExp(`\\b(?:${protectedGroupTarget})\\s+de\\s+mierda\\b`),
+  new RegExp(`\\bmaldit[oa]s?\\s+(?:(?:los|las)\\s+)?(?:${protectedGroupTarget})\\b`),
+  new RegExp(`\\btod[oa]s?\\s+(?:los|las)\\s+(?:${protectedGroupTarget})\\s+(?:son|parecen)\\s+(?:\\w+\\s+){0,3}(?:mierda|inferiores?|sucios?|sucias?|criminales?|ladrones?|ladronas?|basura)\\b`),
+] as const
+
 const explicitViolencePatterns = [
   // Amenaza o intención directa, incluso si todavía no se menciona el blanco.
   new RegExp(`\\b(?:voy|vamos|quiero|queremos|pienso|pensamos|planeo|planeamos)\\s+(?:a\\s+)?(?:${severeViolenceVerb})\\b`),
@@ -179,6 +274,10 @@ function matchesExplicitViolence(normalizedText: string): boolean {
   return explicitViolencePatterns.some((pattern) => pattern.test(normalizedText))
 }
 
+function matchesHateOrDiscrimination(normalizedText: string): boolean {
+  return hateOrDiscriminationPatterns.some((pattern) => pattern.test(normalizedText))
+}
+
 function validateSuspiciousContact(text: string): ContentModerationResult {
   const normalized = normalizeText(text)
 
@@ -207,6 +306,14 @@ export function validateContent(text: string): ContentModerationResult {
   if (!contactResult.ok) return contactResult
 
   const normalized = normalizeText(text)
+  if (matchesHateOrDiscrimination(normalized)) {
+    return {
+      ok: false,
+      reason: 'inappropriate-content',
+      matchedWord: 'hate-or-discrimination',
+    }
+  }
+
   if (matchesExplicitViolence(normalized)) {
     return {
       ok: false,
