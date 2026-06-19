@@ -643,7 +643,7 @@ function DeleteAccountModal({
 }) {
   const isPasswordProvider = providerId === 'password'
   const isGoogleProvider = providerId === 'google.com'
-  const confirmLabel = isGoogleProvider ? 'Confirmar con Google' : 'Eliminar cuenta'
+  const confirmLabel = isGoogleProvider ? 'Continuar con Google' : 'Eliminar cuenta'
   const passwordIsEmpty = isPasswordProvider && password.trim().length === 0
   const isConfirmDisabled = isSaving || passwordIsEmpty
 
@@ -692,18 +692,55 @@ function DeleteAccountModal({
 
             {error ? <Text style={styles.errorText}>{error}</Text> : null}
 
-            <Pressable
-              accessibilityRole="button"
-              disabled={isConfirmDisabled}
-              onPress={onConfirm}
-              style={({ pressed }) => [
-                styles.deleteButton,
-                pressed && !isConfirmDisabled && styles.deleteButtonPressed,
-                isConfirmDisabled && styles.saveButtonDisabled,
-              ]}
-            >
-              {isSaving ? <ActivityIndicator color="#FFFFFF" /> : <Text style={styles.deleteButtonText}>{confirmLabel}</Text>}
-            </Pressable>
+            {Platform.OS === 'android' ? (
+              <Pressable
+                accessibilityRole="button"
+                disabled={isConfirmDisabled}
+                onPress={onConfirm}
+                style={{
+                  alignItems: 'center',
+                  backgroundColor: '#B42318',
+                  borderRadius: 16,
+                  elevation: 4,
+                  justifyContent: 'center',
+                  marginBottom: 12,
+                  marginTop: 24,
+                  minHeight: 56,
+                  opacity: isConfirmDisabled ? 0.55 : 1,
+                  paddingHorizontal: 20,
+                  paddingVertical: 16,
+                  width: '100%',
+                }}
+              >
+                {isSaving ? (
+                  <ActivityIndicator color="#FFFFFF" />
+                ) : (
+                  <Text
+                    style={{
+                      color: '#FFFFFF',
+                      fontSize: 16,
+                      fontWeight: '800',
+                      textAlign: 'center',
+                    }}
+                  >
+                    {confirmLabel}
+                  </Text>
+                )}
+              </Pressable>
+            ) : (
+              <Pressable
+                accessibilityRole="button"
+                disabled={isConfirmDisabled}
+                onPress={onConfirm}
+                style={({ pressed }) => [
+                  styles.deleteButton,
+                  pressed && !isConfirmDisabled && styles.deleteButtonPressed,
+                  isConfirmDisabled && styles.saveButtonDisabled,
+                ]}
+              >
+                {isSaving ? <ActivityIndicator color="#FFFFFF" /> : <Text style={styles.deleteButtonText}>{confirmLabel}</Text>}
+              </Pressable>
+            )}
 
             <Pressable accessibilityRole="button" disabled={isSaving} onPress={onCancel} style={styles.cancelButton}>
               <Text style={styles.cancelButtonText}>Cancelar</Text>
@@ -1111,6 +1148,7 @@ const styles = StyleSheet.create({
     marginTop: 8,
     paddingHorizontal: 20,
     paddingVertical: 16,
+    width: '100%',
   },
   deleteButtonPressed: {
     backgroundColor: '#8F1D14',
