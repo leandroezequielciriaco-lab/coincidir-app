@@ -1,5 +1,6 @@
 import { useRouter } from 'expo-router'
-import { ChevronLeft, ShieldCheck } from 'lucide-react-native'
+import type { Href } from 'expo-router'
+import { ChevronLeft, ChevronRight, ShieldCheck } from 'lucide-react-native'
 import { Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 
@@ -50,6 +51,22 @@ export default function PrivacyPolicyScreen() {
             </View>
           ))}
         </View>
+
+        <Pressable
+          accessibilityLabel="Ver estándares de seguridad infantil"
+          accessibilityRole="link"
+          onPress={() => router.push('/child-safety' as Href)}
+          style={({ pressed }) => [styles.childSafetyLink, pressed && styles.pressed]}
+        >
+          <View style={styles.childSafetyIcon}>
+            <ShieldCheck color="#17803C" size={23} strokeWidth={2.2} />
+          </View>
+          <View style={styles.childSafetyCopy}>
+            <Text style={styles.childSafetyTitle}>Estándares de seguridad infantil</Text>
+            <Text style={styles.childSafetyText}>Política contra la explotación y el abuso sexual infantil</Text>
+          </View>
+          <ChevronRight color="#063C31" size={22} strokeWidth={2.2} />
+        </Pressable>
       </ScrollView>
     </SafeAreaView>
   )
@@ -157,5 +174,41 @@ const styles = StyleSheet.create({
   },
   bullet: {
     paddingLeft: 8,
+  },
+  childSafetyLink: {
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    borderColor: '#CFE3C2',
+    borderRadius: 18,
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: 12,
+    marginTop: 16,
+    minHeight: 78,
+    padding: 14,
+  },
+  childSafetyIcon: {
+    alignItems: 'center',
+    backgroundColor: '#E9F6E4',
+    borderRadius: 14,
+    height: 44,
+    justifyContent: 'center',
+    width: 44,
+  },
+  childSafetyCopy: {
+    flex: 1,
+  },
+  childSafetyTitle: {
+    color: '#063C31',
+    fontSize: 15,
+    fontWeight: '900',
+    lineHeight: 20,
+  },
+  childSafetyText: {
+    color: '#596A65',
+    fontSize: 13,
+    fontWeight: '600',
+    lineHeight: 18,
+    marginTop: 2,
   },
 })
