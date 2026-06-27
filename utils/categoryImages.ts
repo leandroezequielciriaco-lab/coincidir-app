@@ -40,6 +40,12 @@ const senderismoImages = [
   require('../assets/images/activities/senderismo/senderismo-3.jpg'),
 ]
 
+const caminataImages = [
+  require('../assets/images/activities/caminata/caminata-1.jpg'),
+  require('../assets/images/activities/caminata/caminata-2.jpg'),
+  require('../assets/images/activities/caminata/caminata-3.jpg'),
+]
+
 const equitacionImages = [
   require('../assets/images/activities/equitacion/equitacion-1.jpg'),
   require('../assets/images/activities/equitacion/equitacion-2.jpg'),
@@ -221,6 +227,12 @@ const eventosImages = [
 ]
 
 const gamingImage = require('../assets/images/categories/placeholder-gaming.jpg')
+const gamingImages = [
+  require('../assets/images/activities/gaming/gaming-1.jpg'),
+  require('../assets/images/activities/gaming/gaming-2.jpg'),
+  require('../assets/images/activities/gaming/gaming-3.jpg'),
+]
+
 const mateadaImages = [
   require('../assets/images/activities/mateada/mateada-1.jpg'),
   require('../assets/images/activities/mateada/mateada-2.jpg'),
@@ -308,7 +320,7 @@ export const categoryImages: Record<string, ImageSourcePropType> = {
   Cafe: cafeImages[0],
   Musica: musicaImages[0],
   Senderismo: senderismoImages[0],
-  Gaming: gamingImage,
+  Gaming: gamingImages[0],
   Mateada: mateadaImages[0],
   Ciclismo: ciclismoImages[0],
   Entrenamiento: entrenamientoImages[0],
@@ -414,7 +426,8 @@ const imageRules: ImageRule[] = [
   { image: futbolImages, terms: ['futbol', 'futbol 5', 'fulbito'] },
   { image: tenisImages, terms: ['tenis'] },
   { image: basquetImages, terms: ['basquet', 'basket', 'basketball'] },
-  { image: padelImages, terms: ['padel', 'paddle'] },
+  { image: supImages, terms: ['stand up paddle', 'stand-up paddle', 'standup paddle', 'sup yoga', 'supyoga', 'sup', 'paddleboard'] },
+  { image: padelImages, terms: ['padel'] },
   { image: pescaImages, terms: ['pesca', 'pescar'] },
   { image: cocinaImages, terms: ['cocina', 'cocinar', 'gastronomia', 'cocina/venue'] },
   { image: juegosdemesaImages, terms: ['juegos de mesa', 'juego de mesa', 'board games', 'tablero'] },
@@ -435,11 +448,12 @@ const imageRules: ImageRule[] = [
   { image: ciclismoImages, terms: ['ciclismo/mtb', 'ciclismo', 'bicicleta', 'bici', 'bike', 'mountain bike', 'mtb'] },
   { image: yogaImages, terms: ['yoga', 'supyoga', 'meditacion', 'mindfulness', 'respiracion', 'relax', 'stretching', 'tai chi', 'sound healing', 'bienestar', 'wellness'] },
   { image: runningImages, terms: ['running', 'correr', 'runner'] },
-  { image: supImages, terms: ['sup', 'stand up paddle', 'kayak', 'paddleboard', 'natacion'] },
   { image: cafeImages, terms: ['cafe', 'cafeteria', 'cocina'] },
   { image: musicaImages, terms: ['musica', 'sala de ensayo', 'sound', 'concierto'] },
+  { image: caminataImages, terms: ['caminatas', 'caminata', 'caminar', 'walking'] },
   { image: senderismoImages, terms: ['senderismo', 'trekking/senderismo', 'sendero', 'caminata', 'caminatas', 'trekking', 'camping', 'paseos', 'picnic', 'montana', 'escalada outdoor'] },
-  { image: gamingImage, terms: ['gaming', 'videojuegos', 'pool', 'bowling'] },
+  { image: gamingImages, terms: ['gaming', 'videojuegos', 'gamer', 'juegos online'] },
+  { image: gamingImage, terms: ['pool', 'bowling'] },
   { image: mateadaImages, terms: ['mate', 'mateada', 'mateadas'] },
   { image: entrenamientoImages, terms: ['entrenamiento', 'entrenamiento y movimiento', 'funcional', 'crossfit', 'calistenia', 'gimnasio', 'gimnasio/estudio', 'deportes', 'sports', 'futbol', 'padel', 'paddle', 'tenis', 'basquet', 'hockey', 'voley'] },
   { image: grupalImage, terms: ['grupo', 'grupos', 'grupal', 'grupales', 'clubes', 'networking', 'voluntariado', 'charlas', 'after office', 'salidas grupales', 'sociales', 'sociales y comunidad', 'idiomas', 'intercambio cultural'] },
