@@ -37,31 +37,22 @@ type InviteFriendsSheetProps = {
   visible: boolean
 }
 
-const APP_LINK = 'https://coincidir.app'
-const APP_DEEP_LINK = 'coincidirapp://'
+const ANDROID_APP_LINK = 'https://play.google.com/store/apps/details?id=com.leandroezequielciriaco.coincidir'
+const WEB_APP_LINK = 'https://coincidir.web.app'
 
-function getTargetPath(target?: InviteShareTarget | null) {
-  if (!target?.id) return ''
-  if (target.type === 'group') return `/group/${target.id}`
-  if (target.type === 'activity') return `/activity/${target.id}`
-  return ''
+function getAppShareLink() {
+  return Platform.OS === 'android' ? ANDROID_APP_LINK : WEB_APP_LINK
 }
 
-function getShareLink(target?: InviteShareTarget | null) {
-  const path = getTargetPath(target)
-  return `${APP_LINK}${path}`
-}
-
-function getDeepLink(target?: InviteShareTarget | null) {
-  const path = getTargetPath(target)
-  return `${APP_DEEP_LINK}${path.replace(/^\//, '')}`
+function getShareLink() {
+  return getAppShareLink()
 }
 
 function getShareMessage(target?: InviteShareTarget | null) {
   const title = target?.title?.trim()
   const dateTime = target?.dateTime?.trim()
   const location = target?.location?.trim()
-  const link = getShareLink(target)
+  const link = getShareLink()
 
   if (target?.type === 'activity' && title) {
     return [
@@ -72,7 +63,7 @@ function getShareMessage(target?: InviteShareTarget | null) {
       '',
       '¿Te venís conmigo?',
       '',
-      `Te dejo el link para que veas la actividad: ${link}`,
+      `Descargá o abrí COINCIDIR desde acá: ${link}`,
     ].filter(Boolean).join('\n')
   }
 
@@ -82,7 +73,7 @@ function getShareMessage(target?: InviteShareTarget | null) {
       location ? `📍 ${location}` : '',
       '¿Te sumás?',
       '',
-      `Link: ${link}`,
+      `Descargá o abrí COINCIDIR desde acá: ${link}`,
     ].filter(Boolean).join('\n')
   }
 
@@ -91,7 +82,7 @@ function getShareMessage(target?: InviteShareTarget | null) {
     '',
     'Sumate y descubrí actividades para compartir con otras personas.',
     '',
-    APP_LINK,
+    link,
   ].join('\n')
 }
 
@@ -140,8 +131,7 @@ async function shareWithInstagram(message: string) {
 export function InviteFriendsSheet({ onClose, target, visible }: InviteFriendsSheetProps) {
   const [feedback, setFeedback] = useState('')
   const shareMessage = useMemo(() => getShareMessage(target), [target])
-  const shareLink = useMemo(() => getShareLink(target), [target])
-  const deepLink = useMemo(() => getDeepLink(target), [target])
+  const shareLink = useMemo(() => getShareLink(), [])
   const hasActivityTarget = target?.type === 'activity' && Boolean(target.id)
 
   const closeWithFeedback = (message: string) => {
@@ -178,7 +168,7 @@ export function InviteFriendsSheet({ onClose, target, visible }: InviteFriendsSh
           <InviteOption
             Icon={Copy}
             color="#5A35D6"
-            description={`Copia el link ${deepLink ? 'y dejalo listo para abrir la app.' : 'y envialo como quieras.'}`}
+            description="Copia el enlace oficial y envialo como quieras."
             label="Copiar enlace"
             onPress={copyLink}
           />
