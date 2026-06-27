@@ -1,7 +1,6 @@
 import { useMemo, useState } from 'react'
 import {
   ActivityIndicator,
-  Alert,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -18,7 +17,6 @@ import {
   signInWithPopup,
 } from 'firebase/auth'
 import { doc, getDoc, serverTimestamp, setDoc } from 'firebase/firestore'
-import { FontAwesome5 } from '@expo/vector-icons'
 import { ArrowLeft, ArrowRight, Check, Eye, EyeOff, LockKeyhole, Mail } from 'lucide-react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 
@@ -381,10 +379,6 @@ export default function LoginScreen() {
     }
   }
 
-  const handleComingSoon = () => {
-    Alert.alert('Disponible próximamente')
-  }
-
   const handleBack = () => {
     if (Platform.OS === 'web') {
       router.replace('/onboarding')
@@ -572,29 +566,6 @@ export default function LoginScreen() {
               )}
             </Pressable>
 
-            {!isWeb ? (
-              <View style={styles.socialRow}>
-                <Pressable
-                  accessibilityLabel="Ingresar con Apple"
-                  accessibilityRole="button"
-                  disabled={isSubmitting || isGoogleSubmitting}
-                  onPress={handleComingSoon}
-                  style={styles.socialButton}
-                >
-                  <FontAwesome5 color="#111111" name="apple" size={28} />
-                </Pressable>
-
-                <Pressable
-                  accessibilityLabel="Ingresar con Facebook"
-                  accessibilityRole="button"
-                  disabled={isSubmitting || isGoogleSubmitting}
-                  onPress={handleComingSoon}
-                  style={styles.socialButton}
-                >
-                  <FontAwesome5 color="#2E68B8" name="facebook-f" size={25} />
-                </Pressable>
-              </View>
-            ) : null}
           </View>
 
           <Pressable

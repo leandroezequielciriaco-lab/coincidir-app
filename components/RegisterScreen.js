@@ -14,11 +14,9 @@ import {
 import { useRouter } from 'expo-router'
 import {
   createUserWithEmailAndPassword,
-  GoogleAuthProvider,
-  signInWithCredential,
   updateProfile,
 } from 'firebase/auth'
-import { doc, getDoc, serverTimestamp, setDoc } from 'firebase/firestore'
+import { doc, serverTimestamp, setDoc } from 'firebase/firestore'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import {
   Calendar,
@@ -32,39 +30,14 @@ import {
 } from 'lucide-react-native'
 
 import CoincidirLogo from './CoincidirLogo'
-import GoogleLogo from './GoogleLogo'
 import { styles } from './RegisterScreen.styles'
 import { getFirebaseServices } from '../firebaseConfig'
 import { getLegalAcceptanceFields } from '../constants/legal'
 import { sendLocalizedEmailVerification } from '../utils/authParticipation'
-import { getGoogleProfileNameRepairFields, readCleanString } from '../utils/userNames'
 
-const googleWebClientId = process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID
-const googleIosClientId = process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID
 const isWeb = Platform.OS === 'web'
 const REGISTRATION_EMAIL_VERIFICATION_MESSAGE =
   'Te enviamos un correo de verificación. Confirmá tu email para poder participar en COINCIDIR.'
-let googleSignInModule = null
-
-function getGoogleSignInModule() {
-  if (googleSignInModule) {
-    return googleSignInModule
-  }
-
-  try {
-    const module = require('@react-native-google-signin/google-signin')
-    module.GoogleSignin.configure({
-      webClientId: googleWebClientId,
-      iosClientId: googleIosClientId,
-    })
-    googleSignInModule = module
-    return googleSignInModule
-  } catch (moduleError) {
-    console.error('Google Sign-In native module no disponible', moduleError)
-    return null
-  }
-}
-
 const INITIAL_FORM = {
   fullName: '',
   email: '',
@@ -97,54 +70,6 @@ function getFriendlyAuthError(error) {
   }
 
   return 'No pudimos crear tu cuenta. Intentá nuevamente en unos segundos.'
-}
-
-function getFriendlyGoogleLoginError(error) {
-  const code = error?.code
-
-  if (error?.message?.includes('Faltan variables')) {
-    return 'Falta configurar Firebase.'
-  }
-
-  if (code === 'auth/account-exists-with-different-credential') {
-    return 'Ya existe una cuenta con ese correo usando otro método de ingreso.'
-  }
-
-  if (code === 'auth/network-request-failed') {
-    return 'No pudimos conectar. Revisá tu conexión e intentá de nuevo.'
-  }
-
-  if (code === 'PLAY_SERVICES_NOT_AVAILABLE') {
-    return 'Google Play Services no está disponible o necesita actualizarse.'
-  }
-
-  return 'No pudimos ingresar con Google. Intentá nuevamente en unos segundos.'
-}
-
-async function getGoogleNativeIdToken(GoogleSignin) {
-  if (Platform.OS === 'android') {
-    await GoogleSignin.hasPlayServices({
-      showPlayServicesUpdateDialog: true,
-    })
-  }
-
-  const signInResult = await GoogleSignin.signIn()
-
-  if (signInResult.type === 'cancelled') {
-    return ''
-  }
-
-  if (signInResult.data?.idToken) {
-    return signInResult.data.idToken
-  }
-
-  const tokens = await GoogleSignin.getTokens()
-  return tokens.idToken || ''
-}
-
-function readProfileString(profile, field) {
-  const value = profile?.[field]
-  return typeof value === 'string' && value.trim() ? value.trim() : ''
 }
 
 function validateForm(form) {
@@ -191,61 +116,6 @@ async function saveRegistrationProfile(user, form, fullName) {
   } catch (profileError) {
     console.warn('Cuenta creada, pero no pudimos guardar el perfil en Firestore.', profileError)
   }
-}
-
-async function saveGoogleProfile(user, { acceptLegal = false } = {}) {
-  const { db } = getFirebaseServices()
-  const userRef = doc(db, 'users', user.uid)
-  const userSnap = await getDoc(userRef)
-  const existingProfile = userSnap.exists() ? userSnap.data() : null
-  const photoRemoved = existingProfile?.photoRemoved === true
-  const googlePhotoURL = user.photoURL || ''
-  const existingPhotoURL = readProfileString(existingProfile, 'photoURL')
-  const existingAvatarURL =
-    readProfileString(existingProfile, 'avatarUrl') ||
-    readProfileString(existingProfile, 'avatarURL') ||
-    readProfileString(existingProfile, 'imageUrl') ||
-    readProfileString(existingProfile, 'photoUrl') ||
-    readProfileString(existingProfile, 'avatar')
-  const shouldUseGooglePhoto = Boolean(googlePhotoURL && !photoRemoved && !existingPhotoURL && !existingAvatarURL)
-  const googleName = readCleanString(user.displayName)
-  const nameRepairFields = getGoogleProfileNameRepairFields(existingProfile, user)
-  const profile = {
-    uid: user.uid,
-    fullName: googleName,
-    displayName: googleName,
-    name: googleName,
-    email: user.email || '',
-    ...(googlePhotoURL && !photoRemoved ? { avatarUrl: googlePhotoURL, googlePhotoURL, photoURL: googlePhotoURL } : {}),
-    provider: 'google',
-    updatedAt: serverTimestamp(),
-    lastLoginAt: serverTimestamp(),
-    ...(acceptLegal ? getLegalAcceptanceFields(serverTimestamp()) : {}),
-  }
-
-  if (!userSnap.exists()) {
-    await setDoc(userRef, {
-      ...profile,
-      createdAt: serverTimestamp(),
-    })
-    return
-  }
-
-  await setDoc(
-    userRef,
-    {
-      uid: user.uid,
-      ...nameRepairFields,
-      ...(!readProfileString(existingProfile, 'email') && user.email ? { email: user.email } : {}),
-      ...(googlePhotoURL && !photoRemoved ? { googlePhotoURL } : {}),
-      ...(shouldUseGooglePhoto ? { avatarUrl: googlePhotoURL, photoURL: googlePhotoURL } : {}),
-      provider: 'google',
-      updatedAt: serverTimestamp(),
-      lastLoginAt: serverTimestamp(),
-      ...(acceptLegal ? getLegalAcceptanceFields(serverTimestamp()) : {}),
-    },
-    { merge: true },
-  )
 }
 
 function InputIcon({ type }) {
@@ -324,7 +194,6 @@ export default function RegisterScreen() {
   const [form, setForm] = useState(INITIAL_FORM)
   const [error, setError] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
-  const [isGoogleSubmitting, setIsGoogleSubmitting] = useState(false)
   const [isPasswordVisible, setIsPasswordVisible] = useState(false)
   const [hasAcceptedLegal, setHasAcceptedLegal] = useState(false)
 
@@ -394,87 +263,6 @@ export default function RegisterScreen() {
     } finally {
       setIsSubmitting(false)
     }
-  }
-
-  const completeGoogleRegistration = async (idToken) => {
-    if (!idToken) {
-      setError('Google no devolvió un token válido. Revisá la configuración del cliente OAuth.')
-      setIsGoogleSubmitting(false)
-      return
-    }
-
-    try {
-      const { auth } = getFirebaseServices()
-      const credential = GoogleAuthProvider.credential(idToken)
-      const { user } = await signInWithCredential(auth, credential)
-
-      await saveGoogleProfile(user, { acceptLegal: hasAcceptedLegal })
-      router.replace('/home')
-    } catch (googleLoginError) {
-      setError(getFriendlyGoogleLoginError(googleLoginError))
-    } finally {
-      setIsGoogleSubmitting(false)
-    }
-  }
-
-  const handleGoogleRegistration = async () => {
-    if (isSubmitting || isGoogleSubmitting) {
-      return
-    }
-
-    if (isWeb) {
-      setError('Google disponible en Android por ahora. Podés registrarte con correo y contraseña.')
-      return
-    }
-
-    if (!googleWebClientId) {
-      setError('Falta configurar el Web Client ID de Google.')
-      return
-    }
-
-    if (!hasAcceptedLegal) {
-      setError('Para continuar con Google necesitás aceptar los Términos y Condiciones y la Política de Privacidad.')
-      return
-    }
-
-    setError('')
-    setIsGoogleSubmitting(true)
-
-    try {
-      const googleSignIn = getGoogleSignInModule()
-
-      if (!googleSignIn) {
-        setError('Google Sign-In no está disponible en este build. Podés registrarte con correo y contraseña.')
-        setIsGoogleSubmitting(false)
-        return
-      }
-
-      const idToken = await getGoogleNativeIdToken(googleSignIn.GoogleSignin)
-
-      if (!idToken) {
-        setIsGoogleSubmitting(false)
-        return
-      }
-
-      await completeGoogleRegistration(idToken)
-    } catch (googlePromptError) {
-      const statusCodes = googleSignInModule?.statusCodes
-
-      if (
-        googlePromptError?.code === 'SIGN_IN_CANCELLED' ||
-        googlePromptError?.code === statusCodes?.SIGN_IN_CANCELLED
-      ) {
-        setIsGoogleSubmitting(false)
-        return
-      }
-
-      setError(getFriendlyGoogleLoginError(googlePromptError))
-      setIsGoogleSubmitting(false)
-    }
-  }
-
-  const handleComingSoon = () => {
-    Alert.alert('Disponible próximamente')
   }
 
   return (
@@ -584,12 +372,12 @@ export default function RegisterScreen() {
 
               <Pressable
                 accessibilityRole="button"
-                disabled={isSubmitting || isGoogleSubmitting}
+                disabled={isSubmitting}
                 onPress={handleSubmit}
                 style={({ pressed }) => [
                   styles.primaryButton,
                   pressed && styles.primaryButtonPressed,
-                  (isSubmitting || isGoogleSubmitting) && styles.primaryButtonDisabled,
+                  isSubmitting && styles.primaryButtonDisabled,
                 ]}
               >
                 {isSubmitting ? (
@@ -600,57 +388,6 @@ export default function RegisterScreen() {
                     <Text style={styles.primaryButtonArrow}>→</Text>
                   </>
                 )}
-              </Pressable>
-            </View>
-
-            <View style={styles.dividerRow}>
-              <View style={styles.divider} />
-              <Text style={styles.dividerText}>O continuar con</Text>
-              <View style={styles.divider} />
-            </View>
-
-            {isWeb ? (
-              <View style={styles.googleButton}>
-                <GoogleLogo size={23} />
-                <Text style={styles.googleButtonText}>Google disponible en Android por ahora</Text>
-              </View>
-            ) : (
-              <Pressable
-                accessibilityLabel="Continuar con Google"
-                accessibilityRole="button"
-                disabled={isSubmitting || isGoogleSubmitting}
-                onPress={handleGoogleRegistration}
-                style={styles.googleButton}
-              >
-                {isGoogleSubmitting ? (
-                  <ActivityIndicator color="#155C47" />
-                ) : (
-                  <>
-                    <GoogleLogo size={23} />
-                    <Text style={styles.googleButtonText}>Continuar con Google</Text>
-                  </>
-                )}
-              </Pressable>
-            )}
-
-            <View style={styles.socialRow}>
-              <Pressable
-                accessibilityLabel="Continuar con Apple"
-                accessibilityRole="button"
-                disabled={isSubmitting || isGoogleSubmitting}
-                onPress={handleComingSoon}
-                style={styles.socialButton}
-              >
-                <Text style={styles.appleText}>●</Text>
-              </Pressable>
-              <Pressable
-                accessibilityLabel="Continuar con Facebook"
-                accessibilityRole="button"
-                disabled={isSubmitting || isGoogleSubmitting}
-                onPress={handleComingSoon}
-                style={styles.socialButton}
-              >
-                <Text style={styles.facebookText}>f</Text>
               </Pressable>
             </View>
 

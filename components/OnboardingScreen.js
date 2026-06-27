@@ -38,14 +38,6 @@ export default function OnboardingScreen() {
     }
   }, [authChecked, router, user])
 
-  const navigateToRegister = () => {
-    try {
-      router.push('/register')
-    } catch (error) {
-      logOnboardingError(error)
-    }
-  }
-
   const navigateToLogin = () => {
     try {
       router.push('/login')
@@ -76,15 +68,15 @@ export default function OnboardingScreen() {
 
             <View style={styles.webButtonGroup}>
               <Pressable
-                accessibilityLabel="Crear cuenta"
+                accessibilityLabel="Comenzar"
                 accessibilityRole="button"
-                onPress={navigateToRegister}
+                onPress={navigateToLogin}
                 style={({ hovered, pressed }) => [
                   styles.webPrimaryButton,
                   (hovered || pressed) && styles.webPrimaryButtonActive,
                 ]}
               >
-                <Text style={styles.webPrimaryButtonText}>Crear cuenta</Text>
+                <Text style={styles.webPrimaryButtonText}>Comenzar</Text>
               </Pressable>
 
               <Pressable
@@ -117,7 +109,7 @@ export default function OnboardingScreen() {
           <Pressable
             accessibilityLabel="Comenzar"
             accessibilityRole="button"
-            onPress={navigateToRegister}
+            onPress={navigateToLogin}
             style={styles.startButtonHitArea}
           />
           <Pressable
