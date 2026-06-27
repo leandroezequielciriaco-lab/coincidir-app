@@ -22,6 +22,8 @@ const activityAliasRules: { terms: string[]; canonical: string[] }[] = [
   { terms: ['paddle / tenis'], canonical: ['Padel', 'Tenis'] },
   { terms: ['paddle', 'padel'], canonical: ['Padel'] },
   { terms: ['futbol 5', 'futbol'], canonical: ['Futbol'] },
+  { terms: ['mundial', 'mundial 2026', 'ver a argentina', 'ver partido', 'juntada mundialista', 'fan zone', 'mirar futbol'], canonical: ['Mundial 2026 / Ver a Argentina', 'Futbol'] },
+  { terms: ['cine', 'pelicula', 'peliculas'], canonical: ['Cine'] },
   { terms: ['mate', 'mateada'], canonical: ['Mateadas'] },
   { terms: ['gym'], canonical: ['Gimnasio'] },
   { terms: ['baile', 'danza'], canonical: ['Tango', 'Salsa', 'Folklore', 'Ritmos'] },

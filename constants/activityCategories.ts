@@ -47,6 +47,7 @@ export const activityCategories: ActivityCategory[] = [
     backgroundColor: '#DDF2D8',
     subcategories: [
       'Fútbol',
+      'Mundial 2026 / Ver a Argentina',
       'Padel',
       'Tenis',
       'Básquet',
@@ -123,6 +124,7 @@ export const activityCategories: ActivityCategory[] = [
     subcategories: [
       'Música',
       'Canto',
+      'Cine',
       'Teatro',
       'Tango',
       'Folklore',
