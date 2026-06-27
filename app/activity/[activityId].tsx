@@ -1348,7 +1348,7 @@ export default function ActivityDetailScreen() {
       ? 'Actividad finalizada'
       : detail.action === 'interest'
         ? detail.interested ? 'Te interesa' : 'Me interesa'
-        : detail.isFull ? 'Actividad completa' : detail.joined ? 'Te sumaste' : 'Yo me sumo'
+        : detail.isFull ? 'Actividad completa' : detail.joined ? 'Te sumaste' : 'Me sumo'
   const primaryAction = shouldShowPrimaryAction ? (
     <PressScale
       accessibilityLabel={primaryActionLabel}
