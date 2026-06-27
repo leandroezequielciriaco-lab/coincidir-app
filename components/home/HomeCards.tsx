@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Image as ExpoImage } from 'expo-image'
 import { Platform, Pressable, StyleSheet, Text, View } from 'react-native'
-import { CalendarDays, MapPin, Share2, UserRound, UsersRound } from 'lucide-react-native'
+import { CalendarDays, MapPin, Share2, UsersRound } from 'lucide-react-native'
 
 import { PressScale } from './PressScale'
 import { GroupAvatar } from '../groups/GroupAvatar'
@@ -172,10 +172,6 @@ function ActivityCardContent({ groupColors, item }: { groupColors: ReturnType<ty
       <View style={styles.activityMetaRow}>
         <MapPin color="#17803C" size={17} strokeWidth={2.2} />
         <Text numberOfLines={1} style={styles.activityMeta}>{item.location}</Text>
-      </View>
-      <View style={styles.activityMetaRow}>
-        <UserRound color="#17803C" size={17} strokeWidth={2.2} />
-        <Text numberOfLines={1} style={styles.activityMeta}>{item.organizer}</Text>
       </View>
       <View style={styles.peopleInline}>
         <UsersRound color="#07392D" size={15} strokeWidth={2.4} />
@@ -364,14 +360,14 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     minWidth: 0,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
   },
   activityTopLine: {
     alignItems: 'center',
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginBottom: 6,
+    marginBottom: 8,
     gap: 8,
   },
   categoryPill: {
@@ -400,7 +396,7 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     flexDirection: 'row',
     gap: 5,
-    marginTop: 7,
+    marginTop: 9,
     minHeight: 28,
     paddingHorizontal: 10,
   },
@@ -414,17 +410,17 @@ const styles = StyleSheet.create({
     fontSize: 17,
     fontWeight: '900',
     letterSpacing: 0,
-    lineHeight: 21,
-    marginBottom: 5,
+    lineHeight: 22,
+    marginBottom: 7,
   },
   activityTitleWithGroup: {
-    marginBottom: 1,
+    marginBottom: 2,
   },
   activityMetaRow: {
     alignItems: 'center',
     flexDirection: 'row',
     gap: 8,
-    marginTop: 3,
+    marginTop: 5,
   },
   activityMeta: {
     color: '#40534D',
@@ -454,7 +450,7 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     minHeight: 34,
     justifyContent: 'center',
-    marginTop: 9,
+    marginTop: 10,
     position: 'relative',
     zIndex: 10,
   },
