@@ -50,6 +50,7 @@ import {
 } from '../../constants/localGroups'
 import { getFirebaseServices } from '../../firebaseConfig'
 import { readRemoteGroupPhotoUrl } from '../../lib/groupPhotos'
+import { notifyActivityInterest, notifyActivityJoined } from '../../lib/notifications'
 import { getActivityRecommendationScore, getActivityRecommendationTerms } from '../../lib/recommendations'
 import { getActivityGroupMeta } from '../../utils/activityGroups'
 import { isOwnActivity } from '../../utils/activityOwnership'
@@ -223,6 +224,15 @@ function isUserJoined(data: Record<string, unknown>, userId: string | null) {
 
 function isUserInterested(data: Record<string, unknown>, userId: string | null) {
   return Boolean(userId && hasUserInMap(data.interestedUsers, userId))
+}
+
+function getCreatorId(data: Record<string, unknown>) {
+  return readString(data.createdBy)
+    || readString(data.organizerId)
+    || readString(data.creatorId)
+    || readString(data.ownerId)
+    || readString(data.userId)
+    || readString(data.createdById)
 }
 
 function requiresInterestAction(data: Record<string, unknown>) {
@@ -530,6 +540,8 @@ export default function ExplorarScreen() {
   const [isFilterVisible, setIsFilterVisible] = useState(false)
   const [activeCardIndex, setActiveCardIndex] = useState(0)
   const [currentUserId, setCurrentUserId] = useState<string | null>(null)
+  const [currentUserName, setCurrentUserName] = useState('')
+  const [currentUserEmail, setCurrentUserEmail] = useState('')
   const [userInterests, setUserInterests] = useState<unknown[]>([])
   const [activeQuickCategory, setActiveQuickCategory] = useState<ActivityQuickCategoryId>('all')
   const [localGroups, setLocalGroups] = useState<LocalGroup[]>([])
@@ -572,21 +584,38 @@ export default function ExplorarScreen() {
 
         if (!user) {
           setCurrentUserId(null)
+          setCurrentUserName('')
+          setCurrentUserEmail('')
           setUserInterests([])
           return
         }
 
         setCurrentUserId(user.uid)
+        setCurrentUserEmail(user.email?.trim() ?? '')
 
         try {
           const profileSnap = await getDoc(doc(db, 'users', user.uid))
           const profile = profileSnap.exists() ? profileSnap.data() : null
-          if (mounted) setUserInterests(Array.isArray(profile?.interests) ? profile.interests : [])
+          if (mounted) {
+            setUserInterests(Array.isArray(profile?.interests) ? profile.interests : [])
+            setCurrentUserName(
+              readString(profile?.fullName)
+              || readString(profile?.displayName)
+              || readString(profile?.name)
+              || user.displayName?.trim()
+              || '',
+            )
+          }
         } catch {
-          if (mounted) setUserInterests([])
+          if (mounted) {
+            setCurrentUserName(user.displayName?.trim() ?? '')
+            setUserInterests([])
+          }
         }
       })
     } catch {
+      setCurrentUserName('')
+      setCurrentUserEmail('')
       setUserInterests([])
     }
 
@@ -668,6 +697,8 @@ export default function ExplorarScreen() {
     () => filteredRecords.map((item) => mapExploreCard(item, currentUserId, optimisticJoins, optimisticInterests, localGroups, groupImageUrlsByKey)),
     [currentUserId, filteredRecords, groupImageUrlsByKey, localGroups, optimisticInterests, optimisticJoins],
   )
+
+  const getVisibleCurrentUserName = () => currentUserName || currentUserEmail || 'Alguien'
 
   const toggleActivityParticipation = async (item: ExploreCardItem) => {
     if (!currentUserId) {
@@ -751,13 +782,18 @@ export default function ExplorarScreen() {
             : {
               [`interestedUsers.${currentUserId}`]: {
                 interestedAt: serverTimestamp(),
+                name: getVisibleCurrentUserName(),
                 status: 'interested',
                 uid: currentUserId,
               },
               interestedCount: nextCount,
               updatedAt: serverTimestamp(),
             })
-          return 'updated'
+          return wasInterested ? 'uninterested' : {
+            organizerId: getCreatorId(data),
+            status: 'interested',
+            title: readString(data.name, readString(data.title, 'tu actividad')),
+          }
         }
 
         const wasJoined = isUserJoined(data, currentUserId)
@@ -773,13 +809,18 @@ export default function ExplorarScreen() {
             [`joinedUsers.${currentUserId}`]: true,
             [`participants.${currentUserId}`]: {
               joinedAt: serverTimestamp(),
+              name: getVisibleCurrentUserName(),
               status: 'joined',
               uid: currentUserId,
             },
             participantsCount: nextCount,
             updatedAt: serverTimestamp(),
           })
-        return 'updated'
+        return wasJoined ? 'left' : {
+          organizerId: getCreatorId(data),
+          status: 'joined',
+          title: readString(data.name, readString(data.title, 'tu actividad')),
+        }
       })
 
       if (result === 'missing_record') {
@@ -792,6 +833,30 @@ export default function ExplorarScreen() {
         logWebCtaStep('[WEB CTA EARLY RETURN]', item.action, item.recordId, currentUserId, 'cancelled_in_transaction')
       }
       logWebCtaStep('[WEB CTA WRITE SUCCESS]', item.action, item.recordId, currentUserId, String(result ?? 'no_result'))
+
+      if (typeof result === 'object' && result.status === 'interested') {
+        notifyActivityInterest({
+          activityId: item.recordId,
+          activityTitle: result.title,
+          interestedUserId: currentUserId,
+          interestedUserName: getVisibleCurrentUserName(),
+          organizerId: result.organizerId,
+        }).catch((error) => {
+          if (__DEV__) console.warn('explore-interest-notification-create-error', error)
+        })
+      }
+
+      if (typeof result === 'object' && result.status === 'joined') {
+        notifyActivityJoined({
+          activityId: item.recordId,
+          activityTitle: result.title,
+          joinedUserId: currentUserId,
+          joinedUserName: getVisibleCurrentUserName(),
+          organizerId: result.organizerId,
+        }).catch((error) => {
+          if (__DEV__) console.warn('explore-joined-notification-create-error', error)
+        })
+      }
     } catch (error) {
       if (Platform.OS === 'web') {
         const ctaError = error as { code?: string; message?: string }

@@ -66,7 +66,7 @@ import {
 } from '../../constants/localGroups'
 import { getFirebaseServices } from '../../firebaseConfig'
 import { readRemoteGroupPhotoUrl } from '../../lib/groupPhotos'
-import { notifyActivityInterest, useUnreadNotificationsCount } from '../../lib/notifications'
+import { notifyActivityInterest, notifyActivityJoined, useUnreadNotificationsCount } from '../../lib/notifications'
 import { getActivityGroupMeta } from '../../utils/activityGroups'
 import { isOwnActivity } from '../../utils/activityOwnership'
 import { EMAIL_VERIFICATION_REQUIRED_MESSAGE, requireVerifiedParticipation } from '../../utils/authParticipation'
@@ -579,6 +579,7 @@ export default function HomeScreen() {
   const [activeQuickCategory, setActiveQuickCategory] = useState<ActivityQuickCategoryId>('all')
   const [currentUserId, setCurrentUserId] = useState<string | null>(null)
   const [userName, setUserName] = useState<string | null>(null)
+  const [userEmail, setUserEmail] = useState<string | null>(null)
   const [userNamesById, setUserNamesById] = useState<UserNamesById>({})
   const [createdActivities, setCreatedActivities] = useState<CreatedRecord[]>([])
   const [groupImageUrlsByKey, setGroupImageUrlsByKey] = useState<GroupImageUrlsByKey>({})
@@ -647,10 +648,12 @@ export default function HomeScreen() {
         if (!user) {
           setCurrentUserId(null)
           setUserName(null)
+          setUserEmail(null)
           return
         }
 
         setCurrentUserId(user.uid)
+        setUserEmail(user.email ?? null)
 
         const authName = user.displayName?.trim()
 
@@ -854,6 +857,7 @@ export default function HomeScreen() {
   const openCitySearch = () => {
     setIsCitySearchVisible(true)
   }
+  const getVisibleCurrentUserName = () => userName || userEmail || 'Alguien'
   const toggleJoin = async (record: CreatedRecord, collectionName: JoinableCollection) => {
     if (!currentUserId) {
       logWebCtaStep('[WEB CTA EARLY RETURN]', 'join', record.id, getCurrentAuthUserId(), 'missing_user')
@@ -924,7 +928,11 @@ export default function HomeScreen() {
             participantsCount: nextCount,
             updatedAt: serverTimestamp(),
           })
-        return 'updated'
+        return wasJoined ? 'left' : {
+          organizerId: getCreatorId(data),
+          title: readString(data.name, 'tu actividad'),
+          status: 'joined',
+        }
       })
 
       if (result === 'missing_record') {
@@ -933,6 +941,18 @@ export default function HomeScreen() {
       if (result === 'organizer') throw new Error('activity-organizer')
       if (result === 'cancelled') throw new Error('activity-cancelled')
       logWebCtaStep('[WEB CTA WRITE SUCCESS]', 'join', record.id, currentUserId, String(result ?? 'no_result'))
+
+      if (collectionName === 'activities' && typeof result === 'object' && result.status === 'joined') {
+        notifyActivityJoined({
+          activityId: record.id,
+          activityTitle: result.title,
+          joinedUserId: currentUserId,
+          joinedUserName: getVisibleCurrentUserName(),
+          organizerId: result.organizerId,
+        }).catch((error) => {
+          if (__DEV__) console.warn('home-joined-notification-create-error', error)
+        })
+      }
     } catch (error) {
       if (Platform.OS === 'web') {
         const ctaError = error as { code?: string; message?: string }
@@ -1044,7 +1064,7 @@ export default function HomeScreen() {
           activityId: record.id,
           activityTitle: readString(record.data.name, 'tu actividad'),
           interestedUserId: currentUserId,
-          interestedUserName: userName || 'Alguien',
+          interestedUserName: getVisibleCurrentUserName(),
           organizerId: creatorId,
         }).catch((error) => {
           if (__DEV__) console.warn('home-interest-notification-create-error', error)

@@ -57,7 +57,7 @@ import {
 } from '../../constants/localGroups'
 import { getFirebaseServices } from '../../firebaseConfig'
 import { readRemoteGroupPhotoUrl } from '../../lib/groupPhotos'
-import { notifyActivityCancelled, notifyActivityConfirmed, notifyActivityInterest, notifyActivityRejected } from '../../lib/notifications'
+import { notifyActivityCancelled, notifyActivityConfirmed, notifyActivityInterest, notifyActivityJoined, notifyActivityRejected } from '../../lib/notifications'
 import { getActivityGroupMeta } from '../../utils/activityGroups'
 import { requireVerifiedParticipation } from '../../utils/authParticipation'
 import { getActivityVisualState } from '../../utils/activityDiscovery'
@@ -468,6 +468,7 @@ export default function ActivityDetailScreen() {
   const [organizerProfile, setOrganizerProfile] = useState<ActivityData | null>(null)
   const [associatedGroupPhotoUrl, setAssociatedGroupPhotoUrl] = useState('')
   const [currentUserName, setCurrentUserName] = useState('')
+  const [currentUserEmail, setCurrentUserEmail] = useState('')
   const [pendingInterestedActions, setPendingInterestedActions] = useState<string[]>([])
   const [isDeletingActivity, setIsDeletingActivity] = useState(false)
   const [isCancellingActivity, setIsCancellingActivity] = useState(false)
@@ -539,6 +540,7 @@ export default function ActivityDetailScreen() {
         })
         setCurrentUserId(user?.uid ?? null)
         setCurrentUserName(user?.displayName?.trim() ?? '')
+        setCurrentUserEmail(user?.email?.trim() ?? '')
       })
     } catch {
       setCurrentUserId(null)
@@ -710,6 +712,8 @@ export default function ActivityDetailScreen() {
     return pendingInterestedActions.includes(`${action}:${userId}`)
   }
 
+  const getVisibleCurrentUserName = () => currentUserName || currentUserEmail || 'Alguien'
+
   const toggleJoin = async () => {
     if (!activityId || !activity || !currentUserId || detail.isCancelled || detail.isFull || isJoining) return
 
@@ -724,18 +728,18 @@ export default function ActivityDetailScreen() {
       const { db } = getFirebaseServices()
       const targetRef = doc(db, 'activities', activityId)
 
-      await runTransaction(db, async (transaction) => {
+      const result = await runTransaction(db, async (transaction) => {
         const snapshot = await transaction.get(targetRef)
-        if (!snapshot.exists()) return
+        if (!snapshot.exists()) return 'missing'
 
         const data = snapshot.data() as ActivityData
-        if (readString(data.status) === 'cancelled') return
+        if (readString(data.status) === 'cancelled') return 'cancelled'
 
         const wasJoined = isUserJoined(data, currentUserId)
         const currentCount = getParticipantCount(data)
         const maxParticipants = getMaxParticipants(data)
 
-        if (!wasJoined && currentCount >= maxParticipants) return
+        if (!wasJoined && currentCount >= maxParticipants) return 'full'
 
         const nextCount = Math.max(0, currentCount + (wasJoined ? -1 : 1))
 
@@ -756,7 +760,24 @@ export default function ActivityDetailScreen() {
             participantsCount: nextCount,
             updatedAt: serverTimestamp(),
           })
+        return wasJoined ? 'left' : {
+          organizerId: getCreatorId(data),
+          status: 'joined',
+          title: readString(data.name, 'tu actividad'),
+        }
       })
+
+      if (typeof result === 'object' && result.status === 'joined') {
+        notifyActivityJoined({
+          activityId,
+          activityTitle: result.title,
+          joinedUserId: currentUserId,
+          joinedUserName: getVisibleCurrentUserName(),
+          organizerId: result.organizerId,
+        }).catch((error) => {
+          if (__DEV__) console.warn('joined-notification-create-error', error)
+        })
+      }
     } catch {
       setOptimisticJoined(null)
     } finally {
@@ -778,12 +799,12 @@ export default function ActivityDetailScreen() {
       const { db } = getFirebaseServices()
       const targetRef = doc(db, 'activities', activityId)
 
-      await runTransaction(db, async (transaction) => {
+      const result = await runTransaction(db, async (transaction) => {
         const snapshot = await transaction.get(targetRef)
-        if (!snapshot.exists()) return
+        if (!snapshot.exists()) return 'missing'
 
         const data = snapshot.data() as ActivityData
-        if (readString(data.status) === 'cancelled') return
+        if (readString(data.status) === 'cancelled') return 'cancelled'
 
         const wasInterested = isUserInterested(data, currentUserId)
         const currentCount = getInterestedCount(data)
@@ -805,15 +826,20 @@ export default function ActivityDetailScreen() {
             interestedCount: nextCount,
             updatedAt: serverTimestamp(),
           })
+        return wasInterested ? 'uninterested' : {
+          organizerId: getCreatorId(data),
+          status: 'interested',
+          title: readString(data.name, 'tu actividad'),
+        }
       })
 
-      if (nextInterested) {
+      if (typeof result === 'object' && result.status === 'interested') {
         notifyActivityInterest({
           activityId,
-          activityTitle: detail.title,
+          activityTitle: result.title,
           interestedUserId: currentUserId,
-          interestedUserName: currentUserName || 'Alguien',
-          organizerId: creatorId,
+          interestedUserName: getVisibleCurrentUserName(),
+          organizerId: result.organizerId,
         }).catch((error) => {
           if (__DEV__) console.warn('interest-notification-create-error', error)
         })

@@ -5,21 +5,22 @@ import {
   deleteDoc,
   doc,
   getDocs,
-  limit,
   onSnapshot,
   orderBy,
   query,
   serverTimestamp,
+  setDoc,
   updateDoc,
   where,
 } from 'firebase/firestore'
 
 import { getFirebaseServices } from '../firebaseConfig'
 
-export type NotificationType = 'activity_cancelled' | 'activity_update' | 'activity_updated' | 'confirmed' | 'group_join_accepted' | 'group_join_request' | 'interest' | 'invite' | 'message' | 'rejected'
+export type NotificationType = 'activity_cancelled' | 'activity_update' | 'activity_updated' | 'confirmed' | 'group_join_accepted' | 'group_join_request' | 'interest' | 'invite' | 'joined_activity' | 'message' | 'rejected'
 
 export type AppNotification = {
   activityId?: string
+  activityTitle?: string
   body: string
   createdAt: Date | null
   groupId?: string
@@ -28,6 +29,7 @@ export type AppNotification = {
   read: boolean
   requesterId?: string
   senderId?: string
+  senderName?: string
   title: string
   type: NotificationType
   userId: string
@@ -35,11 +37,13 @@ export type AppNotification = {
 
 export type CreateNotificationInput = {
   activityId?: string
+  activityTitle?: string
   body: string
   groupId?: string
   groupName?: string
   requesterId?: string
   senderId?: string
+  senderName?: string
   title: string
   type: NotificationType
   userId: string
@@ -50,6 +54,14 @@ export type NotifyActivityInterestInput = {
   activityTitle: string
   interestedUserId: string
   interestedUserName: string
+  organizerId: string
+}
+
+export type NotifyActivityJoinedInput = {
+  activityId: string
+  activityTitle: string
+  joinedUserId: string
+  joinedUserName: string
   organizerId: string
 }
 
@@ -100,6 +112,7 @@ function readNotificationType(value: unknown): NotificationType {
     || value === 'group_join_request'
     || value === 'interest'
     || value === 'invite'
+    || value === 'joined_activity'
     || value === 'message'
     || value === 'rejected'
   ) return value
@@ -122,6 +135,7 @@ function readDate(value: unknown) {
 function mapNotification(id: string, data: Record<string, unknown>): AppNotification {
   return {
     activityId: readString(data.activityId) || undefined,
+    activityTitle: readString(data.activityTitle) || undefined,
     body: readString(data.body),
     createdAt: readDate(data.createdAt),
     groupId: readString(data.groupId) || undefined,
@@ -130,6 +144,7 @@ function mapNotification(id: string, data: Record<string, unknown>): AppNotifica
     read: readBoolean(data.read),
     requesterId: readString(data.requesterId) || undefined,
     senderId: readString(data.senderId) || undefined,
+    senderName: readString(data.senderName) || undefined,
     title: readString(data.title, 'Notificación'),
     type: readNotificationType(data.type),
     userId: readString(data.userId),
@@ -226,28 +241,41 @@ export async function createNotification(data: CreateNotificationInput) {
   }))
 }
 
-async function notificationExists(filters: {
+function getDeterministicNotificationId({
+  activityId,
+  senderId,
+  type,
+  userId,
+}: {
   activityId: string
   senderId?: string
   type: NotificationType
   userId: string
 }) {
+  const clean = (value: string) => value.replace(/[^A-Za-z0-9_-]/g, '_')
+  return [type, activityId, senderId || 'system', userId].map(clean).join('_')
+}
+
+async function createDeterministicNotification(data: CreateNotificationInput & { activityId: string }) {
   const { db } = getFirebaseServices()
-  const constraints = [
-    where('userId', '==', filters.userId),
-    where('type', '==', filters.type),
-    where('activityId', '==', filters.activityId),
-  ]
+  const notificationId = getDeterministicNotificationId({
+    activityId: data.activityId,
+    senderId: data.senderId,
+    type: data.type,
+    userId: data.userId,
+  })
 
-  if (filters.senderId) constraints.push(where('senderId', '==', filters.senderId))
+  await setDoc(
+    doc(db, 'notifications', notificationId),
+    omitUndefinedFields({
+      ...data,
+      read: false,
+      createdAt: serverTimestamp(),
+    }),
+    { merge: false },
+  )
 
-  const snapshot = await getDocs(query(
-    collection(db, 'notifications'),
-    ...constraints,
-    limit(1),
-  ))
-
-  return !snapshot.empty
+  return notificationId
 }
 
 export async function notifyActivityInterest({
@@ -259,21 +287,35 @@ export async function notifyActivityInterest({
 }: NotifyActivityInterestInput) {
   if (!organizerId || !interestedUserId || organizerId === interestedUserId) return null
 
-  const exists = await notificationExists({
+  return createDeterministicNotification({
     activityId,
+    activityTitle,
+    body: `${interestedUserName || 'Alguien'} quiere sumarse a tu actividad: ${activityTitle}.`,
     senderId: interestedUserId,
+    senderName: interestedUserName || 'Alguien',
+    title: 'Nueva persona interesada',
     type: 'interest',
     userId: organizerId,
   })
+}
 
-  if (exists) return null
+export async function notifyActivityJoined({
+  activityId,
+  activityTitle,
+  joinedUserId,
+  joinedUserName,
+  organizerId,
+}: NotifyActivityJoinedInput) {
+  if (!organizerId || !joinedUserId || organizerId === joinedUserId) return null
 
-  return createNotification({
+  return createDeterministicNotification({
     activityId,
-    body: `${interestedUserName || 'Alguien'} marcó interés en ${activityTitle}.`,
-    senderId: interestedUserId,
-    title: 'Nueva persona interesada',
-    type: 'interest',
+    activityTitle,
+    body: `${joinedUserName || 'Alguien'} se sumó a tu actividad: ${activityTitle}.`,
+    senderId: joinedUserId,
+    senderName: joinedUserName || 'Alguien',
+    title: 'Nueva persona en tu actividad',
+    type: 'joined_activity',
     userId: organizerId,
   })
 }
@@ -286,15 +328,7 @@ export async function notifyActivityConfirmed({
 }: NotifyActivityConfirmedInput) {
   if (!activityId || !confirmedUserId) return null
 
-  const exists = await notificationExists({
-    activityId,
-    type: 'confirmed',
-    userId: confirmedUserId,
-  })
-
-  if (exists) return null
-
-  return createNotification({
+  return createDeterministicNotification({
     activityId,
     body: `Ya estás confirmado en ${activityTitle}.`,
     senderId: organizerId,

@@ -39,7 +39,7 @@ type NotificationTone = {
 }
 
 function getNotificationTone(type: NotificationType): NotificationTone {
-  if (type === 'interest') {
+  if (type === 'interest' || type === 'joined_activity') {
     return {
       Icon: UserRound,
       accent: '#0E7A3A',
@@ -113,6 +113,8 @@ function trimSentence(value: string) {
 }
 
 function getActivityName(notification: AppNotification) {
+  if (notification.activityTitle) return notification.activityTitle
+
   const body = notification.body.trim()
   const fromColon = body.match(/:\s*(.+?)\.?$/)
   if (fromColon?.[1]) return trimSentence(fromColon[1])
@@ -138,7 +140,14 @@ function getActivityName(notification: AppNotification) {
 function getNotificationBody(notification: AppNotification, activityName: string) {
   if (!activityName) return notification.body
 
+  if (notification.type === 'joined_activity') {
+    return notification.senderName
+      ? `${notification.senderName} se sumó a tu actividad.`
+      : trimSentence(notification.body.replace(new RegExp(`:\\s*${escapeRegExp(activityName)}\\.?$`, 'i'), '.'))
+  }
+
   if (notification.type === 'interest') {
+    if (notification.senderName) return `${notification.senderName} quiere sumarse a tu actividad.`
     return trimSentence(notification.body.replace(new RegExp(`\\s+en\\s+${escapeRegExp(activityName)}\\.?$`, 'i'), ' en tu actividad.'))
   }
 
