@@ -39,6 +39,7 @@ import type { LucideIcon } from 'lucide-react-native'
 import { PressScale } from '../components/home/PressScale'
 import { getFirebaseServices } from '../firebaseConfig'
 import { requireVerifiedParticipation } from '../utils/authParticipation'
+import { resolveUserDisplayName } from '../utils/userNames'
 
 const LOGIN_ROUTE = '/login'
 const googleWebClientId = process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID
@@ -74,7 +75,7 @@ type DeleteProviderId = 'google.com' | 'password' | ''
 const fallbackAccount: AccountData = {
   city: 'Ciudad no configurada',
   email: 'Email no disponible',
-  name: 'Sin nombre',
+  name: 'Usuario',
   photoURL: '',
 }
 
@@ -174,10 +175,7 @@ function buildAccountData(
     return {
       city: readString(profile?.city, readString(profile?.location, fallbackAccount.city)),
       email: readString(profile?.email, readString(authUser?.email, fallbackAccount.email)),
-      name: readString(
-        profile?.fullName,
-        readString(profile?.displayName, readString(profile?.name, readString(authUser?.displayName, fallbackAccount.name))),
-      ),
+      name: resolveUserDisplayName({ email: authUser?.email, fallback: fallbackAccount.name, firebaseUser: authUser, profile }),
       photoURL: '',
     }
   }
@@ -185,10 +183,7 @@ function buildAccountData(
   return {
     city: readString(profile?.city, readString(profile?.location, fallbackAccount.city)),
     email: readString(profile?.email, readString(authUser?.email, fallbackAccount.email)),
-    name: readString(
-      profile?.fullName,
-      readString(profile?.displayName, readString(profile?.name, readString(authUser?.displayName, fallbackAccount.name))),
-    ),
+    name: resolveUserDisplayName({ email: authUser?.email, fallback: fallbackAccount.name, firebaseUser: authUser, profile }),
     photoURL: readString(
       profile?.photoURL,
       readString(
@@ -202,7 +197,7 @@ function buildAccountData(
   }
 }
 
-function getAuthProviderId(user: { providerData?: Array<{ providerId?: string }> } | null | undefined): DeleteProviderId {
+function getAuthProviderId(user: { providerData?: { providerId?: string }[] } | null | undefined): DeleteProviderId {
   const providers = user?.providerData ?? []
 
   if (providers.some((provider) => provider.providerId === 'password')) return 'password'

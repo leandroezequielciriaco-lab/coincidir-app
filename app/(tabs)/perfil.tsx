@@ -1,5 +1,5 @@
 import * as ImagePicker from 'expo-image-picker'
-import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router'
+import { useLocalSearchParams, useRouter } from 'expo-router'
 import { onAuthStateChanged, updateProfile } from 'firebase/auth'
 import { arrayRemove, collection, deleteField, doc, increment, onSnapshot, serverTimestamp, setDoc, updateDoc } from 'firebase/firestore'
 import { getDownloadURL, ref, uploadBytes } from 'firebase/storage'
@@ -47,7 +47,7 @@ import {
   Wine,
   X,
 } from 'lucide-react-native'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   ActivityIndicator,
   Alert,
@@ -85,6 +85,7 @@ import {
 import { compareActivitiesForDiscovery, getActivityVisualState } from '../../utils/activityDiscovery'
 import { defaultActivityImage, getCategoryImage } from '../../utils/categoryImages'
 import { savePendingExternalReturnRoute } from '../../utils/externalReturnRoute'
+import { resolveUserDisplayName } from '../../utils/userNames'
 import {
   formatGroupMemberCount,
   getGroupMemberCount,
@@ -358,7 +359,7 @@ function buildProfile(data: Record<string, unknown> | null, authName?: string | 
 
   return {
     bio: readString(data?.bio, DEFAULT_BIO),
-    fullName: readString(data?.fullName, readString(data?.displayName, readString(data?.name, authName ?? 'Mi perfil'))),
+    fullName: resolveUserDisplayName({ fallback: 'Usuario', firebaseUser: { displayName: authName }, profile: data }),
     googlePhotoURL: googlePhoto ?? '',
     interests: readList(data?.interests),
     location: readString(data?.location, readString(data?.city, DEFAULT_LOCATION)),

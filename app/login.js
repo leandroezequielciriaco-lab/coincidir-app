@@ -28,6 +28,7 @@ import GoogleLogo from '../components/GoogleLogo'
 import { styles } from '../components/LoginScreen.styles'
 import { reloadAuthUser } from '../utils/authParticipation'
 import { getLegalAcceptanceFields, hasAcceptedCurrentLegal } from '../constants/legal'
+import { getGoogleProfileNameRepairFields, readCleanString } from '../utils/userNames'
 
 const googleWebClientId = process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID
 const googleIosClientId = process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID
@@ -160,11 +161,14 @@ async function saveGoogleProfile(user, { acceptLegal = false } = {}) {
   const shouldUseGooglePhoto = Boolean(googlePhotoURL && !photoRemoved && !existingPhotoURL && !existingAvatarURL)
   const requiresLegalAcceptance = !hasAcceptedCurrentLegal(existingProfile) && !acceptLegal
   if (requiresLegalAcceptance) return { requiresLegalAcceptance: true }
+  const googleName = readCleanString(user.displayName)
+  const nameRepairFields = getGoogleProfileNameRepairFields(existingProfile, user)
 
   const profile = {
     uid: user.uid,
-    fullName: user.displayName || '',
-    displayName: user.displayName || '',
+    fullName: googleName,
+    displayName: googleName,
+    name: googleName,
     email: user.email || '',
     ...(googlePhotoURL && !photoRemoved ? { avatarUrl: googlePhotoURL, googlePhotoURL, photoURL: googlePhotoURL } : {}),
     provider: 'google',
@@ -184,6 +188,9 @@ async function saveGoogleProfile(user, { acceptLegal = false } = {}) {
   await setDoc(
     userRef,
     {
+      uid: user.uid,
+      ...nameRepairFields,
+      ...(!readProfileString(existingProfile, 'email') && user.email ? { email: user.email } : {}),
       ...(googlePhotoURL && !photoRemoved ? { googlePhotoURL } : {}),
       ...(shouldUseGooglePhoto ? { avatarUrl: googlePhotoURL, photoURL: googlePhotoURL } : {}),
       provider: 'google',

@@ -79,6 +79,7 @@ import {
   validateGroupPayload,
 } from '../../utils/contentModeration'
 import { formatGroupMemberCount, getGroupMemberCount } from '../../utils/groupMembership'
+import { resolveUserDisplayName } from '../../utils/userNames'
 
 type PickerMode = 'category' | 'subcategory' | 'date' | 'time' | 'currency' | null
 type CreateStep = 1 | 2 | 3 | 4 | 5
@@ -1949,6 +1950,7 @@ function CrearScreenContent() {
     const cleanLocation = groupDraftLocation.trim()
     const createdGroupId = getLocalGroupId(cleanName)
     let remoteGroupPhotoUrl = ''
+    const ownerDisplayName = resolveUserDisplayName({ fallback: 'Usuario', firebaseUser: user })
 
     if (groupPhotoAsset) {
       try {
@@ -1985,14 +1987,14 @@ function CrearScreenContent() {
         memberProfiles: {
           [user.uid]: {
             joinedAt: serverTimestamp(),
-            name: user.displayName?.trim() || user.email?.split('@')[0]?.trim() || 'Organizador',
+            name: ownerDisplayName,
             role: 'owner',
           },
         },
         membersCount: 1,
         name: cleanName,
         ownerId: user.uid,
-        ownerName: user.displayName?.trim() || user.email?.split('@')[0]?.trim() || 'Organizador',
+        ownerName: ownerDisplayName,
         deleted: false,
         status: 'active',
         updatedAt: serverTimestamp(),
@@ -2054,6 +2056,7 @@ function CrearScreenContent() {
     if (!(await requireVerifiedParticipation(auth))) return
 
     const createdGroupId = getLocalGroupId(cleanName)
+    const ownerDisplayName = resolveUserDisplayName({ fallback: 'Usuario', firebaseUser: user })
 
     try {
       await setDoc(doc(db, 'groups', createdGroupId), {
@@ -2066,14 +2069,14 @@ function CrearScreenContent() {
         memberProfiles: {
           [user.uid]: {
             joinedAt: serverTimestamp(),
-            name: user.displayName?.trim() || user.email?.split('@')[0]?.trim() || 'Organizador',
+            name: ownerDisplayName,
             role: 'owner',
           },
         },
         membersCount: 1,
         name: cleanName,
         ownerId: user.uid,
-        ownerName: user.displayName?.trim() || user.email?.split('@')[0]?.trim() || 'Organizador',
+        ownerName: ownerDisplayName,
         status: 'active',
         updatedAt: serverTimestamp(),
       }, { merge: true })

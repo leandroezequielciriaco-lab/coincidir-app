@@ -65,6 +65,7 @@ import {
 } from '../../utils/activityDiscovery'
 import { defaultActivityImage, getCategoryImage } from '../../utils/categoryImages'
 import { formatGroupMemberCount, getGroupMemberCount, isDeletedGroup } from '../../utils/groupMembership'
+import { resolveUserDisplayName } from '../../utils/userNames'
 
 type RecordItem = {
   id: string
@@ -598,17 +599,16 @@ export default function ExplorarScreen() {
           const profile = profileSnap.exists() ? profileSnap.data() : null
           if (mounted) {
             setUserInterests(Array.isArray(profile?.interests) ? profile.interests : [])
-            setCurrentUserName(
-              readString(profile?.fullName)
-              || readString(profile?.displayName)
-              || readString(profile?.name)
-              || user.displayName?.trim()
-              || '',
-            )
+            setCurrentUserName(resolveUserDisplayName({
+              email: user.email,
+              fallback: '',
+              firebaseUser: user,
+              profile,
+            }))
           }
         } catch {
           if (mounted) {
-            setCurrentUserName(user.displayName?.trim() ?? '')
+            setCurrentUserName(resolveUserDisplayName({ firebaseUser: user, fallback: '' }))
             setUserInterests([])
           }
         }
@@ -698,7 +698,11 @@ export default function ExplorarScreen() {
     [currentUserId, filteredRecords, groupImageUrlsByKey, localGroups, optimisticInterests, optimisticJoins],
   )
 
-  const getVisibleCurrentUserName = () => currentUserName || currentUserEmail || 'Alguien'
+  const getVisibleCurrentUserName = () => resolveUserDisplayName({
+    email: currentUserEmail,
+    fallback: 'Usuario',
+    profile: currentUserName ? { fullName: currentUserName } : null,
+  })
 
   const toggleActivityParticipation = async (item: ExploreCardItem) => {
     if (!currentUserId) {

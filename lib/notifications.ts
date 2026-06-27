@@ -15,6 +15,7 @@ import {
 } from 'firebase/firestore'
 
 import { getFirebaseServices } from '../firebaseConfig'
+import { resolveUserDisplayName } from '../utils/userNames'
 
 export type NotificationType = 'activity_cancelled' | 'activity_update' | 'activity_updated' | 'confirmed' | 'group_join_accepted' | 'group_join_request' | 'interest' | 'invite' | 'joined_activity' | 'message' | 'rejected'
 
@@ -290,9 +291,9 @@ export async function notifyActivityInterest({
   return createDeterministicNotification({
     activityId,
     activityTitle,
-    body: `${interestedUserName || 'Alguien'} quiere sumarse a tu actividad: ${activityTitle}.`,
+    body: `${resolveUserDisplayName({ fallback: 'Usuario', profile: { fullName: interestedUserName } })} quiere sumarse a tu actividad: ${activityTitle}.`,
     senderId: interestedUserId,
-    senderName: interestedUserName || 'Alguien',
+    senderName: resolveUserDisplayName({ fallback: 'Usuario', profile: { fullName: interestedUserName } }),
     title: 'Nueva persona interesada',
     type: 'interest',
     userId: organizerId,
@@ -311,9 +312,9 @@ export async function notifyActivityJoined({
   return createDeterministicNotification({
     activityId,
     activityTitle,
-    body: `${joinedUserName || 'Alguien'} se sumó a tu actividad: ${activityTitle}.`,
+    body: `${resolveUserDisplayName({ fallback: 'Usuario', profile: { fullName: joinedUserName } })} se sumó a tu actividad: ${activityTitle}.`,
     senderId: joinedUserId,
-    senderName: joinedUserName || 'Alguien',
+    senderName: resolveUserDisplayName({ fallback: 'Usuario', profile: { fullName: joinedUserName } }),
     title: 'Nueva persona en tu actividad',
     type: 'joined_activity',
     userId: organizerId,

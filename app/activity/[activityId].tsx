@@ -64,6 +64,7 @@ import { getActivityVisualState } from '../../utils/activityDiscovery'
 import { getCategoryImage } from '../../utils/categoryImages'
 import { savePendingExternalReturnRoute } from '../../utils/externalReturnRoute'
 import { getJsInstanceId } from '../../utils/jsInstance'
+import { resolveUserDisplayName, readStoredUserName } from '../../utils/userNames'
 
 type ActivityData = Record<string, unknown>
 type CategoryId = 'outdoor' | 'sports' | 'wellness' | 'groups'
@@ -82,6 +83,7 @@ type ConfirmedParticipant = {
   uid: string
 }
 type InterestedAction = 'confirm' | 'reject'
+type UserNamesById = Record<string, string>
 
 function readString(value: unknown, fallback = '') {
   return typeof value === 'string' && value.trim() ? value.trim() : fallback
@@ -155,22 +157,22 @@ function getParticipantCount(data: ActivityData) {
   return Array.isArray(participants) ? participants.length : 0
 }
 
-function getParticipantName(uid: string, value: unknown) {
+function getParticipantName(uid: string, value: unknown, userNamesById: UserNamesById = {}) {
   if (typeof value === 'object' && value) {
     const record = value as ActivityData
-    return readString(record.name, readString(record.displayName, readString(record.fullName, `Usuario ${uid.slice(0, 6)}`)))
+    return readStoredUserName(record) || userNamesById[uid] || 'Usuario'
   }
 
-  return `Usuario ${uid.slice(0, 6)}`
+  return userNamesById[uid] || 'Usuario'
 }
 
-function getConfirmedParticipants(data: ActivityData): ConfirmedParticipant[] {
+function getConfirmedParticipants(data: ActivityData, userNamesById: UserNamesById = {}): ConfirmedParticipant[] {
   const participants = data.participants ?? data.attendees ?? data.members
 
   if (typeof participants === 'object' && participants && !Array.isArray(participants)) {
     return Object.entries(participants as Record<string, unknown>)
       .map(([uid, value]) => ({
-        name: getParticipantName(uid, value),
+        name: getParticipantName(uid, value, userNamesById),
         uid,
       }))
   }
@@ -179,13 +181,13 @@ function getConfirmedParticipants(data: ActivityData): ConfirmedParticipant[] {
     return participants
       .map((item, index) => {
         if (typeof item === 'string') {
-          return { name: `Usuario ${item.slice(0, 6)}`, uid: item }
+          return { name: userNamesById[item] || 'Usuario', uid: item }
         }
 
         if (typeof item === 'object' && item) {
           const record = item as ActivityData
           const uid = readString(record.uid, readString(record.userId, readString(record.id, `participant-${index}`)))
-          return { name: getParticipantName(uid, record), uid }
+          return { name: getParticipantName(uid, record, userNamesById), uid }
         }
 
         return null
@@ -197,7 +199,7 @@ function getConfirmedParticipants(data: ActivityData): ConfirmedParticipant[] {
   if (typeof joinedUsers === 'object' && joinedUsers && !Array.isArray(joinedUsers)) {
     return Object.entries(joinedUsers as Record<string, unknown>)
       .map(([uid, value]) => ({
-        name: getParticipantName(uid, value),
+        name: getParticipantName(uid, value, userNamesById),
         uid,
       }))
   }
@@ -265,7 +267,7 @@ function getPhone(value: ActivityData) {
     || readString(value.whatsApp)
 }
 
-function getInterestedUsers(data: ActivityData): InterestedUser[] {
+function getInterestedUsers(data: ActivityData, userNamesById: UserNamesById = {}): InterestedUser[] {
   const interestedUsers = data.interestedUsers
   if (typeof interestedUsers !== 'object' || !interestedUsers || Array.isArray(interestedUsers)) return []
 
@@ -274,14 +276,14 @@ function getInterestedUsers(data: ActivityData): InterestedUser[] {
       if (typeof value === 'object' && value) {
         const record = value as ActivityData
         return {
-          name: readString(record.name, readString(record.displayName, readString(record.fullName, `Usuario ${uid.slice(0, 6)}`))),
+          name: readStoredUserName(record) || userNamesById[uid] || 'Usuario',
           phone: getPhone(record),
           uid,
         }
       }
 
       return {
-        name: `Usuario ${uid.slice(0, 6)}`,
+        name: userNamesById[uid] || 'Usuario',
         phone: '',
         uid,
       }
@@ -347,7 +349,7 @@ function getOrganizerName(data: ActivityData) {
     || readString(data.createdByName)
     || readString(data.hostName)
     || readString(data.ownerName)
-    || 'Miembro de Coincidir'
+    || 'Usuario'
 }
 
 function getCreatorId(data: ActivityData) {
@@ -423,10 +425,7 @@ function getInterestedCountLabel(count: number) {
 
 function getOrganizerProfile(data: ActivityData | null, profile: ActivityData | null): OrganizerProfile {
   return {
-    name: readString(
-      profile?.fullName,
-      readString(profile?.displayName, readString(profile?.name, data ? getOrganizerName(data) : 'Miembro de Coincidir')),
-    ),
+    name: resolveUserDisplayName({ fallback: data ? getOrganizerName(data) : 'Usuario', profile }),
     photoURL: readString(profile?.photoURL, readString(profile?.avatarURL, readString(profile?.avatar))),
     subtitle: readString(profile?.organizerSubtitle, 'Organiza actividades en Coincidir'),
   }
@@ -469,6 +468,7 @@ export default function ActivityDetailScreen() {
   const [associatedGroupPhotoUrl, setAssociatedGroupPhotoUrl] = useState('')
   const [currentUserName, setCurrentUserName] = useState('')
   const [currentUserEmail, setCurrentUserEmail] = useState('')
+  const [userNamesById, setUserNamesById] = useState<UserNamesById>({})
   const [pendingInterestedActions, setPendingInterestedActions] = useState<string[]>([])
   const [isDeletingActivity, setIsDeletingActivity] = useState(false)
   const [isCancellingActivity, setIsCancellingActivity] = useState(false)
@@ -539,7 +539,7 @@ export default function ActivityDetailScreen() {
           uid: user?.uid ?? null,
         })
         setCurrentUserId(user?.uid ?? null)
-        setCurrentUserName(user?.displayName?.trim() ?? '')
+        setCurrentUserName(resolveUserDisplayName({ firebaseUser: user, fallback: '' }))
         setCurrentUserEmail(user?.email?.trim() ?? '')
       })
     } catch {
@@ -548,6 +548,27 @@ export default function ActivityDetailScreen() {
       return undefined
     }
   }, [activityId, instanceId])
+
+  useEffect(() => {
+    try {
+      const { db } = getFirebaseServices()
+      return onSnapshot(
+        collection(db, 'users'),
+        (snapshot) => {
+          const nextNames: UserNamesById = {}
+          snapshot.docs.forEach((item) => {
+            const name = readStoredUserName(item.data() as ActivityData)
+            if (name) nextNames[item.id] = name
+          })
+          setUserNamesById(nextNames)
+        },
+        () => setUserNamesById({}),
+      )
+    } catch {
+      setUserNamesById({})
+      return undefined
+    }
+  }, [])
 
   useEffect(() => {
     if (!activityId) {
@@ -635,7 +656,7 @@ export default function ActivityDetailScreen() {
       setAssociatedGroupPhotoUrl('')
       return undefined
     }
-  }, [activityGroupMeta.groupId])
+  }, [activityGroupMeta.groupId, activityGroupMeta.groupName])
 
   const detail = useMemo(() => {
     const data = activity ?? {}
@@ -676,7 +697,7 @@ export default function ActivityDetailScreen() {
       groupName: groupMeta.groupName,
       interested,
       interestedCount: safeInterestedCount,
-      interestedUsers: getInterestedUsers(data),
+      interestedUsers: getInterestedUsers(data, userNamesById),
       isCancelled,
       isFull,
       joined,
@@ -687,14 +708,14 @@ export default function ActivityDetailScreen() {
       maxParticipants,
       organizer: getOrganizerProfile(activity, organizerProfile),
       participantCount: safeCount,
-      participants: getConfirmedParticipants(data),
+      participants: getConfirmedParticipants(data, userNamesById),
       price: getPriceLabel(data),
       subcategory: readString(data.subcategory),
       time: readString(data.time, 'Horario a definir'),
       title: readString(data.name, 'Actividad sin título'),
       visualState: getActivityVisualState(data),
     }
-  }, [activity, activityGroupMeta, associatedGroupPhotoUrl, currentUserId, optimisticInterested, optimisticJoined, organizerProfile])
+  }, [activity, activityGroupMeta, associatedGroupPhotoUrl, currentUserId, optimisticInterested, optimisticJoined, organizerProfile, userNamesById])
 
   useEffect(() => {
     if (detail.isCancelled && isInviteVisible) setIsInviteVisible(false)
@@ -712,7 +733,11 @@ export default function ActivityDetailScreen() {
     return pendingInterestedActions.includes(`${action}:${userId}`)
   }
 
-  const getVisibleCurrentUserName = () => currentUserName || currentUserEmail || 'Alguien'
+  const getVisibleCurrentUserName = () => resolveUserDisplayName({
+    email: currentUserEmail,
+    fallback: 'Usuario',
+    profile: currentUserId ? { fullName: currentUserName } : null,
+  })
 
   const toggleJoin = async () => {
     if (!activityId || !activity || !currentUserId || detail.isCancelled || detail.isFull || isJoining) return
@@ -754,6 +779,7 @@ export default function ActivityDetailScreen() {
             [`joinedUsers.${currentUserId}`]: true,
             [`participants.${currentUserId}`]: {
               joinedAt: serverTimestamp(),
+              name: getVisibleCurrentUserName(),
               status: 'joined',
               uid: currentUserId,
             },
@@ -819,7 +845,7 @@ export default function ActivityDetailScreen() {
           : {
             [`interestedUsers.${currentUserId}`]: {
               interestedAt: serverTimestamp(),
-              name: currentUserName,
+              name: getVisibleCurrentUserName(),
               status: 'interested',
               uid: currentUserId,
             },

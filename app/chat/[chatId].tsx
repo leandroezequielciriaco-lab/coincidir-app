@@ -19,6 +19,7 @@ import {
   addDoc,
   collection,
   doc,
+  getDoc,
   increment,
   limit,
   onSnapshot,
@@ -45,6 +46,7 @@ import {
   isUserParticipant,
   readString,
 } from '../../lib/chat'
+import { resolveUserDisplayName } from '../../utils/userNames'
 
 type ChatMessage = {
   createdAt?: unknown
@@ -54,14 +56,6 @@ type ChatMessage = {
   senderId: string
   senderName: string
   text: string
-}
-
-function getUserName(user: { displayName?: string | null; email?: string | null } | null) {
-  const displayName = user?.displayName?.trim()
-  if (displayName) return displayName
-
-  const emailName = user?.email?.split('@')[0]?.trim()
-  return emailName || 'Participante'
 }
 
 function isChatSource(value: unknown): value is ChatSource {
@@ -75,7 +69,7 @@ export default function ChatScreen() {
   const { chatId, source } = useLocalSearchParams<{ chatId?: string; source?: string }>()
   const chatSource: ChatSource = isChatSource(source) ? source : 'activity'
   const [userId, setUserId] = useState<string | null>(null)
-  const [senderName, setSenderName] = useState('Participante')
+  const [senderName, setSenderName] = useState('Usuario')
   const [sourceData, setSourceData] = useState<Record<string, unknown> | null>(null)
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [text, setText] = useState('')
@@ -87,9 +81,21 @@ export default function ChatScreen() {
   useEffect(() => {
     try {
       const { auth } = getFirebaseServices()
-      return onAuthStateChanged(auth, (user) => {
+      return onAuthStateChanged(auth, async (user) => {
         setUserId(user?.uid ?? null)
-        setSenderName(getUserName(user))
+        if (!user) {
+          setSenderName('Usuario')
+          return
+        }
+
+        try {
+          const { db } = getFirebaseServices()
+          const profileSnap = await getDoc(doc(db, 'users', user.uid))
+          const profile = profileSnap.exists() ? profileSnap.data() as Record<string, unknown> : null
+          setSenderName(resolveUserDisplayName({ email: user.email, fallback: 'Usuario', firebaseUser: user, profile }))
+        } catch {
+          setSenderName(resolveUserDisplayName({ firebaseUser: user, fallback: 'Usuario' }))
+        }
       })
     } catch {
       setUserId(null)
@@ -140,7 +146,7 @@ export default function ChatScreen() {
             deletedAt: data.deletedAt,
             id: item.id,
             senderId: readString(data.senderId),
-            senderName: readString(data.senderName, 'Participante'),
+            senderName: resolveUserDisplayName({ fallback: 'Usuario', profile: { fullName: data.senderName } }),
             text: readString(data.text),
           }
         }))

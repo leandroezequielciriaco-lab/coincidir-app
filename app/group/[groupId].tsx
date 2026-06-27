@@ -48,6 +48,7 @@ import {
   hasPendingGroupRequest,
   isGroupMember as isGroupMemberByData,
 } from '../../utils/groupMembership'
+import { resolveUserDisplayName, readStoredUserName } from '../../utils/userNames'
 
 type GroupData = Record<string, unknown>
 type ActivityRecord = {
@@ -119,7 +120,7 @@ function getPendingRequests(data: GroupData) {
     const requestData = value && typeof value === 'object' ? value as Record<string, unknown> : {}
     return {
       id,
-      name: readString(requestData.name, readString(requestData.displayName, 'Usuario sin nombre')),
+      name: readStoredUserName(requestData) || 'Usuario',
     }
   }).filter((request) => !memberIds.has(request.id))
 }
@@ -162,8 +163,8 @@ export default function GroupDetailScreen() {
   const [group, setGroup] = useState<GroupData | null>(null)
   const [activities, setActivities] = useState<ActivityRecord[]>([])
   const [userId, setUserId] = useState<string | null>(null)
-  const [userName, setUserName] = useState('Participante')
-  const [hostName, setHostName] = useState('Anfitrión no disponible')
+  const [userName, setUserName] = useState('Usuario')
+  const [hostName, setHostName] = useState('Usuario')
   const [isLoading, setIsLoading] = useState(true)
   const [isJoining, setIsJoining] = useState(false)
   const [isCancelingJoinRequest, setIsCancelingJoinRequest] = useState(false)
@@ -183,9 +184,21 @@ export default function GroupDetailScreen() {
   useEffect(() => {
     try {
       const { auth } = getFirebaseServices()
-      return onAuthStateChanged(auth, (user) => {
+      return onAuthStateChanged(auth, async (user) => {
         setUserId(user?.uid ?? null)
-        setUserName(user?.displayName?.trim() || user?.email?.split('@')[0]?.trim() || 'Participante')
+        if (!user) {
+          setUserName('Usuario')
+          return
+        }
+
+        try {
+          const { db } = getFirebaseServices()
+          const profileSnap = await getDoc(doc(db, 'users', user.uid))
+          const profile = profileSnap.exists() ? profileSnap.data() as Record<string, unknown> : null
+          setUserName(resolveUserDisplayName({ email: user.email, fallback: 'Usuario', firebaseUser: user, profile }))
+        } catch {
+          setUserName(resolveUserDisplayName({ firebaseUser: user, fallback: 'Usuario' }))
+        }
       })
     } catch {
       setUserId(null)
@@ -245,7 +258,7 @@ export default function GroupDetailScreen() {
       baseLocation: readString(data.locationName, readString(data.address, readString(data.location, 'Ubicación a definir'))),
       ownerId: getOwnerId(data),
       nextDate: readString(data.date, readString(data.schedule, 'Próximo encuentro a definir')),
-      organizer: readString(data.ownerName, readString(data.organizerName, readString(data.createdByName, 'Organizador de Coincidir'))),
+      organizer: readString(data.ownerName, readString(data.organizerName, readString(data.createdByName, 'Usuario'))),
       photoUrl: readRemoteGroupPhotoUrl(data),
       title: readString(data.name, readString(data.title, fallbackTitle)),
     }
@@ -263,7 +276,7 @@ export default function GroupDetailScreen() {
     }
 
     if (!ownerId) {
-      setHostName('Anfitrión no disponible')
+      setHostName('Usuario')
       return undefined
     }
 
@@ -273,13 +286,13 @@ export default function GroupDetailScreen() {
         .then((snapshot) => {
           if (!mounted) return
           const userData = snapshot.exists() ? snapshot.data() as Record<string, unknown> : null
-          setHostName(readString(userData?.displayName, readString(userData?.profileName, readString(userData?.fullName, readString(userData?.name, 'Anfitrión no disponible')))))
+          setHostName(readStoredUserName(userData) || 'Usuario')
         })
         .catch(() => {
-          if (mounted) setHostName('Anfitrión no disponible')
+          if (mounted) setHostName('Usuario')
         })
     } catch {
-      setHostName('Anfitrión no disponible')
+      setHostName('Usuario')
     }
 
     return () => {
@@ -700,7 +713,7 @@ export default function GroupDetailScreen() {
 
   const displayedMemberCount = isOwner ? Math.max(detail.members, 1) : detail.members
   const displayedMemberText = formatGroupMemberCount(displayedMemberCount)
-  const displayHostName = isLegacyLocalGroup ? 'Anfitrión no disponible' : hostName
+  const displayHostName = isLegacyLocalGroup ? 'Usuario' : hostName
   const membershipStatusText = isOwner
     ? 'Organizador'
     : isMember
@@ -784,7 +797,11 @@ export default function GroupDetailScreen() {
 
       if (Platform.OS === 'web') {
         console.log('[WEB DELETE GROUP SUCCESS]', { groupId, userId })
-        router.canGoBack() ? router.back() : router.replace('/home')
+        if (router.canGoBack()) {
+          router.back()
+        } else {
+          router.replace('/home')
+        }
         return
       }
       Alert.alert('Grupo eliminado', 'El grupo fue eliminado correctamente.', [

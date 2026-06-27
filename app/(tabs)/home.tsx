@@ -78,6 +78,7 @@ import {
   type ActivityQuickCategoryId,
 } from '../../utils/activityDiscovery'
 import { getCategoryImage } from '../../utils/categoryImages'
+import { resolveUserDisplayName, readStoredUserName } from '../../utils/userNames'
 
 type CategoryId = 'culture' | 'groups' | 'hobbies' | 'outdoor' | 'sports' | 'training' | 'wellness'
 
@@ -223,16 +224,7 @@ function getRecordLocation(data: Record<string, unknown>) {
 }
 
 function getUserDisplayName(data: Record<string, unknown>) {
-  return readString(
-    data.fullName,
-    readString(
-      data.displayName,
-      readString(
-        data.name,
-        readString(data.nombre),
-      ),
-    ),
-  )
+  return readStoredUserName(data)
 }
 
 function getOrganizerName(data: Record<string, unknown>, userNamesById: UserNamesById = {}) {
@@ -251,7 +243,7 @@ function getOrganizerName(data: Record<string, unknown>, userNamesById: UserName
         data.createdByName,
         readString(
           data.ownerName,
-          creatorId && userNamesById[creatorId] ? userNamesById[creatorId] : 'Organizador de Coincidir',
+          creatorId && userNamesById[creatorId] ? userNamesById[creatorId] : 'Usuario',
         ),
       ),
     ),
@@ -655,29 +647,25 @@ export default function HomeScreen() {
         setCurrentUserId(user.uid)
         setUserEmail(user.email ?? null)
 
-        const authName = user.displayName?.trim()
+        const authName = resolveUserDisplayName({ firebaseUser: user, fallback: '' })
 
         try {
           const profileSnap = await getDoc(doc(db, 'users', user.uid))
           const profile = profileSnap.exists() ? profileSnap.data() : null
-          const profileName =
-            typeof profile?.fullName === 'string'
-              ? profile.fullName
-              : typeof profile?.name === 'string'
-                ? profile.name
-                : typeof profile?.displayName === 'string'
-                  ? profile.displayName
-                  : typeof profile?.nombre === 'string'
-                    ? profile.nombre
-                    : ''
+          const profileName = readStoredUserName(profile)
 
           if (mounted) {
-            const cleanName = profileName.trim()
-            setUserName(cleanName ? cleanName.split(' ')[0] : authName ? authName.split(' ')[0] : null)
+            const cleanName = resolveUserDisplayName({
+              email: user.email,
+              fallback: '',
+              firebaseUser: user,
+              profile,
+            })
+            setUserName(cleanName || profileName || authName || null)
           }
         } catch {
           if (mounted) {
-            setUserName(authName ? authName.split(' ')[0] : null)
+            setUserName(authName || null)
           }
         }
       })
@@ -780,7 +768,7 @@ export default function HomeScreen() {
     return () => clearTimeout(timeout)
   }, [searchQuery])
 
-  const greeting = useMemo(() => (userName ? `¡Hola, ${userName}! 👋` : '¡Hola! 👋'), [userName])
+  const greeting = useMemo(() => (userName ? `¡Hola, ${userName.split(/\s+/)[0]}! 👋` : '¡Hola! 👋'), [userName])
   const cityActivities = useMemo(
     () => createdActivities.filter((item) =>
       matchesSelectedCity(item, selectedCity)
@@ -857,7 +845,11 @@ export default function HomeScreen() {
   const openCitySearch = () => {
     setIsCitySearchVisible(true)
   }
-  const getVisibleCurrentUserName = () => userName || userEmail || 'Alguien'
+  const getVisibleCurrentUserName = () => resolveUserDisplayName({
+    email: userEmail,
+    fallback: 'Usuario',
+    profile: userName ? { fullName: userName } : null,
+  })
   const toggleJoin = async (record: CreatedRecord, collectionName: JoinableCollection) => {
     if (!currentUserId) {
       logWebCtaStep('[WEB CTA EARLY RETURN]', 'join', record.id, getCurrentAuthUserId(), 'missing_user')
@@ -922,6 +914,7 @@ export default function HomeScreen() {
             [`joinedUsers.${currentUserId}`]: true,
             [`participants.${currentUserId}`]: {
               joinedAt: serverTimestamp(),
+              name: getVisibleCurrentUserName(),
               status: 'joined',
               uid: currentUserId,
             },
@@ -1041,7 +1034,7 @@ export default function HomeScreen() {
               interestedAt: serverTimestamp(),
               status: 'interested',
               uid: currentUserId,
-              name: userName ?? '',
+              name: getVisibleCurrentUserName(),
             },
             interestedCount: nextCount,
             updatedAt: serverTimestamp(),

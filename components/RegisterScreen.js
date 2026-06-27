@@ -37,6 +37,7 @@ import { styles } from './RegisterScreen.styles'
 import { getFirebaseServices } from '../firebaseConfig'
 import { getLegalAcceptanceFields } from '../constants/legal'
 import { sendLocalizedEmailVerification } from '../utils/authParticipation'
+import { getGoogleProfileNameRepairFields, readCleanString } from '../utils/userNames'
 
 const googleWebClientId = process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID
 const googleIosClientId = process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID
@@ -207,10 +208,13 @@ async function saveGoogleProfile(user, { acceptLegal = false } = {}) {
     readProfileString(existingProfile, 'photoUrl') ||
     readProfileString(existingProfile, 'avatar')
   const shouldUseGooglePhoto = Boolean(googlePhotoURL && !photoRemoved && !existingPhotoURL && !existingAvatarURL)
+  const googleName = readCleanString(user.displayName)
+  const nameRepairFields = getGoogleProfileNameRepairFields(existingProfile, user)
   const profile = {
     uid: user.uid,
-    fullName: user.displayName || '',
-    displayName: user.displayName || '',
+    fullName: googleName,
+    displayName: googleName,
+    name: googleName,
     email: user.email || '',
     ...(googlePhotoURL && !photoRemoved ? { avatarUrl: googlePhotoURL, googlePhotoURL, photoURL: googlePhotoURL } : {}),
     provider: 'google',
@@ -230,6 +234,9 @@ async function saveGoogleProfile(user, { acceptLegal = false } = {}) {
   await setDoc(
     userRef,
     {
+      uid: user.uid,
+      ...nameRepairFields,
+      ...(!readProfileString(existingProfile, 'email') && user.email ? { email: user.email } : {}),
       ...(googlePhotoURL && !photoRemoved ? { googlePhotoURL } : {}),
       ...(shouldUseGooglePhoto ? { avatarUrl: googlePhotoURL, photoURL: googlePhotoURL } : {}),
       provider: 'google',
