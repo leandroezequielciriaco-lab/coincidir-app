@@ -15,6 +15,7 @@ import {
   GoogleAuthProvider,
   signInWithCredential,
   signInWithEmailAndPassword,
+  signInWithPopup,
 } from 'firebase/auth'
 import { doc, getDoc, serverTimestamp, setDoc } from 'firebase/firestore'
 import { FontAwesome5 } from '@expo/vector-icons'
@@ -85,8 +86,24 @@ function getFriendlyGoogleLoginError(error) {
     return 'Falta configurar Firebase.'
   }
 
+  if (code === 'auth/popup-blocked') {
+    return 'El navegador bloqueó la ventana de Google. Permití popups para COINCIDIR e intentá nuevamente.'
+  }
+
+  if (code === 'auth/popup-closed-by-user' || code === 'auth/cancelled-popup-request') {
+    return 'Cerraste la ventana de Google antes de completar el ingreso.'
+  }
+
+  if (code === 'auth/unauthorized-domain') {
+    return 'Este dominio no está autorizado en Firebase Authentication. Agregá coincidir.web.app en Authorized domains.'
+  }
+
   if (code === 'auth/account-exists-with-different-credential') {
     return 'Ya existe una cuenta con ese correo usando otro método de ingreso.'
+  }
+
+  if (code === 'auth/operation-not-allowed') {
+    return 'Google no está habilitado como proveedor de acceso en Firebase Authentication.'
   }
 
   if (code === 'auth/network-request-failed') {
@@ -196,6 +213,27 @@ export default function LoginScreen() {
     [email, password],
   )
 
+  const completeGoogleUserLogin = async (user) => {
+    try {
+      console.log('Login Firebase OK', {
+        uid: user.uid,
+        email: user.email,
+      })
+
+      const profileResult = await saveGoogleProfile(user, { acceptLegal: hasAcceptedLegal })
+      if (profileResult.requiresLegalAcceptance) {
+        setError('Para continuar con Google necesitás aceptar los Términos y Condiciones y la Política de Privacidad.')
+        return
+      }
+      router.replace('/home')
+    } catch (googleLoginError) {
+      console.error('Error login Google', googleLoginError)
+      setError(getFriendlyGoogleLoginError(googleLoginError))
+    } finally {
+      setIsGoogleSubmitting(false)
+    }
+  }
+
   const completeGoogleLogin = async (idToken) => {
     if (!idToken) {
       console.error('Error login Google', {
@@ -217,22 +255,30 @@ export default function LoginScreen() {
       console.log('Firebase credential creada')
 
       const { user } = await signInWithCredential(auth, credential)
-
-      console.log('Login Firebase OK', {
-        uid: user.uid,
-        email: user.email,
-      })
-
-      const profileResult = await saveGoogleProfile(user, { acceptLegal: hasAcceptedLegal })
-      if (profileResult.requiresLegalAcceptance) {
-        setError('Para continuar con Google necesitás aceptar los Términos y Condiciones y la Política de Privacidad.')
-        return
-      }
-      router.replace('/home')
+      await completeGoogleUserLogin(user)
     } catch (googleLoginError) {
       console.error('Error login Google', googleLoginError)
       setError(getFriendlyGoogleLoginError(googleLoginError))
-    } finally {
+      setIsGoogleSubmitting(false)
+    }
+  }
+
+  const handleGoogleWebLogin = async () => {
+    setError('')
+    setIsGoogleSubmitting(true)
+
+    try {
+      const { auth } = getFirebaseServices()
+      auth.languageCode = 'es'
+
+      const provider = new GoogleAuthProvider()
+      provider.setCustomParameters({ prompt: 'select_account' })
+
+      const { user } = await signInWithPopup(auth, provider)
+      await completeGoogleUserLogin(user)
+    } catch (googlePopupError) {
+      console.error('Error login Google Web', googlePopupError)
+      setError(getFriendlyGoogleLoginError(googlePopupError))
       setIsGoogleSubmitting(false)
     }
   }
@@ -279,7 +325,7 @@ export default function LoginScreen() {
     }
 
     if (isWeb) {
-      setError('Google disponible en Android por ahora. Podés ingresar con correo y contraseña.')
+      await handleGoogleWebLogin()
       return
     }
 
@@ -502,29 +548,22 @@ export default function LoginScreen() {
               <View style={styles.divider} />
             </View>
 
-            {isWeb ? (
-              <View style={styles.googleButton}>
-                <GoogleLogo size={23} />
-                <Text style={styles.googleButtonText}>Google disponible en Android por ahora</Text>
-              </View>
-            ) : (
-              <Pressable
-                accessibilityLabel="Continuar con Google"
-                accessibilityRole="button"
-                disabled={isSubmitting || isGoogleSubmitting}
-                onPress={handleGoogleLogin}
-                style={styles.googleButton}
-              >
-                {isGoogleSubmitting ? (
-                  <ActivityIndicator color="#155C47" />
-                ) : (
-                  <>
-                    <GoogleLogo size={23} />
-                    <Text style={styles.googleButtonText}>Continuar con Google</Text>
-                  </>
-                )}
-              </Pressable>
-            )}
+            <Pressable
+              accessibilityLabel="Continuar con Google"
+              accessibilityRole="button"
+              disabled={isSubmitting || isGoogleSubmitting}
+              onPress={handleGoogleLogin}
+              style={styles.googleButton}
+            >
+              {isGoogleSubmitting ? (
+                <ActivityIndicator color="#155C47" />
+              ) : (
+                <>
+                  <GoogleLogo size={23} />
+                  <Text style={styles.googleButtonText}>Continuar con Google</Text>
+                </>
+              )}
+            </Pressable>
 
             {!isWeb ? (
               <View style={styles.socialRow}>
