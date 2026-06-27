@@ -1338,6 +1338,40 @@ export default function ActivityDetailScreen() {
   const availablePlaces = Math.max(0, detail.maxParticipants - detail.participantCount)
   const groupColors = getGroupTheme(detail.groupColor)
   const shouldShowPrimaryAction = !isOrganizer
+  const isFinished = detail.visualState?.key === 'finished'
+  const isPrimaryActionDisabled = detail.isCancelled
+    || isFinished
+    || (detail.action === 'join' ? detail.isFull || isJoining : isMarkingInterest)
+  const primaryActionLabel = detail.isCancelled
+    ? 'Actividad cancelada'
+    : isFinished
+      ? 'Actividad finalizada'
+      : detail.action === 'interest'
+        ? detail.interested ? 'Te interesa' : 'Me interesa'
+        : detail.isFull ? 'Actividad completa' : detail.joined ? 'Te sumaste' : 'Yo me sumo'
+  const primaryAction = shouldShowPrimaryAction ? (
+    <PressScale
+      accessibilityLabel={primaryActionLabel}
+      accessibilityRole="button"
+      disabled={isPrimaryActionDisabled}
+      onPress={detail.action === 'interest' ? toggleInterest : toggleJoin}
+      scaleTo={0.97}
+      style={[
+        styles.primaryButton,
+        (detail.joined || detail.interested) && styles.joinedButton,
+        isPrimaryActionDisabled && styles.disabledButton,
+      ]}
+    >
+      {detail.joined || detail.interested ? <Check color="#17803C" size={20} strokeWidth={2.5} /> : null}
+      <Text style={[
+        styles.primaryButtonText,
+        (detail.joined || detail.interested) && styles.joinedButtonText,
+        isPrimaryActionDisabled && styles.disabledButtonText,
+      ]}>
+        {primaryActionLabel}
+      </Text>
+    </PressScale>
+  ) : null
   const inviteTarget: InviteShareTarget = {
     dateTime: `${detail.date} ${detail.time}`,
     id: activityId,
@@ -1454,6 +1488,8 @@ export default function ActivityDetailScreen() {
 
           {detail.subcategory ? <InfoRow Icon={Lock} label={detail.subcategory} /> : null}
           <InfoRow Icon={DollarSign} label={detail.price} />
+
+          {primaryAction}
 
           <Text style={styles.description}>{detail.description}</Text>
 
@@ -1592,40 +1628,6 @@ export default function ActivityDetailScreen() {
                 )}
               </View>
             </View>
-          ) : null}
-
-          {shouldShowPrimaryAction ? (
-            <PressScale
-              accessibilityLabel={
-                detail.isCancelled
-                  ? 'Actividad cancelada'
-                  : detail.action === 'interest'
-                  ? detail.interested ? 'Te interesa' : 'Me interesa'
-                  : detail.joined ? 'Te sumaste' : detail.isFull ? 'Actividad completa' : 'Me sumo'
-              }
-              accessibilityRole="button"
-              disabled={detail.isCancelled || (detail.action === 'join' ? detail.isFull || isJoining : isMarkingInterest)}
-              onPress={detail.action === 'interest' ? toggleInterest : toggleJoin}
-              scaleTo={0.97}
-              style={[
-                styles.primaryButton,
-                (detail.joined || detail.interested) && styles.joinedButton,
-                (detail.isCancelled || (detail.action === 'join' && detail.isFull)) && styles.disabledButton,
-              ]}
-            >
-              {detail.joined || detail.interested ? <Check color="#17803C" size={20} strokeWidth={2.5} /> : null}
-              <Text style={[
-                styles.primaryButtonText,
-                (detail.joined || detail.interested) && styles.joinedButtonText,
-                (detail.isCancelled || (detail.action === 'join' && detail.isFull)) && styles.disabledButtonText,
-              ]}>
-                {detail.isCancelled
-                  ? 'Actividad cancelada'
-                  : detail.action === 'interest'
-                  ? detail.interested ? 'Te interesa' : 'Me interesa'
-                  : detail.isFull ? 'Actividad completa' : detail.joined ? 'Te sumaste' : 'Me sumo'}
-              </Text>
-            </PressScale>
           ) : null}
 
           <PressScale
