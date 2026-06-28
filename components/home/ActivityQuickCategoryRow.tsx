@@ -1,6 +1,6 @@
 import { Bike, Coffee, Footprints, HeartPulse, PersonStanding, Sprout } from 'lucide-react-native'
 import type { LucideIcon } from 'lucide-react-native'
-import { Platform, ScrollView, StyleSheet, Text, View } from 'react-native'
+import { ScrollView, StyleSheet, Text, View } from 'react-native'
 
 import {
   activityQuickCategories,
@@ -23,17 +23,13 @@ const iconsByCategory: Record<ActivityQuickCategoryId, LucideIcon> = {
 }
 
 export function ActivityQuickCategoryRow({ activeId, onChange }: ActivityQuickCategoryRowProps) {
-  const visibleCategories = Platform.OS === 'web'
-    ? activityQuickCategories.filter((item) => item.id !== 'all')
-    : activityQuickCategories
-
   return (
     <ScrollView
       contentContainerStyle={styles.content}
       horizontal
       showsHorizontalScrollIndicator={false}
     >
-      {visibleCategories.map((item) => {
+      {activityQuickCategories.map((item) => {
         const Icon = iconsByCategory[item.id]
         const active = activeId === item.id
 

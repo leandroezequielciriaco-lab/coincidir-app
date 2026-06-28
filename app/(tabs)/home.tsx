@@ -53,7 +53,6 @@ import CoincidirLogo from '../../components/CoincidirLogo'
 import { InviteFriendsSheet, type InviteShareTarget } from '../../components/InviteFriendsSheet'
 import { ActivityQuickCategoryRow } from '../../components/home/ActivityQuickCategoryRow'
 import { ActivityCard } from '../../components/home/HomeCards'
-import { CategoryButton } from '../../components/home/CategoryButton'
 import { PressScale } from '../../components/home/PressScale'
 import type {
   ActivityCardItem,
@@ -88,15 +87,13 @@ const SETTINGS_ROUTE = '/ajustes' as Href
 const SELECTED_CITY_STORAGE_KEY = 'home:selectedCity'
 const cityOptions = ['Tandil', 'Buenos Aires', 'Mar del Plata', 'Córdoba', 'Rosario']
 
-const categories: { label: string; tone?: ThemeTone; Icon: LucideIcon }[] = [
-  { label: 'Todas', Icon: Sprout },
-  { label: 'Aire libre y naturaleza', Icon: Mountain },
-  { label: 'Deportes', Icon: Dumbbell },
-  { label: 'Entrenamiento y movimiento', Icon: Bike },
-  { label: 'Bienestar', Icon: Leaf },
-  { label: 'Sociales y comunidad', Icon: UsersRound },
-  { label: 'Cultura, arte y aprendizaje', Icon: Star },
-  { label: 'Juegos y hobbies', Icon: Zap },
+const categories: { label: string; displayLabel: string }[] = [
+  { label: 'Todas', displayLabel: 'Todas' },
+  { label: 'Deportes', displayLabel: 'Deportes' },
+  { label: 'Bienestar', displayLabel: 'Bienestar' },
+  { label: 'Aire libre y naturaleza', displayLabel: 'Aire libre' },
+  { label: 'Sociales y comunidad', displayLabel: 'Sociales' },
+  { label: 'Cultura, arte y aprendizaje', displayLabel: 'Cultura' },
 ]
 
 type CreatedRecord = {
@@ -1277,23 +1274,38 @@ export default function HomeScreen() {
           </View>
         </Modal>
 
+        <Text style={styles.exploreTitle}>Explorá por actividad</Text>
         <View style={styles.quickCategoryBlock}>
           <ActivityQuickCategoryRow activeId={activeQuickCategory} onChange={setActiveQuickCategory} />
         </View>
 
+        <Text style={styles.exploreTitle}>Explorá por categoría</Text>
         <FlatList
           contentContainerStyle={styles.categoryList}
           data={categories}
           horizontal
           keyExtractor={(item) => item.label}
           renderItem={({ item }) => (
-            <CategoryButton
-              Icon={item.Icon}
-              active={activeCategory === item.label}
-              label={item.label}
+            <PressScale
+              accessibilityRole="button"
+              accessibilityState={{ selected: activeCategory === item.label }}
               onPress={() => setActiveCategory(item.label)}
-              tone={item.tone}
-            />
+              scaleTo={0.96}
+              style={[
+                styles.categoryChip,
+                activeCategory === item.label && styles.categoryChipActive,
+              ]}
+            >
+              <Text
+                numberOfLines={1}
+                style={[
+                  styles.categoryChipText,
+                  activeCategory === item.label && styles.categoryChipTextActive,
+                ]}
+              >
+                {item.displayLabel}
+              </Text>
+            </PressScale>
           )}
           showsHorizontalScrollIndicator={false}
         />
@@ -1583,7 +1595,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     flexDirection: 'row',
     height: 66,
-    marginTop: 22,
+    marginTop: 18,
     paddingHorizontal: 16,
     ...softShadow,
   },
@@ -1754,15 +1766,48 @@ const styles = StyleSheet.create({
     letterSpacing: 0,
   },
   categoryList: {
-    gap: 14,
+    gap: 8,
     paddingBottom: 2,
-    paddingTop: 14,
+    paddingRight: 8,
+    paddingTop: 10,
+  },
+  categoryChip: {
+    alignItems: 'center',
+    backgroundColor: '#F7FBF4',
+    borderColor: '#D7E8CC',
+    borderRadius: 999,
+    borderWidth: 1,
+    justifyContent: 'center',
+    minHeight: 40,
+    paddingHorizontal: 16,
+  },
+  categoryChipActive: {
+    backgroundColor: '#17803C',
+    borderColor: '#17803C',
+  },
+  categoryChipText: {
+    color: '#063C31',
+    fontSize: 14,
+    fontWeight: '900',
+    letterSpacing: 0,
+    lineHeight: 18,
+  },
+  categoryChipTextActive: {
+    color: '#FFFFFF',
+  },
+  exploreTitle: {
+    color: '#00613A',
+    fontSize: 17,
+    fontWeight: '900',
+    letterSpacing: 0,
+    lineHeight: 22,
+    marginTop: 12,
   },
   quickCategoryBlock: {
-    marginTop: 22,
+    marginTop: 4,
   },
   section: {
-    marginTop: 26,
+    marginTop: 14,
   },
   sectionHeader: {
     alignItems: 'flex-start',
