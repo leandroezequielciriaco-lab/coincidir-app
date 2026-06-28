@@ -59,6 +59,7 @@ import { getFirebaseServices } from '../../firebaseConfig'
 import { readRemoteGroupPhotoUrl } from '../../lib/groupPhotos'
 import { notifyActivityCancelled, notifyActivityConfirmed, notifyActivityInterest, notifyActivityJoined, notifyActivityRejected } from '../../lib/notifications'
 import { getActivityGroupMeta } from '../../utils/activityGroups'
+import { getActivityCustomName, getActivityPrimaryTitle } from '../../utils/activityTitles'
 import { requireVerifiedParticipation } from '../../utils/authParticipation'
 import { getActivityVisualState } from '../../utils/activityDiscovery'
 import { getCategoryImage } from '../../utils/categoryImages'
@@ -581,7 +582,8 @@ export default function ActivityDetailScreen() {
       return onSnapshot(
         doc(db, 'activities', activityId),
         (snapshot) => {
-          setActivity(snapshot.exists() ? snapshot.data() as ActivityData : null)
+          const data = snapshot.exists() ? snapshot.data() as ActivityData : null
+          setActivity(data)
           setIsLoading(false)
           setOptimisticJoined(null)
           setOptimisticInterested(null)
@@ -712,7 +714,8 @@ export default function ActivityDetailScreen() {
       price: getPriceLabel(data),
       subcategory: readString(data.subcategory),
       time: readString(data.time, 'Horario a definir'),
-      title: readString(data.name, 'Actividad sin título'),
+      title: getActivityPrimaryTitle(data),
+      customName: getActivityCustomName(data),
       visualState: getActivityVisualState(data),
     }
   }, [activity, activityGroupMeta, associatedGroupPhotoUrl, currentUserId, optimisticInterested, optimisticJoined, organizerProfile, userNamesById])
@@ -1487,6 +1490,9 @@ export default function ActivityDetailScreen() {
                 </View>
               ) : null}
               <Text style={styles.title}>{detail.title}</Text>
+              {detail.customName ? (
+                <Text style={styles.customName}>{detail.customName}</Text>
+              ) : null}
             </View>
           </View>
 
@@ -1868,6 +1874,14 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '700',
     letterSpacing: 0,
+    marginTop: 3,
+  },
+  customName: {
+    color: '#40534D',
+    fontSize: 15,
+    fontWeight: '700',
+    letterSpacing: 0,
+    lineHeight: 20,
     marginTop: 3,
   },
   locationAddress: {

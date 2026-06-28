@@ -75,6 +75,7 @@ import { readRemoteGroupPhotoUrl } from '../../lib/groupPhotos'
 import { createNotification, deletePendingGroupJoinRequestNotifications } from '../../lib/notifications'
 import { getActivityGroupMeta } from '../../utils/activityGroups'
 import { isOwnActivity } from '../../utils/activityOwnership'
+import { getActivityCustomName, getActivityPrimaryTitle } from '../../utils/activityTitles'
 import {
   EMAIL_VERIFICATION_SENT_MESSAGE,
   getEmailVerificationErrorMessage,
@@ -548,7 +549,7 @@ export default function PerfilScreen() {
       .map((item) => ({
         activityId: item.id,
         status: 'Tu actividad',
-        title: readString(item.data.name, readString(item.data.title, 'Actividad sin título')),
+        title: getActivityPrimaryTitle(item.data),
       }))
 
     console.log('[Perfil] actividades propias detectadas', {
@@ -1212,7 +1213,10 @@ function ProfileRow({
   onPress: () => void
   variant: 'activity' | 'group'
 }) {
-  const title = readString(item.data.name, readString(item.data.title, variant === 'group' ? 'Grupo sin título' : 'Actividad sin título'))
+  const title = variant === 'activity'
+    ? getActivityPrimaryTitle(item.data)
+    : readString(item.data.name, readString(item.data.title, 'Grupo sin título'))
+  const customName = variant === 'activity' ? getActivityCustomName(item.data).trim() : ''
   const location = readString(item.data.location, variant === 'group' ? 'Grupo de amigos' : 'Ubicación a definir')
   const date = readString(item.data.date, readString(item.data.schedule, variant === 'group' ? 'Próximo encuentro' : 'Fecha a definir'))
   const participants = getParticipantCount(item.data)
@@ -1276,6 +1280,9 @@ function ProfileRow({
             </View>
           ) : null}
         </View>
+        {customName ? (
+          <Text ellipsizeMode="tail" numberOfLines={1} style={styles.rowCustomName}>{customName}</Text>
+        ) : null}
         <View style={styles.rowLocation}>
           <MapPin color="#73827C" size={13} strokeWidth={2.1} />
           <Text ellipsizeMode="tail" numberOfLines={1} style={styles.rowMeta}>{location}</Text>
@@ -2385,6 +2392,13 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '900',
     letterSpacing: 0,
+  },
+  rowCustomName: {
+    color: '#40534D',
+    fontSize: 13,
+    fontWeight: '800',
+    letterSpacing: 0,
+    marginTop: 2,
   },
   rowStatusBadge: {
     backgroundColor: '#FFF2CC',

@@ -9,6 +9,9 @@ export type ActivityCardItem = {
   id: string
   recordId: string
   title: string
+  subtitle?: string
+  customName?: string
+  optionalName?: string
   image: ImageSourcePropType
   dateBadge: string
   people: string

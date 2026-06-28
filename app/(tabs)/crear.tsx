@@ -78,6 +78,7 @@ import {
   validateActivityPayload,
   validateGroupPayload,
 } from '../../utils/contentModeration'
+import { getActivityCustomName } from '../../utils/activityTitles'
 import { formatGroupMemberCount, getGroupMemberCount } from '../../utils/groupMembership'
 import { resolveUserDisplayName } from '../../utils/userNames'
 
@@ -146,6 +147,8 @@ type CreateRenderDiagnostics = Record<string, unknown>
 
 type ActivityFormPayload = {
   name: string
+  customName: string
+  optionalName: string
   category: string
   categoryId: CategoryId
   categoryColor: string
@@ -998,7 +1001,7 @@ function CrearScreenContent() {
   const [groupPhotoPreviewUri, setGroupPhotoPreviewUri] = useState('')
   const [createdGroupId, setCreatedGroupId] = useState('')
   const [createdGroupName, setCreatedGroupName] = useState('')
-  const [name, setName] = useState('')
+  const [customName, setCustomName] = useState('')
   const [category, setCategory] = useState<Category | null>(null)
   const [subcategory, setSubcategory] = useState('')
   const [activitySearchQuery, setActivitySearchQuery] = useState('')
@@ -1099,7 +1102,7 @@ function CrearScreenContent() {
 
     setFlowMode(isEditMode || shouldKeepGroupContext || shouldStartGroupActivity ? 'activity' : 'choice')
     setActivityKind(shouldKeepGroupContext || shouldStartGroupActivity ? 'group' : 'individual')
-    setName(shouldStartGroupActivity && !shouldKeepGroupContext ? cleanGroupName : '')
+    setCustomName('')
     setCategory(groupCategory)
     setSubcategory(groupCategory?.subcategories[0] ?? '')
     setActivitySearchQuery('')
@@ -1241,7 +1244,7 @@ function CrearScreenContent() {
     setActivityKind('group')
     setSelectedGroup(cleanGroupName)
     setSelectedGroupId(cleanGroupId)
-    setName((current) => isGroupContext ? current : cleanGroupName)
+    setCustomName('')
     setCategory(groupCategory)
     setSubcategory(groupCategory?.subcategories[0] ?? '')
     setActivitySearchQuery('')
@@ -1321,7 +1324,7 @@ function CrearScreenContent() {
           ? additionalSettings.quickSettings.filter((item): item is string => typeof item === 'string')
           : []
 
-        setName(readString(data.name))
+        setCustomName(getActivityCustomName(data))
         setCategory(existingCategory)
         setSubcategory(readString(data.subcategory))
         setActivitySearchQuery('')
@@ -1517,9 +1520,14 @@ function CrearScreenContent() {
     const groupName = activityKind === 'group' ? selectedGroup : ''
     const groupId = groupName ? selectedGroupId : ''
     const resolvedLocationAddress = Platform.OS === 'web' ? webLocationAddress : locationSelection!.address
+    const resolvedName = selectedActivitySearchLabel.trim()
+      || subcategory.trim()
+      || category.label
 
     const payload: ActivityFormPayload = {
-      name: name.trim(),
+      name: resolvedName,
+      customName: customName.trim(),
+      optionalName: customName.trim(),
       category: category.label,
       categoryId: category.id,
       categoryColor: category.color,
@@ -1561,20 +1569,11 @@ function CrearScreenContent() {
       }
     }
 
-    if (__DEV__) {
-      console.log('[CrearActividad] payload grupo', {
-        groupId: payload.groupId,
-        groupName: payload.groupName,
-        visibility: payload.visibility,
-      })
-    }
-
     return payload
   }
 
   const getMissingActivityFields = () => {
     const missingFields = []
-    if (!name.trim()) missingFields.push('título')
     if (!category) missingFields.push('categoría')
     if (!subcategory) missingFields.push('subcategoría')
     if (!description.trim()) missingFields.push('descripción')
@@ -1588,7 +1587,7 @@ function CrearScreenContent() {
 
   const validateActivityModeration = () => {
     const result = validateActivityPayload({
-      name,
+      ...(customName.trim() ? { name: customName } : {}),
       description,
       location: selectedLocation?.address ?? location,
     })
@@ -1608,7 +1607,7 @@ function CrearScreenContent() {
       if (Platform.OS === 'web') {
         console.warn('[CREATE ACTIVITY VALIDATION]', {
           userId: getFirebaseServices().auth.currentUser?.uid ?? '',
-          title: name.trim(),
+          title: customName.trim(),
           category: category?.label ?? '',
           subcategory,
           date,
@@ -1655,7 +1654,7 @@ function CrearScreenContent() {
         if (Platform.OS === 'web') {
           console.warn('[CREATE ACTIVITY VALIDATION]', {
             userId: user.uid,
-            title: name.trim(),
+            title: customName.trim(),
             category: category?.label ?? '',
             subcategory,
             date,
@@ -1759,7 +1758,7 @@ function CrearScreenContent() {
       const errorMessage = error instanceof Error ? error.message : String(error)
       const diagnostic = {
         userId: getFirebaseServices().auth.currentUser?.uid ?? '',
-        title: name.trim(),
+        title: customName.trim(),
         category: category?.label ?? '',
         subcategory,
         date,
@@ -1862,7 +1861,7 @@ function CrearScreenContent() {
     setActivityKind('group')
     setSelectedGroup(groupName)
     setSelectedGroupId(groupId)
-    setName(groupName)
+    setCustomName('')
     setCategory(groupCategory)
     setSubcategory(groupCategory?.subcategories[0] ?? '')
     setActivitySearchQuery('')
@@ -2101,13 +2100,13 @@ function CrearScreenContent() {
   }
 
   const validateCurrentStep = () => {
-    if (currentStep === 1 && (!name.trim() || !category || !subcategory)) {
-      setMessage('Ingresá nombre, categoría y subcategoría para continuar.')
+    if (currentStep === 1 && (!category || !subcategory)) {
+      setMessage('Seleccioná categoría y subcategoría para continuar.')
       return false
     }
 
-    if (currentStep === 1) {
-      const result = validateActivityPayload({ name })
+    if (currentStep === 1 && customName.trim()) {
+      const result = validateActivityPayload({ name: customName })
       if (!result.ok) {
         showContentValidationAlert(result)
         return false
@@ -2296,7 +2295,7 @@ function CrearScreenContent() {
       groupLocation: groupDraftLocation,
       groupName: groupDraftName,
       location,
-      name,
+      customName,
       quickSettingsType: Array.isArray(quickSettings) ? 'array' : typeof quickSettings,
       time,
     },
@@ -3194,17 +3193,6 @@ function CrearScreenContent() {
         {showStepOneCard ? <View style={styles.createCard}>
           {showBasicInfoSection ? (
           <>
-          <Text style={styles.createFieldLabel}>Nombre de la actividad</Text>
-          <TextInput
-            maxLength={70}
-            onChangeText={setName}
-            placeholder="Ej: Caminata al atardecer"
-            placeholderTextColor="#7A8790"
-            style={styles.createTextInput}
-            underlineColorAndroid="transparent"
-            value={name}
-          />
-
           <Text style={styles.createFieldLabel}>¿Qué actividad querés crear?</Text>
           <View style={styles.activitySearchField}>
             <Search color="#0E5A44" size={20} strokeWidth={2.4} />
@@ -3280,6 +3268,20 @@ function CrearScreenContent() {
               </Pressable>
             </View>
           </View>
+          ) : null}
+          {showBasicInfoSection ? (
+          <>
+          <Text style={styles.createFieldLabel}>Nombre de la actividad (opcional)</Text>
+          <TextInput
+            maxLength={70}
+            onChangeText={setCustomName}
+            placeholder="Ej.: Caminata al atardecer"
+            placeholderTextColor="#7A8790"
+            style={styles.createTextInput}
+            underlineColorAndroid="transparent"
+            value={customName}
+          />
+          </>
           ) : null}
           {showActivityTypeSection && !isGroupContext ? (
             <View style={styles.groupPickerBlock}>

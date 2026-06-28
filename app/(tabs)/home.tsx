@@ -68,6 +68,7 @@ import { readRemoteGroupPhotoUrl } from '../../lib/groupPhotos'
 import { notifyActivityInterest, notifyActivityJoined, useUnreadNotificationsCount } from '../../lib/notifications'
 import { getActivityGroupMeta } from '../../utils/activityGroups'
 import { isOwnActivity } from '../../utils/activityOwnership'
+import { getActivityCustomName, getActivityPrimaryTitle, getActivitySubtitle } from '../../utils/activityTitles'
 import { EMAIL_VERIFICATION_REQUIRED_MESSAGE, requireVerifiedParticipation } from '../../utils/authParticipation'
 import {
   compareActivitiesForDiscovery,
@@ -454,11 +455,18 @@ function mapActivityCard(
   const cancelled = isCancelled(data)
   const isOrganizer = isActivityOrganizer(data, currentUserId)
   const groupMeta = getGroupMeta(data, localGroups)
+  const title = getActivityPrimaryTitle(data, 'Encuentro sin titulo')
+  const subtitle = getActivitySubtitle(data)
+  const customName = getActivityCustomName(data)
+  const optionalName = readString(data.optionalName)
 
   return {
     id: record.id,
     recordId: record.id,
-    title: readString(data.name, 'Encuentro sin titulo'),
+    title,
+    subtitle,
+    customName,
+    optionalName,
     image: getCategoryImage(data),
     dateBadge: formatDateBadge(readString(data.date)),
     people: maxParticipants > 0 ? `${joinState.count}/${maxParticipants}` : String(joinState.count),
@@ -507,6 +515,8 @@ function getSearchableRecordText(record: CreatedRecord, source: 'activity' | 'gr
     source === 'group' ? 'grupo' : 'actividad',
     data.name,
     data.title,
+    data.customName,
+    data.optionalName,
     data.category,
     data.subcategory,
     data.shortDescription,
@@ -703,6 +713,7 @@ export default function HomeScreen() {
               count: groupActivities.length,
               activities: groupActivities,
             })
+
           }
 
           setCreatedActivities(records)

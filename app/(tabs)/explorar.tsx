@@ -54,6 +54,7 @@ import { notifyActivityInterest, notifyActivityJoined } from '../../lib/notifica
 import { getActivityRecommendationScore, getActivityRecommendationTerms } from '../../lib/recommendations'
 import { getActivityGroupMeta } from '../../utils/activityGroups'
 import { isOwnActivity } from '../../utils/activityOwnership'
+import { getActivityCustomName, getActivityPrimaryTitle, getActivitySubtitle } from '../../utils/activityTitles'
 import { EMAIL_VERIFICATION_REQUIRED_MESSAGE, requireVerifiedParticipation } from '../../utils/authParticipation'
 import {
   compareActivitiesForDiscovery,
@@ -93,6 +94,9 @@ type ExploreCardItem = {
   recordId: string
   source: 'activity' | 'group'
   title: string
+  subtitle?: string
+  customName?: string
+  optionalName?: string
   capacity: string
   location: string
   schedule: string
@@ -323,7 +327,7 @@ function getRecordTime(item: RecordItem) {
 function getSearchText(item: RecordItem) {
   const data = item.data
   if (item.source === 'activity') {
-    return normalize([item.source, ...getActivityRecommendationTerms(data), data.location, data.city].join(' '))
+    return normalize([item.source, ...getActivityRecommendationTerms(data), data.customName, data.optionalName, data.location, data.city].join(' '))
   }
 
   return normalize([
@@ -495,12 +499,21 @@ function mapExploreCard(
   const cancelled = item.source === 'activity' && isCancelled(data)
   const groupMeta = isGroup ? { groupColor: '', groupId: '', groupName: '' } : getGroupMeta(data, localGroups)
   const organizer = item.source === 'activity' && isOwnActivity(data, currentUserId)
+  const title = isGroup
+    ? readString(data.name, readString(data.title, 'Grupo sin título'))
+    : getActivityPrimaryTitle(data)
+  const subtitle = isGroup ? undefined : getActivitySubtitle(data)
+  const customName = isGroup ? undefined : getActivityCustomName(data)
+  const optionalName = isGroup ? undefined : readString(data.optionalName)
 
   return {
     id: `${item.source}-${item.id}`,
     recordId: item.id,
     source: item.source,
-    title: readString(data.name, readString(data.title, isGroup ? 'Grupo sin título' : 'Actividad sin título')),
+    title,
+    subtitle,
+    customName,
+    optionalName,
     capacity: isGroup ? formatGroupMemberCount(getGroupMemberCount(data)) : `${count}/${max}`,
     location: readString(data.location, readString(data.city, 'Ubicación a definir')),
     schedule: isGroup
@@ -1163,6 +1176,8 @@ function ExploreCardContent({
   setHasImageError: (value: boolean) => void
   setImageSource: (value: ImageSourcePropType) => void
 }) {
+  const subtitle = item.subtitle?.trim() || item.customName?.trim() || ''
+
   return (
     <>
       <View style={styles.cardImageWrap}>
@@ -1201,7 +1216,12 @@ function ExploreCardContent({
         </View>
       </View>
       <View style={styles.cardBody}>
-        <Text numberOfLines={2} style={styles.cardTitle}>{item.title}</Text>
+        <View style={styles.cardTitleBlock}>
+          <Text numberOfLines={2} style={styles.cardTitle}>{item.title}</Text>
+          {subtitle ? (
+            <Text numberOfLines={1} style={styles.activityCardSubtitle}>{subtitle}</Text>
+          ) : null}
+        </View>
         <View style={styles.cardMetaRow}>
           <MapPin color="#0E5A44" size={16} strokeWidth={2.2} />
           <Text numberOfLines={2} style={styles.cardMeta}>{item.location}</Text>
@@ -1581,6 +1601,26 @@ const styles = StyleSheet.create({
     fontWeight: '900',
     letterSpacing: 0,
     lineHeight: 22,
+  },
+  cardTitleBlock: {
+    flexDirection: 'column',
+    minWidth: 0,
+  },
+  cardCustomName: {
+    color: '#40534D',
+    fontSize: 13,
+    fontWeight: '800',
+    letterSpacing: 0,
+    lineHeight: 17,
+    marginTop: 2,
+  },
+  activityCardSubtitle: {
+    color: '#40534D',
+    fontSize: 13,
+    fontWeight: '600',
+    letterSpacing: 0,
+    lineHeight: 17,
+    marginTop: 2,
   },
   cardMetaRow: {
     alignItems: 'center',

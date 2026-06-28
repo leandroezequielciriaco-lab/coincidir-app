@@ -156,9 +156,16 @@ export function ActivityCard({ item, onCtaPress, onPress, onSharePress }: Activi
 }
 
 function ActivityCardContent({ groupColors, item }: { groupColors: ReturnType<typeof getGroupTheme>; item: ActivityCardItem }) {
+  const subtitle = item.subtitle?.trim() || item.customName?.trim() || ''
+
   return (
     <>
-      <Text numberOfLines={2} style={[styles.activityTitle, item.groupName && styles.activityTitleWithGroup]}>{item.title}</Text>
+      <View style={styles.activityTitleBlock}>
+        <Text numberOfLines={2} style={styles.activityTitle}>{item.title}</Text>
+        {subtitle ? (
+          <Text numberOfLines={1} style={styles.activityCardSubtitle}>{subtitle}</Text>
+        ) : null}
+      </View>
       {item.groupName ? (
         <View style={styles.groupIndicator}>
           <GroupAvatar groupName={item.groupName} imageUrl={item.groupImageUrl} size={18} />
@@ -411,10 +418,28 @@ const styles = StyleSheet.create({
     fontWeight: '900',
     letterSpacing: 0,
     lineHeight: 22,
-    marginBottom: 7,
   },
-  activityTitleWithGroup: {
-    marginBottom: 2,
+  activityTitleBlock: {
+    flexDirection: 'column',
+    marginBottom: 7,
+    minWidth: 0,
+  },
+  activityCustomName: {
+    color: '#40534D',
+    fontSize: 13,
+    fontWeight: '800',
+    letterSpacing: 0,
+    lineHeight: 17,
+    marginBottom: 5,
+    marginTop: -2,
+  },
+  activityCardSubtitle: {
+    color: '#40534D',
+    fontSize: 13,
+    fontWeight: '600',
+    letterSpacing: 0,
+    lineHeight: 17,
+    marginTop: 2,
   },
   activityMetaRow: {
     alignItems: 'center',

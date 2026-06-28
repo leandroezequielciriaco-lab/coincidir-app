@@ -90,6 +90,8 @@ export function getActivityRecommendationTerms(activity: ActivityRecord) {
 
   addString(terms, activity.name)
   addString(terms, activity.title)
+  addString(terms, activity.customName)
+  addString(terms, activity.optionalName)
   addString(terms, activity.category)
   addString(terms, activity.categoryId)
   addString(terms, activity.subcategory)
