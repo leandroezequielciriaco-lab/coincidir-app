@@ -160,14 +160,6 @@ async function saveGoogleProfile(user, { acceptLegal = false, isNewUser = false 
   const shouldUseGooglePhoto = Boolean(googlePhotoURL && !photoRemoved && !existingPhotoURL && !existingAvatarURL)
   const hasCurrentLegalAcceptance = hasAcceptedCurrentLegal(existingProfile)
   const requiresLegalAcceptance = (!hasCurrentLegalAcceptance || isNewUser) && !acceptLegal
-  console.log('[GOOGLE LEGAL DEBUG] Firestore/legal decision', {
-    uid: user.uid,
-    acceptLegal,
-    firestoreUserDocExists: userSnap.exists(),
-    hasAcceptedCurrentLegal: hasCurrentLegalAcceptance,
-    isNewUser,
-    requiresLegalAcceptance,
-  })
   if (requiresLegalAcceptance) return { requiresLegalAcceptance: true }
   const googleName = readCleanString(user.displayName)
   const nameRepairFields = getGoogleProfileNameRepairFields(existingProfile, user)
@@ -276,10 +268,6 @@ export default function LoginScreen() {
       const userCredential = await signInWithCredential(auth, credential)
       const additionalUserInfo = getAdditionalUserInfo(userCredential)
       const isNewUser = additionalUserInfo?.isNewUser === true
-      console.log('[GOOGLE LEGAL DEBUG] Native credential', {
-        uid: userCredential.user.uid,
-        additionalUserInfoIsNewUser: additionalUserInfo?.isNewUser,
-      })
       await completeGoogleUserLogin(userCredential.user, { isNewUser })
     } catch (googleLoginError) {
       console.error('Error login Google', googleLoginError)
@@ -302,10 +290,6 @@ export default function LoginScreen() {
       const userCredential = await signInWithPopup(auth, provider)
       const additionalUserInfo = getAdditionalUserInfo(userCredential)
       const isNewUser = additionalUserInfo?.isNewUser === true
-      console.log('[GOOGLE LEGAL DEBUG] Web credential', {
-        uid: userCredential.user.uid,
-        additionalUserInfoIsNewUser: additionalUserInfo?.isNewUser,
-      })
       await completeGoogleUserLogin(userCredential.user, { isNewUser })
     } catch (googlePopupError) {
       console.error('Error login Google Web', googlePopupError)

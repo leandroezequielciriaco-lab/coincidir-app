@@ -147,26 +147,13 @@ export default function RootLayout() {
           const profile = profileSnap.exists() ? profileSnap.data() : null
           const hasAccepted = hasAcceptedCurrentLegal(profile)
 
-          console.log('[LEGAL GUARD PROFILE]', {
-            hasAcceptedCurrentLegal: hasAccepted,
-            instanceId,
-            userDocExists: profileSnap.exists(),
-            userId,
-          })
-
           setLegalState({ checked: true, hasAccepted, userId })
         },
-        (error) => {
-          console.warn('[LEGAL GUARD PROFILE ERROR]', {
-            error,
-            instanceId,
-            userId,
-          })
+        () => {
           setLegalState({ checked: true, hasAccepted: false, userId })
         },
       )
-    } catch (error) {
-      console.error('[LEGAL GUARD SETUP ERROR]', error)
+    } catch {
       setLegalState({ checked: true, hasAccepted: false, userId })
       return undefined
     }
@@ -211,29 +198,15 @@ export default function RootLayout() {
 
     if (authState.user) {
       if (legalLoading) {
-        console.log('[LEGAL GUARD WAIT]', {
-          path: pathname,
-          userId: authState.user.uid,
-        })
         return
       }
 
       if (needsLegalAcceptance) {
         if (!isPublicRoute) {
-          console.log('[LEGAL GUARD REDIRECT]', {
-            from: pathname,
-            to: '/login',
-            userId: authState.user.uid,
-          })
           router.replace({ pathname: '/login', params: { legalRequired: '1' } })
           return
         }
 
-        console.log('[LEGAL GUARD KEEP CURRENT]', {
-          path: pathname,
-          reason: 'authenticated_needs_legal_acceptance',
-          userId: authState.user.uid,
-        })
         return
       }
 
