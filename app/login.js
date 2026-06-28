@@ -9,8 +9,9 @@ import {
   TextInput,
   View,
 } from 'react-native'
-import { useRouter } from 'expo-router'
+import { useLocalSearchParams, useRouter } from 'expo-router'
 import {
+  getAdditionalUserInfo,
   GoogleAuthProvider,
   signInWithCredential,
   signInWithEmailAndPassword,
@@ -142,7 +143,7 @@ function readProfileString(profile, field) {
   return typeof value === 'string' && value.trim() ? value.trim() : ''
 }
 
-async function saveGoogleProfile(user, { acceptLegal = false } = {}) {
+async function saveGoogleProfile(user, { acceptLegal = false, isNewUser = false } = {}) {
   const { db } = getFirebaseServices()
   const userRef = doc(db, 'users', user.uid)
   const userSnap = await getDoc(userRef)
@@ -157,7 +158,16 @@ async function saveGoogleProfile(user, { acceptLegal = false } = {}) {
     readProfileString(existingProfile, 'photoUrl') ||
     readProfileString(existingProfile, 'avatar')
   const shouldUseGooglePhoto = Boolean(googlePhotoURL && !photoRemoved && !existingPhotoURL && !existingAvatarURL)
-  const requiresLegalAcceptance = !hasAcceptedCurrentLegal(existingProfile) && !acceptLegal
+  const hasCurrentLegalAcceptance = hasAcceptedCurrentLegal(existingProfile)
+  const requiresLegalAcceptance = (!hasCurrentLegalAcceptance || isNewUser) && !acceptLegal
+  console.log('[GOOGLE LEGAL DEBUG] Firestore/legal decision', {
+    uid: user.uid,
+    acceptLegal,
+    firestoreUserDocExists: userSnap.exists(),
+    hasAcceptedCurrentLegal: hasCurrentLegalAcceptance,
+    isNewUser,
+    requiresLegalAcceptance,
+  })
   if (requiresLegalAcceptance) return { requiresLegalAcceptance: true }
   const googleName = readCleanString(user.displayName)
   const nameRepairFields = getGoogleProfileNameRepairFields(existingProfile, user)
@@ -203,6 +213,7 @@ async function saveGoogleProfile(user, { acceptLegal = false } = {}) {
 
 export default function LoginScreen() {
   const router = useRouter()
+  const params = useLocalSearchParams()
   const insets = useSafeAreaInsets()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -217,15 +228,18 @@ export default function LoginScreen() {
     () => email.trim().length > 0 && password.length > 0,
     [email, password],
   )
+  const showLegalRequiredMessage = params.legalRequired === '1'
 
-  const completeGoogleUserLogin = async (user) => {
+  const completeGoogleUserLogin = async (user, { isNewUser = false } = {}) => {
     try {
       console.log('Login Firebase OK', {
         uid: user.uid,
         email: user.email,
+        acceptLegal: hasAcceptedLegal,
+        isNewUser,
       })
 
-      const profileResult = await saveGoogleProfile(user, { acceptLegal: hasAcceptedLegal })
+      const profileResult = await saveGoogleProfile(user, { acceptLegal: hasAcceptedLegal, isNewUser })
       if (profileResult.requiresLegalAcceptance) {
         setError('Para continuar con Google necesitás aceptar los Términos y Condiciones y la Política de Privacidad.')
         return
@@ -259,8 +273,14 @@ export default function LoginScreen() {
 
       console.log('Firebase credential creada')
 
-      const { user } = await signInWithCredential(auth, credential)
-      await completeGoogleUserLogin(user)
+      const userCredential = await signInWithCredential(auth, credential)
+      const additionalUserInfo = getAdditionalUserInfo(userCredential)
+      const isNewUser = additionalUserInfo?.isNewUser === true
+      console.log('[GOOGLE LEGAL DEBUG] Native credential', {
+        uid: userCredential.user.uid,
+        additionalUserInfoIsNewUser: additionalUserInfo?.isNewUser,
+      })
+      await completeGoogleUserLogin(userCredential.user, { isNewUser })
     } catch (googleLoginError) {
       console.error('Error login Google', googleLoginError)
       setError(getFriendlyGoogleLoginError(googleLoginError))
@@ -279,8 +299,14 @@ export default function LoginScreen() {
       const provider = new GoogleAuthProvider()
       provider.setCustomParameters({ prompt: 'select_account' })
 
-      const { user } = await signInWithPopup(auth, provider)
-      await completeGoogleUserLogin(user)
+      const userCredential = await signInWithPopup(auth, provider)
+      const additionalUserInfo = getAdditionalUserInfo(userCredential)
+      const isNewUser = additionalUserInfo?.isNewUser === true
+      console.log('[GOOGLE LEGAL DEBUG] Web credential', {
+        uid: userCredential.user.uid,
+        additionalUserInfoIsNewUser: additionalUserInfo?.isNewUser,
+      })
+      await completeGoogleUserLogin(userCredential.user, { isNewUser })
     } catch (googlePopupError) {
       console.error('Error login Google Web', googlePopupError)
       setError(getFriendlyGoogleLoginError(googlePopupError))
@@ -494,6 +520,12 @@ export default function LoginScreen() {
             >
               <Text style={styles.forgotPasswordText}>¿Olvidaste tu contraseña?</Text>
             </Pressable>
+
+            {showLegalRequiredMessage ? (
+              <Text style={styles.infoText}>
+                Para continuar, aceptá los Términos y Condiciones y la Política de Privacidad.
+              </Text>
+            ) : null}
 
             <View style={styles.legalAcceptanceBox}>
               <Pressable

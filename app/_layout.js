@@ -3,12 +3,14 @@ import { useEffect, useRef, useState } from 'react'
 import { AppState } from 'react-native'
 import { SafeAreaProvider } from 'react-native-safe-area-context'
 import { onAuthStateChanged } from 'firebase/auth'
+import { doc, onSnapshot } from 'firebase/firestore'
 import '../global.css'
 import { getFirebaseServices } from '../firebaseConfig'
 import { AuthContext } from '../utils/authContext'
 import { consumePendingExternalReturnRoute } from '../utils/externalReturnRoute'
 import { getJsInstanceId } from '../utils/jsInstance'
 import { canParticipate, isGoogleUser, reloadAuthUser } from '../utils/authParticipation'
+import { hasAcceptedCurrentLegal } from '../constants/legal'
 
 const PUBLIC_ROUTES = new Set([
   '/',
@@ -61,6 +63,7 @@ export default function RootLayout() {
   const pathname = usePathname()
   const router = useRouter()
   const [authState, setAuthState] = useState({ checked: false, user: null })
+  const [legalState, setLegalState] = useState({ checked: true, hasAccepted: false, userId: null })
   const instanceId = getJsInstanceId()
   const externalRouteRestoreAttemptedRef = useRef(false)
   const lastAuthenticatedAtRef = useRef(0)
@@ -120,6 +123,56 @@ export default function RootLayout() {
   }, [instanceId])
 
   useEffect(() => {
+    if (!authState.checked) {
+      setLegalState({ checked: false, hasAccepted: false, userId: null })
+      return undefined
+    }
+
+    if (!authState.user) {
+      setLegalState({ checked: true, hasAccepted: false, userId: null })
+      return undefined
+    }
+
+    const userId = authState.user.uid
+    setLegalState((current) => {
+      if (current.userId === userId && current.checked) return current
+      return { checked: false, hasAccepted: false, userId }
+    })
+
+    try {
+      const { db } = getFirebaseServices()
+      return onSnapshot(
+        doc(db, 'users', userId),
+        (profileSnap) => {
+          const profile = profileSnap.exists() ? profileSnap.data() : null
+          const hasAccepted = hasAcceptedCurrentLegal(profile)
+
+          console.log('[LEGAL GUARD PROFILE]', {
+            hasAcceptedCurrentLegal: hasAccepted,
+            instanceId,
+            userDocExists: profileSnap.exists(),
+            userId,
+          })
+
+          setLegalState({ checked: true, hasAccepted, userId })
+        },
+        (error) => {
+          console.warn('[LEGAL GUARD PROFILE ERROR]', {
+            error,
+            instanceId,
+            userId,
+          })
+          setLegalState({ checked: true, hasAccepted: false, userId })
+        },
+      )
+    } catch (error) {
+      console.error('[LEGAL GUARD SETUP ERROR]', error)
+      setLegalState({ checked: true, hasAccepted: false, userId })
+      return undefined
+    }
+  }, [authState.checked, authState.user, instanceId])
+
+  useEffect(() => {
     if (redirectTimerRef.current) {
       clearTimeout(redirectTimerRef.current)
       redirectTimerRef.current = null
@@ -129,12 +182,24 @@ export default function RootLayout() {
     const isPublicRoute = PUBLIC_ROUTES.has(pathname)
     const needsEmailVerification = requiresEmailVerification(authState.user)
     const isVerificationBlockedRoute = isEmailVerificationBlockedRoute(pathname)
+    const legalLoading = Boolean(
+      authState.user &&
+      (!legalState.checked || legalState.userId !== authState.user.uid)
+    )
+    const needsLegalAcceptance = Boolean(
+      authState.user &&
+      legalState.checked &&
+      legalState.userId === authState.user.uid &&
+      !legalState.hasAccepted
+    )
 
     console.log('[ROUTE GUARD DECISION]', {
       pathname,
       authLoading,
       userId: authState.user?.uid ?? null,
       isPublicRoute,
+      legalLoading,
+      needsLegalAcceptance,
       needsEmailVerification,
       isVerificationBlockedRoute,
     })
@@ -145,6 +210,33 @@ export default function RootLayout() {
     }
 
     if (authState.user) {
+      if (legalLoading) {
+        console.log('[LEGAL GUARD WAIT]', {
+          path: pathname,
+          userId: authState.user.uid,
+        })
+        return
+      }
+
+      if (needsLegalAcceptance) {
+        if (!isPublicRoute) {
+          console.log('[LEGAL GUARD REDIRECT]', {
+            from: pathname,
+            to: '/login',
+            userId: authState.user.uid,
+          })
+          router.replace({ pathname: '/login', params: { legalRequired: '1' } })
+          return
+        }
+
+        console.log('[LEGAL GUARD KEEP CURRENT]', {
+          path: pathname,
+          reason: 'authenticated_needs_legal_acceptance',
+          userId: authState.user.uid,
+        })
+        return
+      }
+
       if (needsEmailVerification) {
         if (isVerificationBlockedRoute) {
           console.log('[VERIFY EMAIL GUARD]', {
@@ -253,7 +345,7 @@ export default function RootLayout() {
         redirectTimerRef.current = null
       }
     }
-  }, [authState.checked, authState.user, instanceId, pathname, router])
+  }, [authState.checked, authState.user, instanceId, legalState, pathname, router])
 
   return (
     <AuthContext.Provider value={authState}>
