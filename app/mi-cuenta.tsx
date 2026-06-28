@@ -20,6 +20,7 @@ import {
   deleteUser,
   onAuthStateChanged,
   reauthenticateWithCredential,
+  reauthenticateWithPopup,
   signOut,
   updatePassword,
 } from 'firebase/auth'
@@ -356,6 +357,7 @@ export default function MiCuentaScreen() {
 
     setDeleteError('')
     setIsDeletingAccount(true)
+    let deleteStage: 'start' | 'reauth' | 'firestore' | 'auth-delete' = 'start'
 
     try {
       // TODO: Centralizar este flujo con app/privacidad.tsx para que ambos caminos borren Auth y Firestore igual.
@@ -379,6 +381,7 @@ export default function MiCuentaScreen() {
           return
         }
 
+        deleteStage = 'reauth'
         await reauthenticateWithCredential(user, EmailAuthProvider.credential(user.email, deletePassword))
         logDeleteAccount('[DELETE ACCOUNT REAUTH OK]', logPayload)
       } else if (providerId === 'google.com') {
@@ -388,14 +391,21 @@ export default function MiCuentaScreen() {
           return
         }
 
-        const idToken = await getGoogleIdTokenForReauth()
-        if (!idToken) {
-          logDeleteAccount('[DELETE ACCOUNT ERROR]', { ...logPayload, error: 'missing-google-id-token' }, true)
-          setDeleteError('Google no devolvió un token válido. No se eliminó nada.')
-          return
-        }
+        deleteStage = 'reauth'
+        if (Platform.OS === 'web') {
+          const provider = new GoogleAuthProvider()
+          provider.setCustomParameters({ prompt: 'select_account' })
+          await reauthenticateWithPopup(user, provider)
+        } else {
+          const idToken = await getGoogleIdTokenForReauth()
+          if (!idToken) {
+            logDeleteAccount('[DELETE ACCOUNT ERROR]', { ...logPayload, error: 'missing-google-id-token' }, true)
+            setDeleteError('Google no devolvió un token válido. No se eliminó nada.')
+            return
+          }
 
-        await reauthenticateWithCredential(user, GoogleAuthProvider.credential(idToken))
+          await reauthenticateWithCredential(user, GoogleAuthProvider.credential(idToken))
+        }
         logDeleteAccount('[DELETE ACCOUNT REAUTH OK]', logPayload)
       } else {
         logDeleteAccount('[DELETE ACCOUNT ERROR]', { ...logPayload, error: 'unknown-provider' }, true)
@@ -403,6 +413,7 @@ export default function MiCuentaScreen() {
         return
       }
 
+      deleteStage = 'firestore'
       await setDoc(doc(db, 'users', user.uid), {
         deletedAt: serverTimestamp(),
         isDeleted: true,
@@ -411,6 +422,7 @@ export default function MiCuentaScreen() {
       }, { merge: true })
       logDeleteAccount('[DELETE ACCOUNT FIRESTORE MARK OK]', logPayload)
 
+      deleteStage = 'auth-delete'
       await deleteUser(user)
       logDeleteAccount('[DELETE ACCOUNT AUTH DELETE OK]', logPayload)
       Alert.alert('Cuenta eliminada', 'Tu cuenta fue eliminada correctamente.')
@@ -420,7 +432,7 @@ export default function MiCuentaScreen() {
       const code = typeof error === 'object' && error && 'code' in error ? String(error.code) : ''
       const normalizedCode = code.toLowerCase()
       const message = error instanceof Error ? error.message : ''
-      logDeleteAccount('[DELETE ACCOUNT ERROR]', { code, error: getAccountErrorMessage(error) }, true)
+      logDeleteAccount('[DELETE ACCOUNT ERROR]', { code, error: getAccountErrorMessage(error), stage: deleteStage }, true)
 
       if (code === 'auth/wrong-password' || code === 'auth/invalid-credential' || code === 'auth/invalid-login-credentials') {
         setDeleteError('La reautenticación falló. No se eliminó nada.')
@@ -432,7 +444,13 @@ export default function MiCuentaScreen() {
         return
       }
 
-      if (normalizedCode.includes('sign_in_cancelled') || normalizedCode.includes('cancelled') || normalizedCode.includes('cancel')) {
+      if (
+        code === 'auth/popup-closed-by-user' ||
+        code === 'auth/cancelled-popup-request' ||
+        normalizedCode.includes('sign_in_cancelled') ||
+        normalizedCode.includes('cancelled') ||
+        normalizedCode.includes('cancel')
+      ) {
         setDeleteError('Cancelaste la confirmación con Google. No se eliminó nada.')
         return
       }
@@ -444,6 +462,21 @@ export default function MiCuentaScreen() {
 
       if (message === 'google-signin-development-build-required' || message.includes('RNGoogleSignin')) {
         setDeleteError('Google Sign-In requiere development build.')
+        return
+      }
+
+      if (deleteStage === 'reauth') {
+        setDeleteError('No pudimos confirmar tu identidad con Google. No se eliminó nada.')
+        return
+      }
+
+      if (deleteStage === 'firestore') {
+        setDeleteError('Confirmamos tu identidad, pero no pudimos marcar tu perfil como eliminado. No se eliminó la cuenta.')
+        return
+      }
+
+      if (deleteStage === 'auth-delete') {
+        setDeleteError('Marcamos tu perfil como eliminado, pero no pudimos eliminar el usuario de Firebase Authentication. Intentá nuevamente.')
         return
       }
 
