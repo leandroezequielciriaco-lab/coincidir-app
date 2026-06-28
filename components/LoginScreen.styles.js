@@ -159,6 +159,15 @@ export const styles = StyleSheet.create({
     textAlign: 'center',
     marginTop: 8,
   },
+  infoText: {
+    color: '#155C47',
+    fontSize: 14,
+    lineHeight: 20,
+    fontWeight: '800',
+    textAlign: 'center',
+    marginBottom: 10,
+    marginTop: 2,
+  },
   submitButton: {
     minHeight: 60,
     borderRadius: 20,
