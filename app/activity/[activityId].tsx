@@ -2150,6 +2150,7 @@ const styles = StyleSheet.create({
   },
   interestedPrimaryActions: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     gap: 8,
   },
   confirmAction: {
@@ -2158,9 +2159,12 @@ const styles = StyleSheet.create({
     borderColor: '#6C3DE5',
     borderRadius: 999,
     borderWidth: 1.2,
-    flex: 1,
+    flexBasis: 118,
+    flexGrow: 1,
+    flexShrink: 1,
     justifyContent: 'center',
     minHeight: 40,
+    minWidth: 112,
     paddingHorizontal: 14,
   },
   confirmActionText: {
@@ -2175,9 +2179,12 @@ const styles = StyleSheet.create({
     borderColor: '#F4C7C2',
     borderRadius: 999,
     borderWidth: 1.2,
-    flex: 1,
+    flexBasis: 118,
+    flexGrow: 1,
+    flexShrink: 1,
     justifyContent: 'center',
     minHeight: 40,
+    minWidth: 112,
     paddingHorizontal: 14,
   },
   interestedActionDisabled: {
