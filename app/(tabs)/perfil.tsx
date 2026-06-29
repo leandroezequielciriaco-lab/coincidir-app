@@ -1260,29 +1260,33 @@ function ProfileRow({
       </View>
       <View style={styles.rowCopy}>
         <View style={styles.rowTitleLine}>
-          <Text ellipsizeMode="tail" numberOfLines={1} style={styles.rowTitle}>{title}</Text>
-          {visualState ? (
-            <View
-              style={[
-                styles.rowStatusBadge,
-                {
-                  backgroundColor: visualState.backgroundColor,
-                  borderColor: visualState.borderColor,
-                },
-              ]}
-            >
-              <Text style={[styles.rowStatusBadgeText, { color: visualState.color }]}>{visualState.label}</Text>
-            </View>
-          ) : null}
-          {ownActivity ? (
-            <View style={styles.rowOwnBadge}>
-              <Text style={styles.rowOwnBadgeText}>Tu actividad</Text>
-            </View>
-          ) : null}
+          <View style={styles.rowTitleBlock}>
+            <Text ellipsizeMode="tail" numberOfLines={1} style={styles.rowTitle}>{title}</Text>
+            {customName ? (
+              <Text ellipsizeMode="tail" numberOfLines={1} style={styles.rowCustomName}>{customName}</Text>
+            ) : null}
+          </View>
+          <View style={styles.rowTopBadges}>
+            {visualState ? (
+              <View
+                style={[
+                  styles.rowStatusBadge,
+                  {
+                    backgroundColor: visualState.backgroundColor,
+                    borderColor: visualState.borderColor,
+                  },
+                ]}
+              >
+                <Text style={[styles.rowStatusBadgeText, { color: visualState.color }]}>{visualState.label}</Text>
+              </View>
+            ) : null}
+            {ownActivity ? (
+              <View style={styles.rowOwnBadge}>
+                <Text style={styles.rowOwnBadgeText}>Tu actividad</Text>
+              </View>
+            ) : null}
+          </View>
         </View>
-        {customName ? (
-          <Text ellipsizeMode="tail" numberOfLines={1} style={styles.rowCustomName}>{customName}</Text>
-        ) : null}
         <View style={styles.rowLocation}>
           <MapPin color="#73827C" size={13} strokeWidth={2.1} />
           <Text ellipsizeMode="tail" numberOfLines={1} style={styles.rowMeta}>{location}</Text>
@@ -2334,6 +2338,7 @@ const styles = StyleSheet.create({
   },
   profileRow: {
     alignItems: 'center',
+    alignSelf: 'stretch',
     backgroundColor: '#FFFFFF',
     borderColor: '#E7E7E1',
     borderRadius: 18,
@@ -2341,8 +2346,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: 12,
     minHeight: 98,
-    paddingHorizontal: 12,
-    paddingVertical: 11,
+    padding: 14,
+    width: '100%',
     ...cardShadow,
   },
   rowThumb: {
@@ -2382,13 +2387,26 @@ const styles = StyleSheet.create({
     minWidth: 0,
   },
   rowTitleLine: {
-    alignItems: 'center',
+    alignItems: 'flex-start',
     flexDirection: 'row',
     gap: 8,
+    justifyContent: 'space-between',
+  },
+  rowTitleBlock: {
+    flex: 1,
+    minWidth: 0,
+  },
+  rowTopBadges: {
+    alignItems: 'flex-end',
+    flexDirection: 'row',
+    flexShrink: 0,
+    flexWrap: 'wrap',
+    gap: 8,
+    justifyContent: 'flex-end',
+    maxWidth: '48%',
   },
   rowTitle: {
     color: '#071D19',
-    flex: 1,
     fontSize: 15,
     fontWeight: '900',
     letterSpacing: 0,
