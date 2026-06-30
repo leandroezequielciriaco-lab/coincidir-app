@@ -1,5 +1,4 @@
 import { Stack, usePathname, useRouter } from 'expo-router'
-import * as Notifications from 'expo-notifications'
 import { useEffect, useRef, useState } from 'react'
 import { AppState, Platform } from 'react-native'
 import { SafeAreaProvider } from 'react-native-safe-area-context'
@@ -49,22 +48,23 @@ const EMAIL_VERIFICATION_BLOCKED_PREFIXES = [
 
 const ANDROID_NOTIFICATION_CHANNEL_ID = 'coincidir-default'
 
-Notifications.setNotificationHandler({
-  handleNotification: async () => ({
-    shouldPlaySound: true,
-    shouldSetBadge: true,
-    shouldShowBanner: true,
-    shouldShowList: true,
-  }),
-})
-
 async function configureAndroidNotificationChannel() {
   if (Platform.OS !== 'android') return
+
+  const Notifications = await import('expo-notifications')
+
+  Notifications.setNotificationHandler({
+    handleNotification: async () => ({
+      shouldPlaySound: true,
+      shouldSetBadge: true,
+      shouldShowBanner: true,
+      shouldShowList: true,
+    }),
+  })
 
   await Notifications.setNotificationChannelAsync(ANDROID_NOTIFICATION_CHANNEL_ID, {
     name: 'COINCIDIR',
     importance: Notifications.AndroidImportance.MAX,
-    sound: 'default',
     vibrationPattern: [0, 250, 250, 250],
     enableVibrate: true,
   })
