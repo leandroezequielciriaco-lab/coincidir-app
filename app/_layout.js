@@ -51,6 +51,22 @@ const EMAIL_VERIFICATION_BLOCKED_PREFIXES = [
 const ANDROID_NOTIFICATION_CHANNEL_ID = 'coincidir-default'
 const PUSH_PERMISSION_REQUESTED_KEY_PREFIX = '@coincidir:push-permission-requested:'
 
+function readNotificationDataString(data, key) {
+  const value = data?.[key]
+  return typeof value === 'string' && value.trim() ? value.trim() : ''
+}
+
+function getNotificationActivityRoute(response) {
+  const data = response?.notification?.request?.content?.data
+  const activityId = readNotificationDataString(data, 'activityId')
+  if (!activityId) return null
+
+  return {
+    activityId,
+    key: readNotificationDataString(data, 'notificationId') || activityId,
+  }
+}
+
 async function configureAndroidNotificationChannel() {
   if (Platform.OS !== 'android') return
 
@@ -170,11 +186,14 @@ export default function RootLayout() {
   const router = useRouter()
   const [authState, setAuthState] = useState({ checked: false, user: null })
   const [legalState, setLegalState] = useState({ checked: true, hasAccepted: false, userId: null })
+  const [pendingNotificationRouteVersion, setPendingNotificationRouteVersion] = useState(0)
   const instanceId = getJsInstanceId()
   const externalRouteRestoreAttemptedRef = useRef(false)
   const lastAuthenticatedAtRef = useRef(0)
   const redirectTimerRef = useRef(null)
   const pushTokenRegistrationAttemptedRef = useRef(new Set())
+  const pendingNotificationRouteRef = useRef(null)
+  const processedNotificationRouteKeysRef = useRef(new Set())
 
   useEffect(() => {
     console.log('[ROOT MOUNT]', { instanceId })
@@ -192,6 +211,45 @@ export default function RootLayout() {
     configureAndroidNotificationChannel().catch((error) => {
       if (__DEV__) console.warn('[NOTIFICATION CHANNEL SETUP ERROR]', error)
     })
+  }, [])
+
+  useEffect(() => {
+    let isMounted = true
+    let subscription
+
+    const queueNotificationRoute = (response) => {
+      const route = getNotificationActivityRoute(response)
+      if (!route) return
+      if (processedNotificationRouteKeysRef.current.has(route.key)) return
+
+      processedNotificationRouteKeysRef.current.add(route.key)
+      pendingNotificationRouteRef.current = route
+      setPendingNotificationRouteVersion((current) => current + 1)
+    }
+
+    import('expo-notifications')
+      .then((Notifications) => {
+        if (!isMounted) return
+
+        subscription = Notifications.addNotificationResponseReceivedListener(queueNotificationRoute)
+
+        Notifications.getLastNotificationResponseAsync()
+          .then((response) => {
+            if (!isMounted || !response) return
+            queueNotificationRoute(response)
+          })
+          .catch((error) => {
+            if (__DEV__) console.warn('[NOTIFICATION LAST RESPONSE ERROR]', error)
+          })
+      })
+      .catch((error) => {
+        if (__DEV__) console.warn('[NOTIFICATION RESPONSE LISTENER ERROR]', error)
+      })
+
+    return () => {
+      isMounted = false
+      subscription?.remove()
+    }
   }, [])
 
   useEffect(() => {
@@ -442,6 +500,32 @@ export default function RootLayout() {
       }
     }
   }, [authState.checked, authState.user, instanceId, legalState, pathname, router])
+
+  useEffect(() => {
+    const pendingRoute = pendingNotificationRouteRef.current
+    if (!pendingRoute) return
+
+    const authLoading = !authState.checked
+    const legalLoading = Boolean(
+      authState.user &&
+      (!legalState.checked || legalState.userId !== authState.user.uid)
+    )
+    const needsLegalAcceptance = Boolean(
+      authState.user &&
+      legalState.checked &&
+      legalState.userId === authState.user.uid &&
+      !legalState.hasAccepted
+    )
+    const needsEmailVerification = requiresEmailVerification(authState.user)
+
+    if (authLoading || legalLoading || !authState.user || needsLegalAcceptance || needsEmailVerification) return
+
+    pendingNotificationRouteRef.current = null
+    router.push({
+      pathname: '/activity/[activityId]',
+      params: { activityId: pendingRoute.activityId },
+    })
+  }, [authState.checked, authState.user, legalState, pathname, pendingNotificationRouteVersion, router])
 
   return (
     <AuthContext.Provider value={authState}>
