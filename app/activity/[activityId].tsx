@@ -1623,36 +1623,85 @@ export default function ActivityDetailScreen() {
                     <Text numberOfLines={1} style={styles.interestedName}>{user.name}</Text>
                     <Text style={styles.interestedSubtitle}>Quiere participar en esta actividad</Text>
                     <View style={styles.interestedActions}>
-                      <View style={styles.interestedPrimaryActions}>
-                        <PressScale
-                          accessibilityLabel={`Rechazar a ${user.name}`}
-                          accessibilityRole="button"
-                          disabled={detail.isCancelled || isInterestedActionPending(user.uid, 'reject')}
-                          onPress={() => rejectInterestedUser(user)}
-                          scaleTo={0.97}
-                          style={[styles.rejectAction, detail.isCancelled && styles.interestedActionDisabled]}
-                        >
-                          {isInterestedActionPending(user.uid, 'reject') ? (
-                            <ActivityIndicator color="#B42318" size="small" />
-                          ) : (
-                            <Text style={styles.rejectActionText}>Rechazar</Text>
-                          )}
-                        </PressScale>
-                        <PressScale
-                          accessibilityLabel={`Aceptar a ${user.name}`}
-                          accessibilityRole="button"
-                          disabled={detail.isCancelled || isInterestedActionPending(user.uid, 'confirm')}
-                          onPress={() => confirmInterestedUser(user)}
-                          scaleTo={0.97}
-                          style={[styles.confirmAction, detail.isCancelled && styles.interestedActionDisabled]}
-                        >
-                          {isInterestedActionPending(user.uid, 'confirm') ? (
-                            <ActivityIndicator color="#FFFFFF" size="small" />
-                          ) : (
-                            <Text style={styles.confirmActionText}>Aceptar</Text>
-                          )}
-                        </PressScale>
-                      </View>
+                      {Platform.OS === 'android' ? (
+                        <View style={styles.androidInterestedActions}>
+                          <Pressable
+                            accessibilityLabel={`Rechazar a ${user.name}`}
+                            accessibilityRole="button"
+                            disabled={detail.isCancelled || isInterestedActionPending(user.uid, 'reject')}
+                            onPress={() => rejectInterestedUser(user)}
+                            style={({ pressed }) => [
+                              styles.androidRejectAction,
+                              pressed && styles.androidInterestedActionPressed,
+                              detail.isCancelled && styles.androidInterestedActionDisabled,
+                            ]}
+                          >
+                            {isInterestedActionPending(user.uid, 'reject') ? (
+                              <ActivityIndicator color="#B42318" size="small" />
+                            ) : (
+                              <Text style={styles.androidRejectActionText}>Rechazar</Text>
+                            )}
+                          </Pressable>
+                          <Pressable
+                            accessibilityLabel={`Aceptar a ${user.name}`}
+                            accessibilityRole="button"
+                            disabled={detail.isCancelled || isInterestedActionPending(user.uid, 'confirm')}
+                            onPress={() => confirmInterestedUser(user)}
+                            style={({ pressed }) => ({
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              minHeight: 48,
+                              opacity: detail.isCancelled ? 0.5 : pressed ? 0.88 : 1,
+                              paddingHorizontal: 16,
+                              paddingVertical: 12,
+                              width: '100%',
+                            })}
+                          >
+                            {isInterestedActionPending(user.uid, 'confirm') ? (
+                              <ActivityIndicator color="#000000" size="small" />
+                            ) : (
+                              <Text style={{ color: '#000000', fontSize: 18, fontWeight: '900', letterSpacing: 0 }}>Aceptar</Text>
+                            )}
+                          </Pressable>
+                        </View>
+                      ) : (
+                        <View style={styles.interestedPrimaryActions}>
+                          <Pressable
+                            accessibilityLabel={`Rechazar a ${user.name}`}
+                            accessibilityRole="button"
+                            disabled={detail.isCancelled || isInterestedActionPending(user.uid, 'reject')}
+                            onPress={() => rejectInterestedUser(user)}
+                            style={({ pressed }) => [
+                              styles.rejectAction,
+                              pressed && styles.interestedActionPressed,
+                              detail.isCancelled && styles.interestedActionDisabled,
+                            ]}
+                          >
+                            {isInterestedActionPending(user.uid, 'reject') ? (
+                              <ActivityIndicator color="#B42318" size="small" />
+                            ) : (
+                              <Text style={styles.rejectActionText}>Rechazar</Text>
+                            )}
+                          </Pressable>
+                          <Pressable
+                            accessibilityLabel={`Aceptar a ${user.name}`}
+                            accessibilityRole="button"
+                            disabled={detail.isCancelled || isInterestedActionPending(user.uid, 'confirm')}
+                            onPress={() => confirmInterestedUser(user)}
+                            style={({ pressed }) => [
+                              styles.confirmAction,
+                              pressed && styles.interestedActionPressed,
+                              detail.isCancelled && styles.interestedActionDisabled,
+                            ]}
+                          >
+                            {isInterestedActionPending(user.uid, 'confirm') ? (
+                              <ActivityIndicator color="#FFFFFF" size="small" />
+                            ) : (
+                              <Text style={styles.confirmActionText}>Aceptar</Text>
+                            )}
+                          </Pressable>
+                        </View>
+                      )}
                     </View>
                   </View>
                 )) : (
@@ -2149,22 +2198,69 @@ const styles = StyleSheet.create({
     paddingTop: 12,
   },
   interestedPrimaryActions: {
-    alignItems: 'center',
+    alignItems: 'stretch',
     flexDirection: 'row',
     gap: 8,
   },
+  androidInterestedActions: {
+    alignItems: 'stretch',
+    gap: 8,
+    width: '100%',
+  },
+  androidConfirmAction: {
+    alignItems: 'center',
+    backgroundColor: '#17803C',
+    borderColor: '#17803C',
+    borderRadius: 14,
+    borderWidth: 1,
+    justifyContent: 'center',
+    minHeight: 48,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    width: '100%',
+  },
+  androidConfirmActionText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '900',
+    letterSpacing: 0,
+  },
+  androidRejectAction: {
+    alignItems: 'center',
+    backgroundColor: '#FFF5F4',
+    borderColor: '#F4C7C2',
+    borderRadius: 14,
+    borderWidth: 1,
+    justifyContent: 'center',
+    minHeight: 48,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    width: '100%',
+  },
+  androidRejectActionText: {
+    color: '#B42318',
+    fontSize: 14,
+    fontWeight: '900',
+    letterSpacing: 0,
+  },
+  androidInterestedActionPressed: {
+    opacity: 0.88,
+  },
+  androidInterestedActionDisabled: {
+    opacity: 0.5,
+  },
   confirmAction: {
     alignItems: 'center',
-    backgroundColor: '#6C3DE5',
-    borderColor: '#6C3DE5',
-    borderRadius: 16,
-    borderWidth: 1.2,
+    backgroundColor: '#17803C',
+    borderColor: '#17803C',
+    borderRadius: 14,
+    borderWidth: 1,
     flex: 1,
-    height: 46,
     justifyContent: 'center',
+    minHeight: 46,
     minWidth: 0,
     paddingHorizontal: 14,
-    paddingVertical: 0,
+    paddingVertical: 10,
   },
   confirmActionText: {
     color: '#FFFFFF',
@@ -2176,14 +2272,17 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     backgroundColor: '#FFF5F4',
     borderColor: '#F4C7C2',
-    borderRadius: 16,
-    borderWidth: 1.2,
+    borderRadius: 14,
+    borderWidth: 1,
     flex: 1,
-    height: 46,
     justifyContent: 'center',
+    minHeight: 46,
     minWidth: 0,
     paddingHorizontal: 14,
-    paddingVertical: 0,
+    paddingVertical: 10,
+  },
+  interestedActionPressed: {
+    opacity: 0.88,
   },
   interestedActionDisabled: {
     opacity: 0.5,
