@@ -1804,7 +1804,10 @@ const styles = StyleSheet.create({
     lineHeight: 18,
   },
   categoryChipTextActive: {
-    color: '#FFFFFF',
+    color: Platform.select({
+      web: '#FFFFFF',
+      default: '#000000',
+    }),
   },
   exploreTitle: {
     color: '#00613A',
