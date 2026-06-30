@@ -67,6 +67,12 @@
           "cameraPermission": "COINCIDIR usa la cámara para tomar tu foto de perfil.",
           "microphonePermission": false
         }
+      ],
+      [
+        "expo-notifications",
+        {
+          "defaultChannel": "coincidir-default"
+        }
       ]
     ],
     "experiments": {

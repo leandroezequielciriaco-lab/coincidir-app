@@ -1,6 +1,7 @@
 import { Stack, usePathname, useRouter } from 'expo-router'
+import * as Notifications from 'expo-notifications'
 import { useEffect, useRef, useState } from 'react'
-import { AppState } from 'react-native'
+import { AppState, Platform } from 'react-native'
 import { SafeAreaProvider } from 'react-native-safe-area-context'
 import { onAuthStateChanged } from 'firebase/auth'
 import { doc, onSnapshot } from 'firebase/firestore'
@@ -46,6 +47,29 @@ const EMAIL_VERIFICATION_BLOCKED_PREFIXES = [
   '/group/',
 ]
 
+const ANDROID_NOTIFICATION_CHANNEL_ID = 'coincidir-default'
+
+Notifications.setNotificationHandler({
+  handleNotification: async () => ({
+    shouldPlaySound: true,
+    shouldSetBadge: true,
+    shouldShowBanner: true,
+    shouldShowList: true,
+  }),
+})
+
+async function configureAndroidNotificationChannel() {
+  if (Platform.OS !== 'android') return
+
+  await Notifications.setNotificationChannelAsync(ANDROID_NOTIFICATION_CHANNEL_ID, {
+    name: 'COINCIDIR',
+    importance: Notifications.AndroidImportance.MAX,
+    sound: 'default',
+    vibrationPattern: [0, 250, 250, 250],
+    enableVibrate: true,
+  })
+}
+
 function requiresEmailVerification(user) {
   if (!user) return false
   if (isGoogleUser(user)) return false
@@ -80,6 +104,12 @@ export default function RootLayout() {
   useEffect(() => {
     console.log('[ROUTE CURRENT]', { instanceId, pathname })
   }, [instanceId, pathname])
+
+  useEffect(() => {
+    configureAndroidNotificationChannel().catch((error) => {
+      if (__DEV__) console.warn('[NOTIFICATION CHANNEL SETUP ERROR]', error)
+    })
+  }, [])
 
   useEffect(() => {
     const subscription = AppState.addEventListener('change', (nextState) => {
