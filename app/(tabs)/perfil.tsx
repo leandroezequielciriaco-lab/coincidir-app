@@ -1234,86 +1234,95 @@ function ProfileRow({
   }, [item.data])
 
   return (
-    <PressScale
-      onPress={onPress}
-      scaleTo={0.98}
+    <View
       style={[
-        styles.profileRow,
+        styles.profileRowCard,
         isGroupActivity && { borderColor: groupColors.borderColor },
       ]}
     >
-      <View style={[styles.rowThumb, variant === 'group' && styles.rowThumbGroup]}>
-        {variant === 'group' ? (
-          <UsersRound color={iconColor} size={21} strokeWidth={2.2} />
-        ) : (
-          <>
-            <Image
-              onError={() => setImageSource(defaultActivityImage)}
-              source={imageSource}
-              style={styles.rowThumbImage}
-            />
-            <View style={styles.rowThumbIcon}>
-              <CalendarDays color="#006A32" size={13} strokeWidth={2.4} />
+      <Pressable
+        accessibilityRole="button"
+        onPress={onPress}
+        style={({ pressed }) => [
+          styles.profileRowPressable,
+          pressed && styles.profileRowPressed,
+        ]}
+      >
+        <View style={[styles.rowThumb, variant === 'group' && styles.rowThumbGroup]}>
+          {variant === 'group' ? (
+            <UsersRound color={iconColor} size={21} strokeWidth={2.2} />
+          ) : (
+            <>
+              <Image
+                onError={() => setImageSource(defaultActivityImage)}
+                source={imageSource}
+                style={styles.rowThumbImage}
+              />
+              <View style={styles.rowThumbIcon}>
+                <CalendarDays color="#006A32" size={13} strokeWidth={2.4} />
+              </View>
+            </>
+          )}
+        </View>
+        <View style={styles.rowCopy}>
+          <View style={styles.rowTitleLine}>
+            <View style={styles.rowTitleBlock}>
+              <Text ellipsizeMode="tail" numberOfLines={1} style={styles.rowTitle}>{title}</Text>
+              {customName ? (
+                <Text ellipsizeMode="tail" numberOfLines={1} style={styles.rowCustomName}>{customName}</Text>
+              ) : null}
             </View>
-          </>
-        )}
-      </View>
-      <View style={styles.rowCopy}>
-        <View style={styles.rowTitleLine}>
-          <View style={styles.rowTitleBlock}>
-            <Text ellipsizeMode="tail" numberOfLines={1} style={styles.rowTitle}>{title}</Text>
-            {customName ? (
-              <Text ellipsizeMode="tail" numberOfLines={1} style={styles.rowCustomName}>{customName}</Text>
-            ) : null}
+            <View style={styles.rowTopBadges}>
+              {visualState ? (
+                <View
+                  style={[
+                    styles.rowStatusBadge,
+                    {
+                      backgroundColor: visualState.backgroundColor,
+                      borderColor: visualState.borderColor,
+                    },
+                  ]}
+                >
+                  <Text style={[styles.rowStatusBadgeText, { color: visualState.color }]}>{visualState.label}</Text>
+                </View>
+              ) : null}
+              {ownActivity ? (
+                <View style={styles.rowOwnBadge}>
+                  <Text style={styles.rowOwnBadgeText}>Tu actividad</Text>
+                </View>
+              ) : null}
+            </View>
           </View>
-          <View style={styles.rowTopBadges}>
-            {visualState ? (
-              <View
-                style={[
-                  styles.rowStatusBadge,
-                  {
-                    backgroundColor: visualState.backgroundColor,
-                    borderColor: visualState.borderColor,
-                  },
-                ]}
-              >
-                <Text style={[styles.rowStatusBadgeText, { color: visualState.color }]}>{visualState.label}</Text>
-              </View>
-            ) : null}
-            {ownActivity ? (
-              <View style={styles.rowOwnBadge}>
-                <Text style={styles.rowOwnBadgeText}>Tu actividad</Text>
-              </View>
-            ) : null}
+          <View style={styles.rowLocation}>
+            <MapPin color="#73827C" size={13} strokeWidth={2.1} />
+            <Text ellipsizeMode="tail" numberOfLines={1} style={styles.rowMeta}>{location}</Text>
           </View>
-        </View>
-        <View style={styles.rowLocation}>
-          <MapPin color="#73827C" size={13} strokeWidth={2.1} />
-          <Text ellipsizeMode="tail" numberOfLines={1} style={styles.rowMeta}>{location}</Text>
-        </View>
-        {groupMeta.groupName ? (
-          <View style={styles.rowGroupIndicator}>
-            <GroupAvatar groupName={groupMeta.groupName} imageUrl={groupImageUrl} size={18} />
-            <Text ellipsizeMode="tail" numberOfLines={1} style={[styles.rowGroupIndicatorText, { color: groupColors.chipTextColor }]}>
-              {groupMeta.groupName}
-            </Text>
-          </View>
-        ) : null}
-        <View style={styles.rowBadgeLine}>
-          <View style={styles.rowBadge}>
-            <CalendarDays color="#17803C" size={12} strokeWidth={2.2} />
-            <Text ellipsizeMode="tail" numberOfLines={1} style={styles.rowBadgeText}>{date}</Text>
-          </View>
-          <View style={styles.rowBadge}>
-            <UsersRound color="#17803C" size={12} strokeWidth={2.2} />
-            <Text ellipsizeMode="tail" numberOfLines={1} style={styles.rowBadgeText}>
-              {variant === 'group' ? `${participants} miembros` : `${participants} participantes`}
-            </Text>
+          {groupMeta.groupName ? (
+            <View style={styles.rowGroupIndicator}>
+              <GroupAvatar groupName={groupMeta.groupName} imageUrl={groupImageUrl} size={18} />
+              <Text ellipsizeMode="tail" numberOfLines={1} style={[styles.rowGroupIndicatorText, { color: groupColors.chipTextColor }]}>
+                {groupMeta.groupName}
+              </Text>
+            </View>
+          ) : null}
+          <View style={styles.rowBadgeLine}>
+            <View style={styles.rowBadge}>
+              <CalendarDays color="#17803C" size={12} strokeWidth={2.2} />
+              <Text ellipsizeMode="tail" numberOfLines={1} style={styles.rowBadgeText}>{date}</Text>
+            </View>
+            <View style={styles.rowBadge}>
+              <UsersRound color="#17803C" size={12} strokeWidth={2.2} />
+              <Text ellipsizeMode="tail" numberOfLines={1} style={styles.rowBadgeText}>
+                {variant === 'group' ? `${participants} miembros` : `${participants} participantes`}
+              </Text>
+            </View>
           </View>
         </View>
-      </View>
-      <ChevronRight color="#9AA6A1" size={19} strokeWidth={2.2} />
-    </PressScale>
+        <View style={styles.rowChevronSlot}>
+          <ChevronRight color="#9AA6A1" size={19} strokeWidth={2.2} />
+        </View>
+      </Pressable>
+    </View>
   )
 }
 
@@ -2336,29 +2345,35 @@ const styles = StyleSheet.create({
   profileGroupActionPressed: {
     opacity: 0.84,
   },
-  profileRow: {
-    alignItems: 'center',
+  profileRowCard: {
     alignSelf: 'stretch',
     backgroundColor: '#FFFFFF',
     borderColor: '#E7E7E1',
-    borderRadius: 18,
+    borderRadius: 20,
     borderWidth: 1,
-    flexDirection: 'row',
-    gap: 12,
-    minHeight: 98,
-    padding: 14,
     width: '100%',
     ...cardShadow,
+  },
+  profileRowPressable: {
+    alignItems: 'center',
+    alignSelf: 'stretch',
+    flexDirection: 'row',
+    padding: 12,
+    width: '100%',
+  },
+  profileRowPressed: {
+    opacity: 0.92,
   },
   rowThumb: {
     alignItems: 'center',
     backgroundColor: '#EFF6E9',
     borderRadius: 16,
-    height: 76,
+    flexShrink: 0,
+    height: 86,
     justifyContent: 'center',
     overflow: 'hidden',
     position: 'relative',
-    width: 76,
+    width: 86,
   },
   rowThumbGroup: {
     backgroundColor: '#F4EEF9',
@@ -2375,22 +2390,23 @@ const styles = StyleSheet.create({
     borderColor: '#FFFFFF',
     borderRadius: 999,
     borderWidth: 2,
-    bottom: 6,
+    bottom: 7,
     height: 28,
     justifyContent: 'center',
     position: 'absolute',
-    right: 6,
+    right: 7,
     width: 28,
   },
   rowCopy: {
     flex: 1,
+    justifyContent: 'center',
+    marginLeft: 12,
     minWidth: 0,
   },
   rowTitleLine: {
     alignItems: 'flex-start',
     flexDirection: 'row',
-    gap: 8,
-    justifyContent: 'space-between',
+    gap: 6,
   },
   rowTitleBlock: {
     flex: 1,
@@ -2401,9 +2417,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     flexShrink: 0,
     flexWrap: 'wrap',
-    gap: 8,
+    gap: 6,
     justifyContent: 'flex-end',
-    maxWidth: '48%',
+    maxWidth: '42%',
   },
   rowTitle: {
     color: '#071D19',
@@ -2475,16 +2491,18 @@ const styles = StyleSheet.create({
     lineHeight: 12,
   },
   rowBadgeLine: {
+    alignItems: 'center',
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 7,
-    marginTop: 8,
+    gap: 8,
+    marginTop: 7,
   },
   rowBadge: {
     alignItems: 'center',
     backgroundColor: '#F0F5E9',
     borderRadius: 999,
     flexDirection: 'row',
+    flexShrink: 1,
     gap: 4,
     maxWidth: '100%',
     minHeight: 24,
@@ -2495,6 +2513,14 @@ const styles = StyleSheet.create({
     flexShrink: 1,
     fontSize: 11,
     fontWeight: '800',
+  },
+  rowChevronSlot: {
+    alignItems: 'center',
+    alignSelf: 'stretch',
+    flexShrink: 0,
+    justifyContent: 'center',
+    marginLeft: 8,
+    width: 24,
   },
   editContent: {
     paddingBottom: 44,
