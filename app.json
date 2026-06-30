@@ -12,6 +12,7 @@
     },
     "android": {
       "package": "com.leandroezequielciriaco.coincidir",
+      "googleServicesFile": "./google-services.json",
       "adaptiveIcon": {
         "backgroundColor": "#FCFAF3",
         "foregroundImage": "./assets/images/coincidir-logo-official.png",

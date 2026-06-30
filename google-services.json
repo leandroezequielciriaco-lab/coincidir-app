@@ -1,0 +1,39 @@
+{
+  "project_info": {
+    "project_number": "270669252454",
+    "project_id": "coincidir",
+    "storage_bucket": "coincidir.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:270669252454:android:280a7b3b3b4cd21506aaa7",
+        "android_client_info": {
+          "package_name": "com.leandroezequielciriaco.coincidir"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "270669252454-5gv5hko6jgqvd20g23pvhpu0ag31hm3j.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCt3gtP_tOV7ysZ54oThvgmbKs-M90OPEw"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "270669252454-5gv5hko6jgqvd20g23pvhpu0ag31hm3j.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

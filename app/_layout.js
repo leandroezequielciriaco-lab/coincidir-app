@@ -1,9 +1,11 @@
 import { Stack, usePathname, useRouter } from 'expo-router'
+import Constants from 'expo-constants'
+import AsyncStorage from '@react-native-async-storage/async-storage'
 import { useEffect, useRef, useState } from 'react'
 import { AppState, Platform } from 'react-native'
 import { SafeAreaProvider } from 'react-native-safe-area-context'
 import { onAuthStateChanged } from 'firebase/auth'
-import { doc, onSnapshot } from 'firebase/firestore'
+import { doc, onSnapshot, serverTimestamp, setDoc } from 'firebase/firestore'
 import '../global.css'
 import { getFirebaseServices } from '../firebaseConfig'
 import { AuthContext } from '../utils/authContext'
@@ -47,6 +49,7 @@ const EMAIL_VERIFICATION_BLOCKED_PREFIXES = [
 ]
 
 const ANDROID_NOTIFICATION_CHANNEL_ID = 'coincidir-default'
+const PUSH_PERMISSION_REQUESTED_KEY_PREFIX = '@coincidir:push-permission-requested:'
 
 async function configureAndroidNotificationChannel() {
   if (Platform.OS !== 'android') return
@@ -68,6 +71,85 @@ async function configureAndroidNotificationChannel() {
     vibrationPattern: [0, 250, 250, 250],
     enableVibrate: true,
   })
+}
+
+function getExpoProjectId() {
+  return Constants.easConfig?.projectId || Constants.expoConfig?.extra?.eas?.projectId
+}
+
+async function hasRequestedAndroidPushPermission(userId) {
+  try {
+    return await AsyncStorage.getItem(`${PUSH_PERMISSION_REQUESTED_KEY_PREFIX}${userId}`) === '1'
+  } catch (error) {
+    if (__DEV__) console.warn('[PUSH PERMISSION STORAGE READ ERROR]', error)
+    return false
+  }
+}
+
+async function markAndroidPushPermissionRequested(userId) {
+  try {
+    await AsyncStorage.setItem(`${PUSH_PERMISSION_REQUESTED_KEY_PREFIX}${userId}`, '1')
+  } catch (error) {
+    if (__DEV__) console.warn('[PUSH PERMISSION STORAGE WRITE ERROR]', error)
+  }
+}
+
+async function registerAndroidExpoPushToken(userId) {
+  if (Platform.OS !== 'android' || !userId) return
+
+  try {
+    await configureAndroidNotificationChannel()
+
+    const Notifications = await import('expo-notifications')
+    const permissions = await Notifications.getPermissionsAsync()
+    let finalStatus = permissions.status
+
+    if (finalStatus !== 'granted') {
+      const alreadyRequested = await hasRequestedAndroidPushPermission(userId)
+      if (alreadyRequested || permissions.canAskAgain === false) {
+        if (__DEV__) console.warn('[PUSH TOKEN REGISTRATION SKIPPED]', { reason: 'permission-denied' })
+        return
+      }
+
+      const requestedPermissions = await Notifications.requestPermissionsAsync()
+      await markAndroidPushPermissionRequested(userId)
+      finalStatus = requestedPermissions.status
+    }
+
+    if (finalStatus !== 'granted') {
+      if (__DEV__) console.warn('[PUSH TOKEN REGISTRATION SKIPPED]', { reason: 'permission-denied' })
+      return
+    }
+
+    const projectId = getExpoProjectId()
+    if (!projectId) {
+      if (__DEV__) console.warn('[PUSH TOKEN REGISTRATION SKIPPED]', { reason: 'missing-expo-project-id' })
+      return
+    }
+
+    const tokenResponse = await Notifications.getExpoPushTokenAsync({ projectId })
+    const expoPushToken = tokenResponse?.data
+
+    if (!expoPushToken) {
+      if (__DEV__) console.warn('[PUSH TOKEN REGISTRATION SKIPPED]', { reason: 'missing-token-response' })
+      return
+    }
+
+    const { db } = getFirebaseServices()
+    await setDoc(
+      doc(db, 'users', userId),
+      {
+        pushTokens: {
+          expo: expoPushToken,
+          platform: 'android',
+          updatedAt: serverTimestamp(),
+        },
+      },
+      { merge: true },
+    )
+  } catch (error) {
+    if (__DEV__) console.warn('[PUSH TOKEN REGISTRATION ERROR]', error)
+  }
 }
 
 function requiresEmailVerification(user) {
@@ -92,6 +174,7 @@ export default function RootLayout() {
   const externalRouteRestoreAttemptedRef = useRef(false)
   const lastAuthenticatedAtRef = useRef(0)
   const redirectTimerRef = useRef(null)
+  const pushTokenRegistrationAttemptedRef = useRef(new Set())
 
   useEffect(() => {
     console.log('[ROOT MOUNT]', { instanceId })
@@ -110,6 +193,16 @@ export default function RootLayout() {
       if (__DEV__) console.warn('[NOTIFICATION CHANNEL SETUP ERROR]', error)
     })
   }, [])
+
+  useEffect(() => {
+    if (!authState.checked || !authState.user) return
+
+    const userId = authState.user.uid
+    if (pushTokenRegistrationAttemptedRef.current.has(userId)) return
+
+    pushTokenRegistrationAttemptedRef.current.add(userId)
+    registerAndroidExpoPushToken(userId)
+  }, [authState.checked, authState.user])
 
   useEffect(() => {
     const subscription = AppState.addEventListener('change', (nextState) => {
