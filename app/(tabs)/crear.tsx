@@ -71,7 +71,7 @@ import {
 } from '../../constants/localGroups'
 import { getFirebaseServices } from '../../firebaseConfig'
 import { uploadGroupPhoto } from '../../lib/groupPhotos'
-import { notifyActivityUpdated, notifyNewActivityForMatchingInterests } from '../../lib/notifications'
+import { notifyActivityUpdated } from '../../lib/notifications'
 import { requireVerifiedParticipation } from '../../utils/authParticipation'
 import {
   showContentValidationAlert,
@@ -1776,16 +1776,16 @@ function CrearScreenContent() {
           groupName: payload.groupName,
           visibility: payload.visibility,
         })
-      }
-
-      if (shouldNotifyNewActivityInterest(payload)) {
-        notifyNewActivityForMatchingInterests({
-          activity: payload,
+        console.log('[NEW ACTIVITY INTEREST CLIENT DIAGNOSTICS]', {
+          activityDateISO: payload.activityDateISO,
           activityId: createdRef.id,
-          activityTitle: payload.name,
           creatorId: user.uid,
-        }).catch((error) => {
-          if (__DEV__) console.warn('new-activity-interest-notification-create-error', error)
+          isFuture: getActivityStartMillis(payload) > Date.now(),
+          notificationSource: 'firebase-functions',
+          shouldNotify: shouldNotifyNewActivityInterest(payload),
+          subcategory: payload.subcategory,
+          time: payload.time,
+          visibility: payload.visibility,
         })
       }
 
