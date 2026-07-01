@@ -17,7 +17,7 @@ import {
 import { getFirebaseServices } from '../firebaseConfig'
 import { resolveUserDisplayName } from '../utils/userNames'
 
-export type NotificationType = 'activity_cancelled' | 'activity_update' | 'activity_updated' | 'confirmed' | 'group_join_accepted' | 'group_join_request' | 'interest' | 'invite' | 'joined_activity' | 'message' | 'rejected'
+export type NotificationType = 'activity_cancelled' | 'activity_update' | 'activity_updated' | 'confirmed' | 'group_join_accepted' | 'group_join_request' | 'interest' | 'invite' | 'joined_activity' | 'message' | 'new_activity_interest' | 'rejected'
 
 export type AppNotification = {
   activityId?: string
@@ -87,6 +87,13 @@ export type NotifyLinkedActivityUsersInput = {
   organizerId?: string
 }
 
+export type NotifyNewActivityInterestInput = {
+  activity: Record<string, unknown>
+  activityId: string
+  activityTitle: string
+  creatorId: string
+}
+
 type NotificationsState = {
   error: string | null
   isLoading: boolean
@@ -115,6 +122,7 @@ function readNotificationType(value: unknown): NotificationType {
     || value === 'invite'
     || value === 'joined_activity'
     || value === 'message'
+    || value === 'new_activity_interest'
     || value === 'rejected'
   ) return value
   return 'activity_update'
@@ -391,6 +399,39 @@ export async function notifyActivityCancelled({
     senderId: organizerId,
     title: 'Actividad cancelada',
     type: 'activity_cancelled',
+    userId,
+  })))
+}
+
+export async function notifyNewActivityForMatchingInterests({
+  activity,
+  activityId,
+  activityTitle,
+  creatorId,
+}: NotifyNewActivityInterestInput) {
+  const primaryInterest = readString(activity.subcategory)
+  const additionalSettings = readRecord(activity.additionalSettings)
+  const visibility = readString(activity.visibility, readString(additionalSettings.visibility))
+  if (!activityId || !creatorId || !primaryInterest || visibility !== 'public') return []
+
+  const { db } = getFirebaseServices()
+  const snapshot = await getDocs(query(
+    collection(db, 'users'),
+    where('interests', 'array-contains', primaryInterest),
+  ))
+  const userIds = snapshot.docs
+    .map((item) => item.id)
+    .filter((userId) => userId && userId !== creatorId)
+
+  if (userIds.length === 0) return []
+
+  return Promise.all(userIds.map((userId) => createDeterministicNotification({
+    activityId,
+    activityTitle,
+    body: 'Se publicÃ³ una actividad que puede interesarte.',
+    senderId: creatorId,
+    title: 'Nueva actividad que coincide con tus intereses',
+    type: 'new_activity_interest',
     userId,
   })))
 }

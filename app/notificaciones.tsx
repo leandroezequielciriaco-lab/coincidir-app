@@ -39,6 +39,16 @@ type NotificationTone = {
 }
 
 function getNotificationTone(type: NotificationType): NotificationTone {
+  if (type === 'new_activity_interest') {
+    return {
+      Icon: Compass,
+      accent: '#0E5A44',
+      background: '#E8F3EA',
+      border: '#D3E6D4',
+      cardBackground: '#FBFEF9',
+    }
+  }
+
   if (type === 'interest' || type === 'joined_activity') {
     return {
       Icon: UserRound,

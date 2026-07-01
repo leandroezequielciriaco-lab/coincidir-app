@@ -71,7 +71,7 @@ import {
 } from '../../constants/localGroups'
 import { getFirebaseServices } from '../../firebaseConfig'
 import { uploadGroupPhoto } from '../../lib/groupPhotos'
-import { notifyActivityUpdated } from '../../lib/notifications'
+import { notifyActivityUpdated, notifyNewActivityForMatchingInterests } from '../../lib/notifications'
 import { requireVerifiedParticipation } from '../../utils/authParticipation'
 import {
   showContentValidationAlert,
@@ -79,6 +79,7 @@ import {
   validateGroupPayload,
 } from '../../utils/contentModeration'
 import { getActivityCustomName } from '../../utils/activityTitles'
+import { getActivityStartMillis } from '../../utils/activityDiscovery'
 import { formatGroupMemberCount, getGroupMemberCount } from '../../utils/groupMembership'
 import { resolveUserDisplayName } from '../../utils/userNames'
 
@@ -822,6 +823,10 @@ function getCalendarDays(monthDate: Date) {
   }
 
   return days
+}
+
+function shouldNotifyNewActivityInterest(payload: ActivityFormPayload) {
+  return payload.visibility === 'public' && getActivityStartMillis(payload) > Date.now()
 }
 
 function formatCoordinateAddress(latitude: number, longitude: number) {
@@ -1770,6 +1775,17 @@ function CrearScreenContent() {
           groupId: payload.groupId,
           groupName: payload.groupName,
           visibility: payload.visibility,
+        })
+      }
+
+      if (shouldNotifyNewActivityInterest(payload)) {
+        notifyNewActivityForMatchingInterests({
+          activity: payload,
+          activityId: createdRef.id,
+          activityTitle: payload.name,
+          creatorId: user.uid,
+        }).catch((error) => {
+          if (__DEV__) console.warn('new-activity-interest-notification-create-error', error)
         })
       }
 
