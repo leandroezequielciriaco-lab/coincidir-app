@@ -197,7 +197,7 @@ function formatDateBadge(date: string) {
   const dateParts = date.trim().match(/^(\d{1,2})\/(\d{1,2})\/(\d{2}|\d{4})$/)
 
   if (normalizedDate.includes('hoy')) return 'HOY'
-  if (normalizedDate.includes('manana') || normalizedDate.includes('ma')) return 'MANANA'
+  if (normalizedDate.includes('manana') || normalizedDate.includes('ma')) return 'MAÑANA'
   if (normalizedDate.includes('sab')) return 'SAB'
   if (normalizedDate.includes('dom')) return 'DOM'
   if (dateParts) {
