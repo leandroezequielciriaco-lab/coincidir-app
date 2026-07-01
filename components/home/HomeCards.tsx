@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Image as ExpoImage } from 'expo-image'
 import { Platform, Pressable, StyleSheet, Text, View } from 'react-native'
-import { CalendarDays, MapPin, Share2, UsersRound } from 'lucide-react-native'
+import { MapPin, Share2, UsersRound } from 'lucide-react-native'
 
 import { PressScale } from './PressScale'
 import { GroupAvatar } from '../groups/GroupAvatar'
@@ -172,10 +172,6 @@ function ActivityCardContent({ groupColors, item }: { groupColors: ReturnType<ty
           <Text numberOfLines={1} style={[styles.groupIndicatorText, { color: groupColors.chipTextColor }]}>{item.groupName}</Text>
         </View>
       ) : null}
-      <View style={styles.activityMetaRow}>
-        <CalendarDays color="#17803C" size={17} strokeWidth={2.2} />
-        <Text numberOfLines={1} style={styles.activityMeta}>{item.dateTime}</Text>
-      </View>
       <View style={styles.activityMetaRow}>
         <MapPin color="#17803C" size={17} strokeWidth={2.2} />
         <Text numberOfLines={1} style={styles.activityMeta}>{item.location}</Text>

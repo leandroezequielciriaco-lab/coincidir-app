@@ -1,4 +1,4 @@
-import { Component, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Component, useCallback, useEffect, useMemo, useState } from 'react'
 import type { ErrorInfo, ReactNode } from 'react'
 import {
   ActivityIndicator,
@@ -981,10 +981,9 @@ function CrearScreenContent() {
   const router = useRouter()
   const { activityId, groupContext, groupId: preselectedGroupId, groupName: preselectedGroupName, kind, mode } = useLocalSearchParams<{ activityId?: string; groupContext?: string; groupId?: string; groupName?: string; kind?: string; mode?: string }>()
   const insets = useSafeAreaInsets()
-  const isEditMode = mode === 'edit'
+  const isEditMode = mode === 'edit' || Boolean(readString(activityId))
   const isGroupContext = !isEditMode && groupContext === '1' && kind === 'group' && Boolean(readString(preselectedGroupId))
   const isWebMobile = isWebMobileViewportSnapshot()
-  const hasResetOnFocusRef = useRef(false)
   const safeBack = useCallback(() => {
     if (router.canGoBack()) {
       router.back()
@@ -1091,7 +1090,7 @@ function CrearScreenContent() {
     [calendarMonth],
   )
 
-  const resetCreateActivityForm = useCallback(() => {
+  const resetCreateForm = useCallback(() => {
     const cleanGroupName = readString(preselectedGroupName)
     const cleanGroupId = readString(preselectedGroupId)
     const shouldKeepGroupContext = isGroupContext && Boolean(cleanGroupId)
@@ -1107,6 +1106,13 @@ function CrearScreenContent() {
     setSubcategory(groupCategory?.subcategories[0] ?? '')
     setActivitySearchQuery('')
     setSelectedActivitySearchLabel('')
+    setGroupDraftName('')
+    setGroupDraftDescription('')
+    setGroupDraftLocation('')
+    setGroupPhotoAsset(null)
+    setGroupPhotoPreviewUri('')
+    setCreatedGroupId('')
+    setCreatedGroupName('')
     setDescription('')
     setDate('')
     setSelectedDate(null)
@@ -1141,9 +1147,9 @@ function CrearScreenContent() {
 
   useFocusEffect(
     useCallback(() => {
-      if (Platform.OS !== 'web' || isEditMode) return undefined
+      if (isEditMode) return undefined
 
-      if (!hasResetOnFocusRef.current) {
+      if (Platform.OS === 'web') {
         const webWindow = globalThis as typeof globalThis & { innerHeight?: number; innerWidth?: number }
         const focusWindowWidth = webWindow.innerWidth ?? 0
         const focusWindowHeight = webWindow.innerHeight ?? 0
@@ -1155,15 +1161,12 @@ function CrearScreenContent() {
             width: focusWindowWidth,
           })
         }
-
-        resetCreateActivityForm()
-        hasResetOnFocusRef.current = true
       }
 
-      return () => {
-        hasResetOnFocusRef.current = false
-      }
-    }, [isEditMode, resetCreateActivityForm]),
+      resetCreateForm()
+
+      return undefined
+    }, [isEditMode, resetCreateForm]),
   )
 
   useEffect(() => {
@@ -1752,7 +1755,7 @@ function CrearScreenContent() {
         })
       }
 
-      if (Platform.OS === 'web') resetCreateActivityForm()
+      resetCreateForm()
       router.replace('/home')
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error)
@@ -1873,10 +1876,9 @@ function CrearScreenContent() {
   }
 
   const startCreateActivity = () => {
+    resetCreateForm()
     setFlowMode('activity')
     setCurrentStep(1)
-    setActivitySearchQuery('')
-    setSelectedActivitySearchLabel('')
     setMessage('')
   }
 

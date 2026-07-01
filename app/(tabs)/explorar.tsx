@@ -21,7 +21,6 @@ import { useFocusEffect, useRouter } from 'expo-router'
 import { onAuthStateChanged } from 'firebase/auth'
 import { collection, deleteField, doc, getDoc, onSnapshot, runTransaction, serverTimestamp } from 'firebase/firestore'
 import {
-  CalendarCheck,
   CalendarDays,
   DollarSign,
   Dumbbell,
@@ -1225,10 +1224,6 @@ function ExploreCardContent({
         <View style={styles.cardMetaRow}>
           <MapPin color="#0E5A44" size={16} strokeWidth={2.2} />
           <Text numberOfLines={2} style={styles.cardMeta}>{item.location}</Text>
-        </View>
-        <View style={styles.cardMetaRow}>
-          <CalendarCheck color="#0E5A44" size={16} strokeWidth={2.2} />
-          <Text numberOfLines={1} style={styles.cardMeta}>{item.schedule}</Text>
         </View>
         {item.groupName ? (
           <View style={styles.groupIndicator}>
