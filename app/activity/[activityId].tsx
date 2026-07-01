@@ -1382,6 +1382,7 @@ export default function ActivityDetailScreen() {
     <PressScale
       accessibilityLabel={primaryActionLabel}
       accessibilityRole="button"
+      containerStyle={styles.primaryButtonContainer}
       disabled={isPrimaryActionDisabled}
       onPress={detail.action === 'interest' ? toggleInterest : toggleJoin}
       scaleTo={0.97}
@@ -2302,6 +2303,9 @@ const styles = StyleSheet.create({
     height: 52,
     justifyContent: 'center',
     marginTop: 20,
+  },
+  primaryButtonContainer: {
+    alignSelf: 'stretch',
   },
   primaryButtonText: {
     color: '#FFFFFF',

@@ -139,6 +139,7 @@ export function ActivityCard({ item, onCtaPress, onPress, onSharePress }: Activi
           }}
           style={({ pressed }) => [
             styles.activityFooter,
+            item.action === 'interest' && styles.activityFooterInterest,
             item.isCancelled && styles.activityFooterDisabled,
             item.isOrganizer && styles.activityFooterOwn,
             pressed && styles.pressed,
@@ -146,6 +147,7 @@ export function ActivityCard({ item, onCtaPress, onPress, onSharePress }: Activi
         >
           <Text style={[
             styles.greenCtaText,
+            item.action === 'interest' && styles.greenCtaTextInterest,
             item.isCancelled && styles.greenCtaTextDisabled,
             item.isOrganizer && styles.greenCtaTextOwn,
           ]}>{item.cta}</Text>
@@ -467,16 +469,26 @@ const styles = StyleSheet.create({
   },
   activityFooter: {
     alignItems: 'center',
-    backgroundColor: '#F0F5E9',
+    alignSelf: 'flex-start',
+    backgroundColor: '#F7FAF5',
+    borderColor: '#BFDDBE',
     borderRadius: 999,
-    minHeight: 34,
+    borderWidth: 1,
     justifyContent: 'center',
     marginTop: 10,
+    minHeight: 32,
+    paddingHorizontal: 13,
+    paddingVertical: 6,
     position: 'relative',
     zIndex: 10,
   },
+  activityFooterInterest: {
+    backgroundColor: '#F4EEF9',
+    borderColor: '#D8C9F2',
+  },
   activityFooterDisabled: {
     backgroundColor: '#ECEBE7',
+    borderColor: '#D8D6D1',
   },
   activityFooterOwn: {
     backgroundColor: '#F4EEF9',
@@ -512,6 +524,9 @@ const styles = StyleSheet.create({
     color: '#00552E',
     fontSize: 14,
     fontWeight: '900',
+  },
+  greenCtaTextInterest: {
+    color: '#4B348A',
   },
   greenCtaTextDisabled: {
     color: '#7A817D',

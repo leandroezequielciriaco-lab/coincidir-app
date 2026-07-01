@@ -10,6 +10,7 @@ import {
 
 type PressScaleProps = PropsWithChildren<
   PressableProps & {
+    containerStyle?: StyleProp<ViewStyle>
     style?: StyleProp<ViewStyle>
     pressedStyle?: StyleProp<ViewStyle>
     scaleTo?: number
@@ -18,6 +19,7 @@ type PressScaleProps = PropsWithChildren<
 
 export function PressScale({
   children,
+  containerStyle,
   onPressIn,
   onPressOut,
   style,
@@ -47,7 +49,7 @@ export function PressScale({
   }
 
   return (
-    <Animated.View style={{ transform: [{ scale }] }}>
+    <Animated.View style={[containerStyle, { transform: [{ scale }] }]}>
       <Pressable
         {...props}
         onPressIn={handlePressIn}
