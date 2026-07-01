@@ -1366,19 +1366,21 @@ export default function ActivityDetailScreen() {
 
   const availablePlaces = Math.max(0, detail.maxParticipants - detail.participantCount)
   const groupColors = getGroupTheme(detail.groupColor)
-  const shouldShowPrimaryAction = !isOrganizer
   const isFinished = detail.visualState?.key === 'finished'
   const isPrimaryActionDisabled = detail.isCancelled
     || isFinished
+    || isOrganizer
     || (detail.action === 'join' ? detail.isFull || isJoining : isMarkingInterest)
   const primaryActionLabel = detail.isCancelled
     ? 'Actividad cancelada'
-    : isFinished
-      ? 'Actividad finalizada'
-      : detail.action === 'interest'
-        ? detail.interested ? 'Te interesa' : 'Me interesa'
-        : detail.isFull ? 'Actividad completa' : detail.joined ? 'Te sumaste' : 'Me sumo'
-  const primaryAction = shouldShowPrimaryAction ? (
+    : isOrganizer
+      ? 'Tu actividad'
+      : isFinished
+        ? 'Actividad finalizada'
+        : detail.action === 'interest'
+          ? detail.interested ? 'Te interesa' : 'Me interesa'
+          : detail.isFull ? 'Actividad completa' : detail.joined ? 'Te sumaste' : 'Me sumo'
+  const primaryAction = (
     <PressScale
       accessibilityLabel={primaryActionLabel}
       accessibilityRole="button"
@@ -1388,6 +1390,7 @@ export default function ActivityDetailScreen() {
       scaleTo={0.97}
       style={[
         styles.primaryButton,
+        detail.action === 'interest' && styles.primaryButtonInterest,
         (detail.joined || detail.interested) && styles.joinedButton,
         isPrimaryActionDisabled && styles.disabledButton,
       ]}
@@ -1401,7 +1404,7 @@ export default function ActivityDetailScreen() {
         {primaryActionLabel}
       </Text>
     </PressScale>
-  ) : null
+  )
   const inviteTarget: InviteShareTarget = {
     dateTime: `${detail.date} ${detail.time}`,
     id: activityId,
@@ -2296,13 +2299,17 @@ const styles = StyleSheet.create({
   },
   primaryButton: {
     alignItems: 'center',
-    backgroundColor: '#6C3DE5',
-    borderRadius: 14,
+    backgroundColor: '#006A32',
+    borderRadius: 16,
     flexDirection: 'row',
     gap: 8,
-    height: 52,
+    minHeight: 48,
     justifyContent: 'center',
-    marginTop: 20,
+    marginVertical: 16,
+    width: '100%',
+  },
+  primaryButtonInterest: {
+    backgroundColor: '#4B348A',
   },
   primaryButtonContainer: {
     alignSelf: 'stretch',
