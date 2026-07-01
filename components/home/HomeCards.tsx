@@ -34,6 +34,7 @@ export function ActivityCard({ item, onCtaPress, onPress, onSharePress }: Activi
   const isGroupActivity = Boolean(item.groupId || item.groupName)
   const groupColors = getGroupTheme(item.groupColor)
   const isWeb = Platform.OS === 'web'
+  const isNative = !isWeb
 
   useEffect(() => {
     setImageSource(item.image || defaultActivityImage)
@@ -41,8 +42,8 @@ export function ActivityCard({ item, onCtaPress, onPress, onSharePress }: Activi
   }, [item.image])
 
   return (
-    <View style={[styles.activityCard, isGroupActivity && { borderColor: groupColors.borderColor }]}>
-      <View style={styles.activityImageWrap}>
+    <View style={[styles.activityCard, isNative && styles.nativeActivityCard, isGroupActivity && { borderColor: groupColors.borderColor }]}>
+      <View style={[styles.activityImageWrap, isNative && styles.nativeActivityImageWrap]}>
         <ExpoImage contentFit="cover" source={fallbackImage} style={styles.activityImage} />
         {!hasImageError ? (
           <ExpoImage
@@ -73,9 +74,11 @@ export function ActivityCard({ item, onCtaPress, onPress, onSharePress }: Activi
             style={({ pressed }) => [StyleSheet.absoluteFill, pressed && styles.pressed]}
           />
         )}
-        <View style={styles.dateBadge}>
-          <Text style={styles.dateBadgeText}>{item.dateBadge}</Text>
-        </View>
+        {isWeb ? (
+          <View style={styles.dateBadge}>
+            <Text style={styles.dateBadgeText}>{item.dateBadge}</Text>
+          </View>
+        ) : null}
         {item.visualState ? (
           <View
             style={[
@@ -90,9 +93,9 @@ export function ActivityCard({ item, onCtaPress, onPress, onSharePress }: Activi
           </View>
         ) : null}
       </View>
-      <View style={styles.activityBody}>
-        <View style={styles.activityTopLine}>
-          <View style={styles.categoryPill}>
+      <View style={[styles.activityBody, isNative && styles.nativeActivityBody]}>
+        <View style={[styles.activityTopLine, isNative && styles.nativeActivityTopLine]}>
+          <View style={[styles.categoryPill, isNative && styles.nativeCategoryPill]}>
             <item.Icon color="#17803C" size={16} strokeWidth={2.3} />
             <Text numberOfLines={1} style={styles.categoryPillText}>{item.iconLabel}</Text>
           </View>
@@ -103,7 +106,7 @@ export function ActivityCard({ item, onCtaPress, onPress, onSharePress }: Activi
             if (Platform.OS !== 'web') event.stopPropagation()
             onSharePress?.()
           }}
-          style={({ pressed }) => [styles.shareButton, pressed && styles.pressed]}
+          style={({ pressed }) => [styles.shareButton, isNative && styles.nativeShareButton, pressed && styles.pressed]}
         >
             <Share2 color="#006A32" size={15} strokeWidth={2.5} />
             <Text style={styles.shareButtonText}>Compartir</Text>
@@ -117,16 +120,16 @@ export function ActivityCard({ item, onCtaPress, onPress, onSharePress }: Activi
             onStartShouldSetResponder={() => true}
             style={styles.activityContentPressArea}
           >
-            <ActivityCardContent groupColors={groupColors} item={item} />
+            <ActivityCardContent groupColors={groupColors} isNative={isNative} item={item} />
           </View>
         ) : (
           <Pressable
             accessibilityLabel={`Ver detalle de ${item.title}`}
             accessibilityRole="button"
             onPress={onPress}
-            style={({ pressed }) => [styles.activityContentPressArea, pressed && styles.pressed]}
+            style={({ pressed }) => [styles.activityContentPressArea, isNative && styles.nativeActivityContentPressArea, pressed && styles.pressed]}
           >
-            <ActivityCardContent groupColors={groupColors} item={item} />
+            <ActivityCardContent groupColors={groupColors} isNative={isNative} item={item} />
           </Pressable>
         )}
         <Pressable
@@ -139,6 +142,7 @@ export function ActivityCard({ item, onCtaPress, onPress, onSharePress }: Activi
           }}
           style={({ pressed }) => [
             styles.activityFooter,
+            isNative && styles.nativeActivityFooter,
             item.isCancelled && styles.activityFooterDisabled,
             item.isOrganizer && styles.activityFooterOwn,
             pressed && styles.pressed,
@@ -155,7 +159,15 @@ export function ActivityCard({ item, onCtaPress, onPress, onSharePress }: Activi
   )
 }
 
-function ActivityCardContent({ groupColors, item }: { groupColors: ReturnType<typeof getGroupTheme>; item: ActivityCardItem }) {
+function ActivityCardContent({
+  groupColors,
+  isNative,
+  item,
+}: {
+  groupColors: ReturnType<typeof getGroupTheme>
+  isNative: boolean
+  item: ActivityCardItem
+}) {
   const subtitle = item.subtitle?.trim() || item.customName?.trim() || ''
 
   return (
@@ -163,7 +175,7 @@ function ActivityCardContent({ groupColors, item }: { groupColors: ReturnType<ty
       <View style={styles.activityTitleBlock}>
         <Text numberOfLines={2} style={styles.activityTitle}>{item.title}</Text>
         {subtitle ? (
-          <Text numberOfLines={1} style={styles.activityCardSubtitle}>{subtitle}</Text>
+          <Text numberOfLines={isNative ? 2 : 1} style={styles.activityCardSubtitle}>{subtitle}</Text>
         ) : null}
       </View>
       {item.groupName ? (
@@ -174,7 +186,7 @@ function ActivityCardContent({ groupColors, item }: { groupColors: ReturnType<ty
       ) : null}
       <View style={styles.activityMetaRow}>
         <MapPin color="#17803C" size={17} strokeWidth={2.2} />
-        <Text numberOfLines={1} style={styles.activityMeta}>{item.location}</Text>
+        <Text numberOfLines={isNative ? 2 : 1} style={styles.activityMeta}>{item.location}</Text>
       </View>
       <View style={styles.peopleInline}>
         <UsersRound color="#07392D" size={15} strokeWidth={2.4} />
@@ -308,15 +320,28 @@ const styles = StyleSheet.create({
     width: '100%',
     ...cardShadow,
   },
+  nativeActivityCard: {
+    flexDirection: 'column',
+    height: undefined,
+    minHeight: 0,
+  },
   activityImageWrap: {
     backgroundColor: '#EFF6E9',
     height: '100%',
     position: 'relative',
     width: 136,
   },
+  nativeActivityImageWrap: {
+    aspectRatio: 1.85,
+    height: undefined,
+    width: '100%',
+  },
   activityContentPressArea: {
     flexShrink: 1,
     zIndex: 1,
+  },
+  nativeActivityContentPressArea: {
+    flexShrink: 0,
   },
   activityImage: {
     height: '100%',
@@ -366,12 +391,24 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 14,
   },
+  nativeActivityBody: {
+    flex: 0,
+    justifyContent: 'flex-start',
+    paddingHorizontal: 14,
+    paddingVertical: 14,
+  },
   activityTopLine: {
     alignItems: 'center',
     flexDirection: 'row',
     justifyContent: 'space-between',
     marginBottom: 8,
     gap: 8,
+  },
+  nativeActivityTopLine: {
+    alignItems: 'flex-start',
+    flexDirection: 'column',
+    gap: 8,
+    marginBottom: 10,
   },
   categoryPill: {
     alignItems: 'center',
@@ -383,6 +420,12 @@ const styles = StyleSheet.create({
     minHeight: 28,
     minWidth: 0,
     paddingHorizontal: 10,
+  },
+  nativeCategoryPill: {
+    alignSelf: 'flex-start',
+    flex: 0,
+    maxWidth: '100%',
+    paddingRight: 12,
   },
   categoryPillText: {
     color: '#17803C',
@@ -475,6 +518,10 @@ const styles = StyleSheet.create({
     position: 'relative',
     zIndex: 10,
   },
+  nativeActivityFooter: {
+    minHeight: 40,
+    marginTop: 12,
+  },
   activityFooterDisabled: {
     backgroundColor: '#ECEBE7',
   },
@@ -501,6 +548,10 @@ const styles = StyleSheet.create({
     elevation: 1,
     position: 'relative',
     zIndex: 10,
+  },
+  nativeShareButton: {
+    alignSelf: 'flex-start',
+    minHeight: 34,
   },
   shareButtonText: {
     color: '#006A32',
