@@ -981,7 +981,9 @@ function CrearScreenContent() {
   const router = useRouter()
   const { activityId, groupContext, groupId: preselectedGroupId, groupName: preselectedGroupName, kind, mode } = useLocalSearchParams<{ activityId?: string; groupContext?: string; groupId?: string; groupName?: string; kind?: string; mode?: string }>()
   const insets = useSafeAreaInsets()
-  const isEditMode = mode === 'edit' || Boolean(readString(activityId))
+  const routeActivityId = readString(activityId)
+  const editActivityId = mode === 'edit' ? routeActivityId : ''
+  const isEditMode = Boolean(editActivityId)
   const isGroupContext = !isEditMode && groupContext === '1' && kind === 'group' && Boolean(readString(preselectedGroupId))
   const isWebMobile = isWebMobileViewportSnapshot()
   const safeBack = useCallback(() => {
@@ -991,6 +993,19 @@ function CrearScreenContent() {
       router.replace('/home')
     }
   }, [router])
+  const clearNativeCreateParams = useCallback(() => {
+    if (Platform.OS === 'web') return
+    if (!routeActivityId && !mode && !groupContext && !preselectedGroupId && !preselectedGroupName && !kind) return
+
+    router.setParams({
+      activityId: undefined,
+      groupContext: undefined,
+      groupId: undefined,
+      groupName: undefined,
+      kind: undefined,
+      mode: undefined,
+    })
+  }, [groupContext, kind, mode, preselectedGroupId, preselectedGroupName, routeActivityId, router])
   const [flowMode, setFlowMode] = useState<CreateFlowMode>(isEditMode || isGroupContext ? 'activity' : 'choice')
   const [activityKind, setActivityKind] = useState<ActivityKind>('individual')
   const [groupDraftName, setGroupDraftName] = useState('')
@@ -1099,6 +1114,8 @@ function CrearScreenContent() {
       ? findActivityCategory({ categoryId: 'groups' }) ?? categories[0] ?? null
       : null
 
+    if (!shouldKeepGroupContext && !shouldStartGroupActivity) clearNativeCreateParams()
+
     setFlowMode(isEditMode || shouldKeepGroupContext || shouldStartGroupActivity ? 'activity' : 'choice')
     setActivityKind(shouldKeepGroupContext || shouldStartGroupActivity ? 'group' : 'individual')
     setCustomName('')
@@ -1143,7 +1160,7 @@ function CrearScreenContent() {
     setPrice('')
     setCurrency('ARS')
     setQuickSettings(['Mascotas permitidas'])
-  }, [isEditMode, isGroupContext, kind, preselectedGroupId, preselectedGroupName])
+  }, [clearNativeCreateParams, isEditMode, isGroupContext, kind, preselectedGroupId, preselectedGroupName])
 
   useFocusEffect(
     useCallback(() => {
@@ -1263,7 +1280,7 @@ function CrearScreenContent() {
       return
     }
 
-    if (!activityId) {
+    if (!editActivityId) {
       Alert.alert('No pudimos editar', 'Falta identificar la actividad.', [
         { text: 'OK', onPress: () => router.replace('/home') },
       ])
@@ -1288,7 +1305,7 @@ function CrearScreenContent() {
           return
         }
 
-        const snapshot = await getDoc(doc(db, 'activities', activityId))
+        const snapshot = await getDoc(doc(db, 'activities', editActivityId))
 
         if (!snapshot.exists()) {
           Alert.alert('Actividad no disponible', 'No encontramos esta actividad para editarla.', [
@@ -1383,7 +1400,7 @@ function CrearScreenContent() {
     return () => {
       isMounted = false
     }
-  }, [activityId, isEditMode, router])
+  }, [editActivityId, isEditMode, router])
 
   const openLocationPicker = async () => {
     setMessage('')
@@ -1675,14 +1692,14 @@ function CrearScreenContent() {
       }
 
       if (isEditMode) {
-        if (!activityId) {
+        if (!editActivityId) {
           Alert.alert('No pudimos editar', 'Falta identificar la actividad.', [
             { text: 'OK', onPress: () => router.replace('/home') },
           ])
           return
         }
 
-        const targetRef = doc(db, 'activities', activityId)
+        const targetRef = doc(db, 'activities', editActivityId)
         const snapshot = await getDoc(targetRef)
 
         if (!snapshot.exists()) {
@@ -1714,7 +1731,7 @@ function CrearScreenContent() {
 
         if (__DEV__) {
           console.log('[CrearActividad] actividad actualizada con grupo', {
-            activityId,
+            activityId: editActivityId,
             groupId: payload.groupId,
             groupName: payload.groupName,
             visibility: payload.visibility,
@@ -1723,16 +1740,17 @@ function CrearScreenContent() {
 
         notifyActivityUpdated({
           activity: latestActivity,
-          activityId,
+          activityId: editActivityId,
           activityTitle: payload.name,
           organizerId: user.uid,
         }).catch((error) => {
           if (__DEV__) console.warn('activity-updated-notification-create-error', error)
         })
 
+        clearNativeCreateParams()
         router.dismissTo({
           pathname: '/activity/[activityId]',
-          params: { activityId },
+          params: { activityId: editActivityId },
         })
         return
       }
@@ -1756,6 +1774,7 @@ function CrearScreenContent() {
       }
 
       resetCreateForm()
+      clearNativeCreateParams()
       router.replace('/home')
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error)
@@ -2307,7 +2326,7 @@ function CrearScreenContent() {
     isGroupContext,
     kind,
     mode,
-    routeActivityId: activityId,
+    routeActivityId,
     selectedGroup,
     selectedGroupId,
     subcategory,
