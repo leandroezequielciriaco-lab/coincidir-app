@@ -1380,31 +1380,7 @@ export default function ActivityDetailScreen() {
         : detail.action === 'interest'
           ? detail.interested ? 'Te interesa' : 'Me interesa'
           : detail.isFull ? 'Actividad completa' : detail.joined ? 'Te sumaste' : 'Me sumo'
-  const primaryAction = (
-    <PressScale
-      accessibilityLabel={primaryActionLabel}
-      accessibilityRole="button"
-      containerStyle={styles.primaryButtonContainer}
-      disabled={isPrimaryActionDisabled}
-      onPress={detail.action === 'interest' ? toggleInterest : toggleJoin}
-      scaleTo={0.97}
-      style={[
-        styles.primaryButton,
-        detail.action === 'interest' && styles.primaryButtonInterest,
-        (detail.joined || detail.interested) && styles.joinedButton,
-        isPrimaryActionDisabled && styles.disabledButton,
-      ]}
-    >
-      {detail.joined || detail.interested ? <Check color="#17803C" size={20} strokeWidth={2.5} /> : null}
-      <Text style={[
-        styles.primaryButtonText,
-        (detail.joined || detail.interested) && styles.joinedButtonText,
-        isPrimaryActionDisabled && styles.disabledButtonText,
-      ]}>
-        {primaryActionLabel}
-      </Text>
-    </PressScale>
-  )
+  const isPrimaryActionMuted = isPrimaryActionDisabled || detail.joined || detail.interested
   const inviteTarget: InviteShareTarget = {
     dateTime: `${detail.date} ${detail.time}`,
     id: activityId,
@@ -1525,9 +1501,28 @@ export default function ActivityDetailScreen() {
           {detail.subcategory ? <InfoRow Icon={Lock} label={detail.subcategory} /> : null}
           <InfoRow Icon={DollarSign} label={detail.price} />
 
-          {primaryAction}
-
           <Text style={styles.description}>{detail.description}</Text>
+
+          <Pressable
+            accessibilityLabel={primaryActionLabel}
+            accessibilityRole="button"
+            disabled={isPrimaryActionDisabled}
+            onPress={detail.action === 'interest' ? toggleInterest : toggleJoin}
+            style={({ pressed }) => [
+              styles.primaryButton,
+              detail.action === 'interest' && styles.primaryButtonInterest,
+              isPrimaryActionMuted && styles.primaryButtonMuted,
+              pressed && styles.primaryButtonPressed,
+            ]}
+          >
+            <Text style={[
+              styles.primaryButtonText,
+              detail.action === 'interest' && styles.primaryButtonTextInterest,
+              isPrimaryActionMuted && styles.primaryButtonTextMuted,
+            ]}>
+              {primaryActionLabel}
+            </Text>
+          </Pressable>
 
           <View style={styles.organizerCard}>
             <Text style={styles.organizerEyebrow}>Organizado por</Text>
@@ -2299,39 +2294,40 @@ const styles = StyleSheet.create({
   },
   primaryButton: {
     alignItems: 'center',
-    backgroundColor: '#006A32',
-    borderRadius: 16,
+    alignSelf: 'flex-start',
+    backgroundColor: '#EAF7EC',
+    borderColor: '#006A32',
+    borderRadius: 999,
+    borderWidth: 1,
     flexDirection: 'row',
     gap: 8,
-    minHeight: 48,
     justifyContent: 'center',
-    marginVertical: 16,
-    width: '100%',
+    marginBottom: 16,
+    marginTop: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
   },
   primaryButtonInterest: {
-    backgroundColor: '#4B348A',
+    backgroundColor: '#F4EEF9',
+    borderColor: '#4B348A',
   },
-  primaryButtonContainer: {
-    alignSelf: 'stretch',
+  primaryButtonMuted: {
+    backgroundColor: '#ECEBE7',
+    borderColor: '#D8D6D1',
+  },
+  primaryButtonPressed: {
+    opacity: 0.9,
   },
   primaryButtonText: {
-    color: '#FFFFFF',
-    fontSize: 16,
+    color: '#006A32',
+    fontSize: 15,
     fontWeight: '900',
     letterSpacing: 0,
   },
-  joinedButton: {
-    backgroundColor: '#FFFFFF',
-    borderColor: '#17803C',
-    borderWidth: 1.5,
+  primaryButtonTextInterest: {
+    color: '#4B348A',
   },
-  joinedButtonText: {
-    color: '#17803C',
-  },
-  disabledButton: {
-    backgroundColor: '#ECEBE7',
-  },
-  disabledButtonText: {
+  primaryButtonTextMuted: {
     color: '#7A817D',
   },
   inviteButton: {

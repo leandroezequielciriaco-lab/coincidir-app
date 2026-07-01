@@ -138,19 +138,23 @@ export function ActivityCard({ item, onCtaPress, onPress, onSharePress }: Activi
             onCtaPress?.()
           }}
           style={({ pressed }) => [
+            styles.activityFooterPressable,
+            pressed && styles.pressed,
+          ]}
+        >
+          <View style={[
             styles.activityFooter,
             item.action === 'interest' && styles.activityFooterInterest,
             item.isCancelled && styles.activityFooterDisabled,
             item.isOrganizer && styles.activityFooterOwn,
-            pressed && styles.pressed,
-          ]}
-        >
-          <Text style={[
-            styles.greenCtaText,
-            item.action === 'interest' && styles.greenCtaTextInterest,
-            item.isCancelled && styles.greenCtaTextDisabled,
-            item.isOrganizer && styles.greenCtaTextOwn,
-          ]}>{item.cta}</Text>
+          ]}>
+            <Text style={[
+              styles.greenCtaText,
+              item.action === 'interest' && styles.greenCtaTextInterest,
+              item.isCancelled && styles.greenCtaTextDisabled,
+              item.isOrganizer && styles.greenCtaTextOwn,
+            ]}>{item.cta}</Text>
+          </View>
         </Pressable>
       </View>
     </View>
@@ -467,20 +471,22 @@ const styles = StyleSheet.create({
     letterSpacing: 0,
     lineHeight: 12,
   },
+  activityFooterPressable: {
+    alignSelf: 'flex-start',
+    marginTop: 10,
+    position: 'relative',
+    zIndex: 10,
+  },
   activityFooter: {
     alignItems: 'center',
-    alignSelf: 'flex-start',
     backgroundColor: '#EAF7EC',
     borderColor: '#006A32',
     borderRadius: 999,
     borderWidth: 1,
     justifyContent: 'center',
-    marginTop: 10,
     minHeight: 32,
     paddingHorizontal: 14,
-    paddingVertical: 6,
-    position: 'relative',
-    zIndex: 10,
+    paddingVertical: 7,
   },
   activityFooterInterest: {
     backgroundColor: '#F4EEF9',

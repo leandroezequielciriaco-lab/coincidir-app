@@ -1144,14 +1144,25 @@ function ExploreCard({ cardWidth, item, onCtaPress, onPress }: { cardWidth: numb
             onCtaPress?.()
           }}
           style={({ pressed }) => [
-            styles.cardCta,
-              item.isCancelled && styles.cardCtaDisabled,
-              item.isOrganizer && styles.cardCtaDisabled,
-              item.source === 'group' && styles.cardCtaDisabled,
-              pressed && styles.cardPressed,
+            styles.cardCtaPressable,
+            pressed && styles.cardPressed,
             ]}
         >
-          <Text style={[styles.cardCtaText, item.isCancelled && styles.cardCtaTextDisabled]}>{item.cta}</Text>
+          <View style={[
+            styles.cardCta,
+            item.action === 'interest' && styles.cardCtaInterest,
+            item.isCancelled && styles.cardCtaDisabled,
+            item.isOrganizer && styles.cardCtaDisabled,
+            item.source === 'group' && styles.cardCtaDisabled,
+          ]}>
+            <Text style={[
+              styles.cardCtaText,
+              item.action === 'interest' && styles.cardCtaTextInterest,
+              item.isCancelled && styles.cardCtaTextDisabled,
+              item.isOrganizer && styles.cardCtaTextDisabled,
+              item.source === 'group' && styles.cardCtaTextDisabled,
+            ]}>{item.cta}</Text>
+          </View>
         </Pressable>
       </View>
     </View>
@@ -1667,24 +1678,38 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '900',
   },
-  cardCta: {
-    alignItems: 'center',
-    backgroundColor: '#F0F5E9',
-    borderRadius: 999,
-    alignSelf: 'stretch',
-    minHeight: 38,
-    justifyContent: 'center',
-    paddingHorizontal: 12,
+  cardCtaPressable: {
+    alignSelf: 'flex-start',
     position: 'relative',
     zIndex: 11,
   },
+  cardCta: {
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    backgroundColor: '#EAF7EC',
+    borderColor: '#006A32',
+    borderRadius: 999,
+    borderWidth: 1,
+    justifyContent: 'center',
+    minHeight: 32,
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+  },
+  cardCtaInterest: {
+    backgroundColor: '#F4EEF9',
+    borderColor: '#4B348A',
+  },
   cardCtaDisabled: {
     backgroundColor: '#ECEBE7',
+    borderColor: '#D8D6D1',
   },
   cardCtaText: {
     color: '#006A32',
     fontSize: 13,
     fontWeight: '900',
+  },
+  cardCtaTextInterest: {
+    color: '#4B348A',
   },
   cardCtaTextDisabled: {
     color: '#7A817D',
