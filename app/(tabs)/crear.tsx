@@ -1,4 +1,4 @@
-import { Component, useCallback, useEffect, useMemo, useState } from 'react'
+import { Component, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { ErrorInfo, ReactNode } from 'react'
 import {
   ActivityIndicator,
@@ -1011,7 +1011,7 @@ function CrearScreenContent() {
       mode: undefined,
     })
   }, [groupContext, kind, mode, preselectedGroupId, preselectedGroupName, routeActivityId, router])
-  const [flowMode, setFlowMode] = useState<CreateFlowMode>(isEditMode || isGroupContext ? 'activity' : 'choice')
+  const [flowMode, setFlowMode] = useState<CreateFlowMode>('activity')
   const [activityKind, setActivityKind] = useState<ActivityKind>('individual')
   const [groupDraftName, setGroupDraftName] = useState('')
   const [groupDraftDescription, setGroupDraftDescription] = useState('')
@@ -1042,6 +1042,8 @@ function CrearScreenContent() {
   const [isSaving, setIsSaving] = useState(false)
   const [message, setMessage] = useState('')
   const [currentStep, setCurrentStep] = useState<CreateStep>(1)
+  const [createFormKey, setCreateFormKey] = useState(0)
+  const resetSequenceRef = useRef(0)
   const [isAdditionalVisible, setIsAdditionalVisible] = useState(false)
   const [isLocationPickerVisible, setIsLocationPickerVisible] = useState(false)
   const [isResolvingLocation, setIsResolvingLocation] = useState(false)
@@ -1121,7 +1123,7 @@ function CrearScreenContent() {
 
     if (!shouldKeepGroupContext && !shouldStartGroupActivity) clearNativeCreateParams()
 
-    setFlowMode(isEditMode || shouldKeepGroupContext || shouldStartGroupActivity ? 'activity' : 'choice')
+    setFlowMode('activity')
     setActivityKind(shouldKeepGroupContext || shouldStartGroupActivity ? 'group' : 'individual')
     setCustomName('')
     setCategory(groupCategory)
@@ -1169,6 +1171,14 @@ function CrearScreenContent() {
 
   useFocusEffect(
     useCallback(() => {
+      if (__DEV__) {
+        console.log('[CREATE FOCUS]', {
+          activityId: routeActivityId,
+          isEditMode,
+          mode,
+        })
+      }
+
       if (isEditMode) return undefined
 
       if (Platform.OS === 'web') {
@@ -1185,11 +1195,69 @@ function CrearScreenContent() {
         }
       }
 
-      resetCreateForm()
+      let isActive = true
+      let didReset = false
+      let animationFrameId: number | null = null
+      let timeoutId: ReturnType<typeof setTimeout> | null = null
 
-      return undefined
-    }, [isEditMode, resetCreateForm]),
+      const resetAndRemount = (source: 'deferred' | 'immediate') => {
+        if (!isActive || didReset) return
+        didReset = true
+
+        const sequence = resetSequenceRef.current + 1
+        resetSequenceRef.current = sequence
+
+        if (__DEV__) {
+          console.log('[CREATE RESET DEFERRED]', {
+            activityId: routeActivityId,
+            platform: Platform.OS,
+            sequence,
+            source,
+          })
+        }
+
+        resetCreateForm()
+        setCreateFormKey((current) => {
+          const next = current + 1
+          if (__DEV__) {
+            console.log('[CREATE REMOUNT KEY]', {
+              activityId: routeActivityId,
+              key: next,
+              sequence,
+            })
+          }
+          return next
+        })
+      }
+
+      if (Platform.OS === 'android') {
+        animationFrameId = requestAnimationFrame(() => resetAndRemount('deferred'))
+        timeoutId = setTimeout(() => resetAndRemount('deferred'), 80)
+      } else {
+        resetAndRemount('immediate')
+      }
+
+      return () => {
+        isActive = false
+        if (animationFrameId !== null) cancelAnimationFrame(animationFrameId)
+        if (timeoutId !== null) clearTimeout(timeoutId)
+      }
+    }, [isEditMode, mode, resetCreateForm, routeActivityId]),
   )
+
+  useEffect(() => {
+    if (__DEV__) {
+      console.log('[CREATE STATE]', {
+        activityId: routeActivityId,
+        createFormKey,
+        currentStep,
+        flowMode,
+        isEditMode,
+        isLoadingEditActivity,
+        mode,
+      })
+    }
+  }, [createFormKey, currentStep, flowMode, isEditMode, isLoadingEditActivity, mode, routeActivityId])
 
   useEffect(() => {
     try {
@@ -2736,6 +2804,18 @@ function CrearScreenContent() {
   )
 
   if (isLoadingEditActivity) {
+    if (__DEV__) {
+      console.log('[CREATE RENDER]', {
+        activityId: routeActivityId,
+        createFormKey,
+        currentStep,
+        flowMode,
+        isEditMode,
+        isLoadingEditActivity,
+        reason: 'loading-edit-activity',
+      })
+    }
+
     const loadingContent = (
       <View style={styles.createLoadingState}>
         <ActivityIndicator color="#0E5A44" />
@@ -2748,6 +2828,18 @@ function CrearScreenContent() {
   }
 
   if (flowMode === 'choice') {
+    if (__DEV__) {
+      console.log('[CREATE RENDER]', {
+        activityId: routeActivityId,
+        createFormKey,
+        currentStep,
+        flowMode,
+        isEditMode,
+        isLoadingEditActivity,
+        reason: 'choice',
+      })
+    }
+
     return (
       <CreateRootFrame>
         <ScrollView
@@ -2811,6 +2903,18 @@ function CrearScreenContent() {
   }
 
   if (flowMode === 'group') {
+    if (__DEV__) {
+      console.log('[CREATE RENDER]', {
+        activityId: routeActivityId,
+        createFormKey,
+        currentStep,
+        flowMode,
+        isEditMode,
+        isLoadingEditActivity,
+        reason: 'group',
+      })
+    }
+
     return (
       <CreateRootFrame>
         <ScrollView
@@ -2919,6 +3023,18 @@ function CrearScreenContent() {
   }
 
   if (flowMode === 'groupCreated') {
+    if (__DEV__) {
+      console.log('[CREATE RENDER]', {
+        activityId: routeActivityId,
+        createFormKey,
+        currentStep,
+        flowMode,
+        isEditMode,
+        isLoadingEditActivity,
+        reason: 'group-created',
+      })
+    }
+
     return (
       <CreateRootFrame>
         <ScrollView
@@ -2987,6 +3103,19 @@ function CrearScreenContent() {
     || showCategorySection
     || showActivityTypeSection
   )
+  if (__DEV__) {
+    console.log('[CREATE RENDER]', {
+      activityId: routeActivityId,
+      createFormKey,
+      currentStep,
+      flowMode,
+      isEditMode,
+      isLoadingEditActivity,
+      reason: 'activity-form',
+      showStepOneCard,
+    })
+  }
+
   if (currentStep === 2) {
     logCreateWebDiagnostic('[CREATE WEB RENDER STEP 2]', {
       activityKind,
@@ -3152,10 +3281,26 @@ function CrearScreenContent() {
   return (
     <CreateRootFrame>
       <ScrollView
+        collapsable={false}
+        key={`create-form-${createFormKey}`}
+        onLayout={(event) => {
+          if (__DEV__ && Platform.OS === 'android') {
+            console.log('[CREATE ANDROID LAYOUT READY]', {
+              createFormKey,
+              layout: event.nativeEvent.layout,
+            })
+          }
+        }}
+        removeClippedSubviews={false}
+        style={styles.createScrollView}
         contentContainerStyle={[
           styles.createScrollContent,
           Platform.OS === 'web' && styles.webCreateContent,
-          { paddingTop: Math.max(insets.top + 18, 28), paddingBottom: Math.max(insets.bottom + 120, 150) },
+          {
+            minHeight: '100%',
+            paddingTop: Math.max(insets.top + 18, 28),
+            paddingBottom: Math.max(insets.bottom + 120, 150),
+          },
         ]}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
@@ -3227,11 +3372,18 @@ function CrearScreenContent() {
         </View>
         ) : null}
 
-        {showStepOneCard ? <View style={styles.createCard}>
+        {showStepOneCard ? <View
+          onLayout={(event) => {
+            if (__DEV__) {
+              console.log('[CREATE STEP 1 LAYOUT]', event.nativeEvent.layout)
+            }
+          }}
+          style={[styles.createCard, styles.stepOneCard]}
+        >
           {showBasicInfoSection ? (
           <>
           <Text style={styles.createFieldLabel}>¿Qué actividad querés crear?</Text>
-          <View style={styles.activitySearchField}>
+          <View style={[styles.activitySearchField, styles.stepOneSearchField]}>
             <Search color="#0E5A44" size={20} strokeWidth={2.4} />
             <TextInput
               onChangeText={changeActivitySearchQuery}
@@ -3271,8 +3423,8 @@ function CrearScreenContent() {
           ) : null}
 
           {showCategorySection ? (
-          <View style={styles.createTwoColumnRow}>
-            <View style={styles.createColumn}>
+          <View style={[styles.createTwoColumnRow, styles.stepOneTwoColumnRow]}>
+            <View style={[styles.createColumn, styles.stepOneColumn]}>
               <Text style={styles.createFieldLabel}>Categoría</Text>
               <Pressable accessibilityLabel="Seleccionar categoría" accessibilityRole="button" onPress={() => setPickerMode('category')} style={styles.createSelectField}>
                 {category ? (
@@ -3290,7 +3442,7 @@ function CrearScreenContent() {
                 <ChevronDown color="#0E5A44" size={20} strokeWidth={2.4} />
               </Pressable>
             </View>
-            <View style={styles.createColumn}>
+            <View style={[styles.createColumn, styles.stepOneColumn]}>
               <Text style={styles.createFieldLabel}>Subcategoría</Text>
               <Pressable
                 accessibilityLabel="Seleccionar subcategoría"
@@ -3323,7 +3475,7 @@ function CrearScreenContent() {
           {showActivityTypeSection && !isGroupContext ? (
             <View style={styles.groupPickerBlock}>
               <Text style={styles.createFieldLabel}>Tipo de actividad</Text>
-              <View style={styles.additionalGrid}>
+              <View style={[styles.additionalGrid, styles.stepOneActivityKindGrid]}>
                 {activityKindDetails.map((item) => (
                   <AdditionalChoiceCard
                     active={activityKind === item.value}
@@ -3332,6 +3484,7 @@ function CrearScreenContent() {
                     key={item.value}
                     label={item.label}
                     onPress={() => setActivityKind(item.value)}
+                    style={styles.stepOneActivityKindCard}
                   />
                 ))}
               </View>
@@ -4458,9 +4611,10 @@ type AdditionalChoiceCardProps = {
   Icon: LucideIcon
   label: string
   onPress: () => void
+  style?: StyleProp<ViewStyle>
 }
 
-function AdditionalChoiceCard({ active, description, Icon, label, onPress }: AdditionalChoiceCardProps) {
+function AdditionalChoiceCard({ active, description, Icon, label, onPress, style }: AdditionalChoiceCardProps) {
   return (
     <Pressable
       accessibilityRole="button"
@@ -4469,6 +4623,7 @@ function AdditionalChoiceCard({ active, description, Icon, label, onPress }: Add
       style={[
         styles.additionalChoiceCard,
         active && styles.additionalChoiceCardActive,
+        style,
       ]}
     >
       <Icon color="#0E5A44" size={31} strokeWidth={2.1} />
@@ -4568,6 +4723,10 @@ function MapConfigNotice({ compact = false }: MapConfigNoticeProps) {
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: '#FCFAF3' },
   scrollContent: { flexGrow: 1 },
+  createScrollView: {
+    backgroundColor: '#FCFAF3',
+    flex: 1,
+  },
   createLoadingState: {
     alignItems: 'center',
     flex: 1,
@@ -5019,6 +5178,35 @@ const styles = StyleSheet.create({
     shadowRadius: 14,
     shadowOffset: { width: 0, height: 8 },
     elevation: 2,
+  },
+  stepOneCard: {
+    alignSelf: 'stretch',
+    minHeight: 360,
+    width: '100%',
+  },
+  stepOneSearchField: {
+    alignSelf: 'stretch',
+    width: '100%',
+  },
+  stepOneTwoColumnRow: {
+    alignSelf: 'stretch',
+    width: '100%',
+  },
+  stepOneColumn: {
+    minWidth: 0,
+  },
+  stepOneActivityKindGrid: {
+    alignSelf: 'stretch',
+    flexDirection: 'column',
+    flexWrap: 'nowrap',
+    width: '100%',
+  },
+  stepOneActivityKindCard: {
+    alignSelf: 'stretch',
+    flexBasis: 'auto',
+    flexGrow: 0,
+    minHeight: 92,
+    width: '100%',
   },
   createChoiceStack: {
     gap: 14,
