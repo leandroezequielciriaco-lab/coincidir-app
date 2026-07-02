@@ -724,8 +724,8 @@ export default function PerfilScreen() {
                 <Text style={styles.emptyText}>Agregá tus intereses para mejorar tus coincidencias.</Text>
               </View>
             )}
-            <Text style={styles.interestsHint}>Te avisamos cuando se publique una actividad pública que coincida con tus intereses.</Text>
           </View>
+          <Text style={styles.interestsHint}>Te avisamos cuando se publique una actividad pública que coincida con tus intereses.</Text>
         </ProfileSection>
 
         <ProfileListSection
