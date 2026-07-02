@@ -1,4 +1,6 @@
 import { Tabs } from 'expo-router'
+import { onAuthStateChanged } from 'firebase/auth'
+import { collection, onSnapshot } from 'firebase/firestore'
 import {
   Compass,
   Home,
@@ -6,12 +8,23 @@ import {
   Plus,
   UserRound,
 } from 'lucide-react-native'
+import { useEffect, useState } from 'react'
 import { Platform, View } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 
+import { getFirebaseServices } from '../../firebaseConfig'
+import { type ChatSummaryData, getUnreadCount } from '../../lib/chat'
+
 export default function TabsLayout() {
   const insets = useSafeAreaInsets()
+  const [userId, setUserId] = useState<string | null>(null)
+  const [activityUnreadCount, setActivityUnreadCount] = useState(0)
+  const [groupUnreadCount, setGroupUnreadCount] = useState(0)
   const bottomInset = Math.max(insets.bottom, Platform.OS === 'ios' ? 18 : 10)
+  const unreadMessagesCount = userId ? activityUnreadCount + groupUnreadCount : 0
+  const unreadMessagesBadge = unreadMessagesCount > 0
+    ? unreadMessagesCount > 9 ? '9+' : unreadMessagesCount
+    : undefined
   const tabBarStyle = {
     backgroundColor: '#FFFFFF',
     borderTopColor: '#EFE9DF',
@@ -28,6 +41,50 @@ export default function TabsLayout() {
     shadowRadius: 20,
     elevation: 12,
   }
+
+  useEffect(() => {
+    try {
+      const { auth } = getFirebaseServices()
+      return onAuthStateChanged(auth, (user) => setUserId(user?.uid ?? null))
+    } catch {
+      setUserId(null)
+      return undefined
+    }
+  }, [])
+
+  useEffect(() => {
+    setActivityUnreadCount(0)
+    setGroupUnreadCount(0)
+
+    if (!userId) return undefined
+
+    let unsubscribeActivityChats = () => {}
+    let unsubscribeGroupChats = () => {}
+
+    try {
+      const { db } = getFirebaseServices()
+
+      unsubscribeActivityChats = onSnapshot(collection(db, 'activityChats'), (snapshot) => {
+        setActivityUnreadCount(snapshot.docs.reduce((total, item) => (
+          total + getUnreadCount(item.data() as ChatSummaryData, userId)
+        ), 0))
+      }, () => setActivityUnreadCount(0))
+
+      unsubscribeGroupChats = onSnapshot(collection(db, 'groupChats'), (snapshot) => {
+        setGroupUnreadCount(snapshot.docs.reduce((total, item) => (
+          total + getUnreadCount(item.data() as ChatSummaryData, userId)
+        ), 0))
+      }, () => setGroupUnreadCount(0))
+    } catch {
+      setActivityUnreadCount(0)
+      setGroupUnreadCount(0)
+    }
+
+    return () => {
+      unsubscribeActivityChats()
+      unsubscribeGroupChats()
+    }
+  }, [userId])
 
   return (
     <Tabs
@@ -107,6 +164,13 @@ export default function TabsLayout() {
         name="mensajes"
         options={{
           title: 'Mensajes',
+          tabBarBadge: unreadMessagesBadge,
+          tabBarBadgeStyle: {
+            backgroundColor: '#D92D20',
+            color: '#FFFFFF',
+            fontSize: 11,
+            fontWeight: '900',
+          },
           tabBarIcon: ({ color, size }) => (
             <MessageCircle color={color} size={size} strokeWidth={2.5} />
           ),
