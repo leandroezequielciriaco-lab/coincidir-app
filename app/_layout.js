@@ -2,7 +2,7 @@ import { Stack, usePathname, useRouter } from 'expo-router'
 import Constants from 'expo-constants'
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import { useEffect, useRef, useState } from 'react'
-import { AppState, Platform } from 'react-native'
+import { ActivityIndicator, AppState, Modal, Platform, Pressable, StyleSheet, Text, View } from 'react-native'
 import { SafeAreaProvider } from 'react-native-safe-area-context'
 import { onAuthStateChanged } from 'firebase/auth'
 import { doc, onSnapshot, serverTimestamp, setDoc } from 'firebase/firestore'
@@ -12,7 +12,7 @@ import { AuthContext } from '../utils/authContext'
 import { consumePendingExternalReturnRoute } from '../utils/externalReturnRoute'
 import { getJsInstanceId } from '../utils/jsInstance'
 import { canParticipate, isGoogleUser, reloadAuthUser } from '../utils/authParticipation'
-import { hasAcceptedCurrentLegal } from '../constants/legal'
+import { getLegalAcceptanceFields, hasAcceptedCurrentLegal } from '../constants/legal'
 
 const PUBLIC_ROUTES = new Set([
   '/',
@@ -186,6 +186,8 @@ export default function RootLayout() {
   const router = useRouter()
   const [authState, setAuthState] = useState({ checked: false, user: null })
   const [legalState, setLegalState] = useState({ checked: true, hasAccepted: false, userId: null })
+  const [isAcceptingLegal, setIsAcceptingLegal] = useState(false)
+  const [legalAcceptanceError, setLegalAcceptanceError] = useState('')
   const [pendingNotificationRouteVersion, setPendingNotificationRouteVersion] = useState(0)
   const instanceId = getJsInstanceId()
   const externalRouteRestoreAttemptedRef = useRef(false)
@@ -194,6 +196,18 @@ export default function RootLayout() {
   const pushTokenRegistrationAttemptedRef = useRef(new Set())
   const pendingNotificationRouteRef = useRef(null)
   const processedNotificationRouteKeysRef = useRef(new Set())
+  const legalLoading = Boolean(
+    authState.user &&
+    (!legalState.checked || legalState.userId !== authState.user.uid)
+  )
+  const needsLegalAcceptance = Boolean(
+    authState.user &&
+    legalState.checked &&
+    legalState.userId === authState.user.uid &&
+    !legalState.hasAccepted
+  )
+  const isLegalDocumentRoute = pathname === '/legal/terms' || pathname === '/legal/privacy'
+  const shouldShowLegalGate = needsLegalAcceptance && !isLegalDocumentRoute
 
   useEffect(() => {
     console.log('[ROOT MOUNT]', { instanceId })
@@ -383,11 +397,10 @@ export default function RootLayout() {
       }
 
       if (needsLegalAcceptance) {
-        if (!isPublicRoute) {
-          router.replace({ pathname: '/login', params: { legalRequired: '1' } })
-          return
-        }
-
+        console.log('[ROUTE GUARD KEEP CURRENT]', {
+          path: pathname,
+          reason: 'authenticated_needs_legal_acceptance',
+        })
         return
       }
 
@@ -527,6 +540,27 @@ export default function RootLayout() {
     })
   }, [authState.checked, authState.user, legalState, pathname, pendingNotificationRouteVersion, router])
 
+  const acceptCurrentLegal = async () => {
+    if (!authState.user || isAcceptingLegal) return
+
+    setIsAcceptingLegal(true)
+    setLegalAcceptanceError('')
+
+    try {
+      const { db } = getFirebaseServices()
+      await setDoc(
+        doc(db, 'users', authState.user.uid),
+        getLegalAcceptanceFields(serverTimestamp()),
+        { merge: true },
+      )
+    } catch (error) {
+      console.error('[LEGAL ACCEPTANCE ERROR]', error)
+      setLegalAcceptanceError('No pudimos guardar tu aceptacion. Intenta nuevamente.')
+    } finally {
+      setIsAcceptingLegal(false)
+    }
+  }
+
   return (
     <AuthContext.Provider value={authState}>
       <SafeAreaProvider>
@@ -535,7 +569,129 @@ export default function RootLayout() {
             headerShown: false,
           }}
         />
+        <Modal animationType="fade" transparent visible={shouldShowLegalGate}>
+          <View style={styles.legalGateBackdrop}>
+            <View style={styles.legalGateCard}>
+              <Text style={styles.legalGateTitle}>Terminos y privacidad</Text>
+              <Text style={styles.legalGateBody}>
+                Para continuar usando COINCIDIR, acepta los Terminos y Condiciones y la Politica de Privacidad vigentes.
+              </Text>
+
+              <View style={styles.legalGateLinks}>
+                <Pressable
+                  accessibilityLabel="Ver terminos y condiciones"
+                  accessibilityRole="button"
+                  onPress={() => router.push('/legal/terms')}
+                  style={({ pressed }) => [styles.legalGateLink, pressed && styles.legalGatePressed]}
+                >
+                  <Text style={styles.legalGateLinkText}>Ver terminos</Text>
+                </Pressable>
+
+                <Pressable
+                  accessibilityLabel="Ver politica de privacidad"
+                  accessibilityRole="button"
+                  onPress={() => router.push('/legal/privacy')}
+                  style={({ pressed }) => [styles.legalGateLink, pressed && styles.legalGatePressed]}
+                >
+                  <Text style={styles.legalGateLinkText}>Ver privacidad</Text>
+                </Pressable>
+              </View>
+
+              {legalAcceptanceError ? <Text style={styles.legalGateError}>{legalAcceptanceError}</Text> : null}
+
+              <Pressable
+                accessibilityLabel="Aceptar terminos y politica de privacidad"
+                accessibilityRole="button"
+                disabled={isAcceptingLegal || legalLoading}
+                onPress={acceptCurrentLegal}
+                style={({ pressed }) => [
+                  styles.legalGateButton,
+                  (pressed || isAcceptingLegal || legalLoading) && styles.legalGateButtonPressed,
+                ]}
+              >
+                {isAcceptingLegal ? (
+                  <ActivityIndicator color="#FFFFFF" />
+                ) : (
+                  <Text style={styles.legalGateButtonText}>Aceptar y continuar</Text>
+                )}
+              </Pressable>
+            </View>
+          </View>
+        </Modal>
       </SafeAreaProvider>
     </AuthContext.Provider>
   )
 }
+
+const styles = StyleSheet.create({
+  legalGateBackdrop: {
+    alignItems: 'center',
+    backgroundColor: 'rgba(6, 28, 24, 0.58)',
+    flex: 1,
+    justifyContent: 'center',
+    padding: 24,
+  },
+  legalGateCard: {
+    backgroundColor: '#FCFAF3',
+    borderRadius: 8,
+    maxWidth: 420,
+    padding: 22,
+    width: '100%',
+  },
+  legalGateTitle: {
+    color: '#063C31',
+    fontSize: 21,
+    fontWeight: '800',
+    marginBottom: 8,
+  },
+  legalGateBody: {
+    color: '#37534B',
+    fontSize: 15,
+    lineHeight: 22,
+    marginBottom: 18,
+  },
+  legalGateLinks: {
+    flexDirection: 'row',
+    gap: 10,
+    marginBottom: 16,
+  },
+  legalGateLink: {
+    borderColor: '#C9D8C8',
+    borderRadius: 8,
+    borderWidth: 1,
+    flex: 1,
+    paddingHorizontal: 12,
+    paddingVertical: 11,
+  },
+  legalGatePressed: {
+    opacity: 0.75,
+  },
+  legalGateLinkText: {
+    color: '#155C47',
+    fontSize: 14,
+    fontWeight: '700',
+    textAlign: 'center',
+  },
+  legalGateError: {
+    color: '#B3261E',
+    fontSize: 13,
+    lineHeight: 18,
+    marginBottom: 12,
+  },
+  legalGateButton: {
+    alignItems: 'center',
+    backgroundColor: '#155C47',
+    borderRadius: 8,
+    justifyContent: 'center',
+    minHeight: 50,
+    paddingHorizontal: 16,
+  },
+  legalGateButtonPressed: {
+    opacity: 0.82,
+  },
+  legalGateButtonText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '800',
+  },
+})
