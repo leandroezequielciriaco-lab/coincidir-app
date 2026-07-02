@@ -9,7 +9,7 @@ import {
   UserRound,
 } from 'lucide-react-native'
 import { useEffect, useState } from 'react'
-import { Platform, View } from 'react-native'
+import { Platform, StyleSheet, Text, View } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 
 import { getFirebaseServices } from '../../firebaseConfig'
@@ -65,15 +65,17 @@ export default function TabsLayout() {
       const { db } = getFirebaseServices()
 
       unsubscribeActivityChats = onSnapshot(collection(db, 'activityChats'), (snapshot) => {
-        setActivityUnreadCount(snapshot.docs.reduce((total, item) => (
+        const activityUnread = snapshot.docs.reduce((total, item) => (
           total + getUnreadCount(item.data() as ChatSummaryData, userId)
-        ), 0))
+        ), 0)
+        setActivityUnreadCount(activityUnread)
       }, () => setActivityUnreadCount(0))
 
       unsubscribeGroupChats = onSnapshot(collection(db, 'groupChats'), (snapshot) => {
-        setGroupUnreadCount(snapshot.docs.reduce((total, item) => (
+        const groupUnread = snapshot.docs.reduce((total, item) => (
           total + getUnreadCount(item.data() as ChatSummaryData, userId)
-        ), 0))
+        ), 0)
+        setGroupUnreadCount(groupUnread)
       }, () => setGroupUnreadCount(0))
     } catch {
       setActivityUnreadCount(0)
@@ -164,15 +166,15 @@ export default function TabsLayout() {
         name="mensajes"
         options={{
           title: 'Mensajes',
-          tabBarBadge: unreadMessagesBadge,
-          tabBarBadgeStyle: {
-            backgroundColor: '#D92D20',
-            color: '#FFFFFF',
-            fontSize: 11,
-            fontWeight: '900',
-          },
           tabBarIcon: ({ color, size }) => (
-            <MessageCircle color={color} size={size} strokeWidth={2.5} />
+            <View style={styles.messagesIconWrap}>
+              <MessageCircle color={color} size={size} strokeWidth={2.5} />
+              {unreadMessagesBadge ? (
+                <View style={styles.messagesBadge}>
+                  <Text style={styles.messagesBadgeText}>{unreadMessagesBadge}</Text>
+                </View>
+              ) : null}
+            </View>
           ),
         }}
       />
@@ -188,3 +190,34 @@ export default function TabsLayout() {
     </Tabs>
   )
 }
+
+const styles = StyleSheet.create({
+  messagesIconWrap: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: 30,
+    minWidth: 34,
+    overflow: 'visible',
+  },
+  messagesBadge: {
+    alignItems: 'center',
+    backgroundColor: '#D92D20',
+    borderColor: '#FFFFFF',
+    borderRadius: 999,
+    borderWidth: 1.5,
+    minHeight: 16,
+    minWidth: 16,
+    paddingHorizontal: 3,
+    position: 'absolute',
+    right: -6,
+    top: -5,
+  },
+  messagesBadgeText: {
+    color: '#FFFFFF',
+    fontSize: 9,
+    fontWeight: '900',
+    letterSpacing: 0,
+    lineHeight: 13,
+    textAlign: 'center',
+  },
+})
