@@ -1258,23 +1258,23 @@ export default function HomeScreen() {
         {showInterestBanner ? (
           <View style={styles.interestBanner}>
             <Pressable
-              accessibilityLabel="No mostrar mÃ¡s este aviso"
+              accessibilityLabel="No mostrar más este aviso"
               accessibilityRole="button"
               onPress={dismissInterestBanner}
               style={styles.interestBannerClose}
             >
               <Text style={styles.interestBannerCloseText}>×</Text>
             </Pressable>
-            <Text style={styles.interestBannerTitle}>ðŸ”” No hace falta entrar todos los dÃ­as</Text>
+            <Text style={styles.interestBannerTitle}>🔔 No hace falta entrar todos los días</Text>
             <Text style={styles.interestBannerText}>
-              ElegÃ­ las actividades que te gustan y COINCIDIR te avisarÃ¡ cuando alguien publique una.
+              Elegí las actividades que te gustan y COINCIDIR te avisará cuando alguien publique una.
             </Text>
             <View style={styles.interestBannerActions}>
               <PressScale onPress={openInterestEditor} style={styles.interestBannerButton} scaleTo={0.96}>
                 <Text style={styles.interestBannerButtonText}>Elegir mis intereses</Text>
               </PressScale>
               <Pressable accessibilityRole="button" onPress={dismissInterestBanner} style={styles.interestBannerSecondaryButton}>
-                <Text style={styles.interestBannerSecondaryText}>No mostrar mÃ¡s</Text>
+                <Text style={styles.interestBannerSecondaryText}>No mostrar más</Text>
               </Pressable>
             </View>
           </View>
@@ -1768,8 +1768,10 @@ const styles = StyleSheet.create({
   },
   interestBannerButton: {
     alignItems: 'center',
-    backgroundColor: '#17803C',
+    backgroundColor: '#006A32',
+    borderColor: '#004A25',
     borderRadius: 999,
+    borderWidth: 1,
     justifyContent: 'center',
     minHeight: 48,
     paddingHorizontal: 18,
