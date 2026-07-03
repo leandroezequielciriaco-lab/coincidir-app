@@ -1381,12 +1381,22 @@ export default function ActivityDetailScreen() {
           ? detail.interested ? 'Te interesa' : 'Me interesa'
           : detail.isFull ? 'Actividad completa' : detail.joined ? 'Te sumaste' : 'Me sumo'
   const isPrimaryActionMuted = isPrimaryActionDisabled || detail.joined || detail.interested
+  const canOpenActivityChat = Boolean(activityId && currentUserId && (isOrganizer || detail.joined))
   const inviteTarget: InviteShareTarget = {
     dateTime: `${detail.date} ${detail.time}`,
     id: activityId,
     location: detail.location,
     title: detail.title,
     type: 'activity',
+  }
+
+  const openActivityChat = () => {
+    if (!activityId || !canOpenActivityChat) return
+
+    router.push({
+      pathname: '/chat/[chatId]',
+      params: { chatId: activityId, source: 'activity' },
+    })
   }
 
   const openActivityLocation = async () => {
@@ -1503,26 +1513,87 @@ export default function ActivityDetailScreen() {
 
           <Text style={styles.description}>{detail.description}</Text>
 
-          <Pressable
-            accessibilityLabel={primaryActionLabel}
-            accessibilityRole="button"
-            disabled={isPrimaryActionDisabled}
-            onPress={detail.action === 'interest' ? toggleInterest : toggleJoin}
-            style={({ pressed }) => [
-              styles.primaryButton,
-              detail.action === 'interest' && styles.primaryButtonInterest,
-              isPrimaryActionMuted && styles.primaryButtonMuted,
-              pressed && styles.primaryButtonPressed,
-            ]}
-          >
-            <Text style={[
-              styles.primaryButtonText,
-              detail.action === 'interest' && styles.primaryButtonTextInterest,
-              isPrimaryActionMuted && styles.primaryButtonTextMuted,
-            ]}>
-              {primaryActionLabel}
-            </Text>
-          </Pressable>
+          {canOpenActivityChat ? (
+            <Pressable
+              accessibilityLabel="Ir al chat"
+              accessibilityRole="button"
+              onPress={openActivityChat}
+              style={{
+                alignItems: 'center',
+                backgroundColor: '#6C3DE5',
+                borderColor: '#6C3DE5',
+                borderRadius: 16,
+                borderWidth: 2,
+                justifyContent: 'center',
+                marginVertical: 12,
+                minHeight: 56,
+                width: '100%',
+              }}
+            >
+              <Text
+                style={{
+                  color: '#FFFFFF',
+                  fontSize: 18,
+                  fontWeight: '700',
+                }}
+              >
+                Ir al chat
+              </Text>
+            </Pressable>
+          ) : null}
+
+          {Platform.OS !== 'web' ? (
+            <Pressable
+              accessibilityLabel={primaryActionLabel}
+              accessibilityRole="button"
+              disabled={isPrimaryActionDisabled}
+              onPress={detail.action === 'interest' ? toggleInterest : toggleJoin}
+              style={{
+                alignItems: 'center',
+                backgroundColor: '#0F8A3B',
+                borderColor: '#0F8A3B',
+                borderRadius: 16,
+                borderWidth: 2,
+                justifyContent: 'center',
+                marginVertical: 12,
+                minHeight: 56,
+                opacity: isPrimaryActionDisabled ? 0.9 : 1,
+                width: '100%',
+              }}
+            >
+              <Text
+                style={{
+                  color: '#FFFFFF',
+                  fontSize: 17,
+                  fontWeight: '700',
+                  textAlign: 'center',
+                }}
+              >
+                {primaryActionLabel}
+              </Text>
+            </Pressable>
+          ) : (
+            <Pressable
+              accessibilityLabel={primaryActionLabel}
+              accessibilityRole="button"
+              disabled={isPrimaryActionDisabled}
+              onPress={detail.action === 'interest' ? toggleInterest : toggleJoin}
+              style={({ pressed }) => [
+                styles.primaryButton,
+                detail.action === 'interest' && styles.primaryButtonInterest,
+                isPrimaryActionMuted && styles.primaryButtonMuted,
+                pressed && styles.primaryButtonPressed,
+              ]}
+            >
+              <Text style={[
+                styles.primaryButtonText,
+                detail.action === 'interest' && styles.primaryButtonTextInterest,
+                isPrimaryActionMuted && styles.primaryButtonTextMuted,
+              ]}>
+                {primaryActionLabel}
+              </Text>
+            </Pressable>
+          )}
 
           <View style={styles.organizerCard}>
             <Text style={styles.organizerEyebrow}>Organizado por</Text>

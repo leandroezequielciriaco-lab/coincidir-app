@@ -104,11 +104,20 @@ function hasUserInList(value: unknown, userId: string) {
 export function getParticipantIds(data: Record<string, unknown>) {
   const ids = [
     readString(data.createdBy),
+    readString(data.createdById),
+    readString(data.creatorId),
     readString(data.ownerId),
     readString(data.organizerId),
+    readString(data.userId),
     ...collectMapKeys(data.participants),
+    ...collectMapKeys(data.confirmedUsers),
+    ...collectMapKeys(data.acceptedUsers),
     ...collectMapKeys(data.joinedUsers),
     ...collectMapKeys(data.members),
+    ...collectListIds(data.participantIds),
+    ...collectListIds(data.joinedUserIds),
+    ...collectListIds(data.confirmedUsers),
+    ...collectListIds(data.acceptedUsers),
     ...collectListIds(data.participants),
     ...collectListIds(data.attendees),
     ...collectListIds(data.members),
@@ -119,11 +128,24 @@ export function getParticipantIds(data: Record<string, unknown>) {
 
 export function isUserParticipant(data: Record<string, unknown>, userId: string | null) {
   if (!userId) return false
-  if (readString(data.createdBy) === userId || readString(data.ownerId) === userId || readString(data.organizerId) === userId) return true
+  if (
+    readString(data.createdBy) === userId
+    || readString(data.createdById) === userId
+    || readString(data.creatorId) === userId
+    || readString(data.ownerId) === userId
+    || readString(data.organizerId) === userId
+    || readString(data.userId) === userId
+  ) return true
 
   return hasUserInMap(data.participants, userId)
+    || hasUserInMap(data.confirmedUsers, userId)
+    || hasUserInMap(data.acceptedUsers, userId)
     || hasUserInMap(data.joinedUsers, userId)
     || hasUserInMap(data.members, userId)
+    || hasUserInList(data.participantIds, userId)
+    || hasUserInList(data.joinedUserIds, userId)
+    || hasUserInList(data.confirmedUsers, userId)
+    || hasUserInList(data.acceptedUsers, userId)
     || hasUserInList(data.participants, userId)
     || hasUserInList(data.attendees, userId)
     || hasUserInList(data.members, userId)
