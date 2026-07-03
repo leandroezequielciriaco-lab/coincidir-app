@@ -2286,6 +2286,22 @@ function CrearScreenContent() {
     })
   }
 
+  const goBackFromCreateForm = () => {
+    if (isEditMode) {
+      safeBack()
+      return
+    }
+
+    if (currentStep > 1) {
+      goToPreviousStep()
+      return
+    }
+
+    setPickerMode(null)
+    setMessage('')
+    router.replace('/home')
+  }
+
   const goBackFromWebStep4 = () => {
     setPickerMode(null)
     setMessage('')
@@ -3147,7 +3163,7 @@ function CrearScreenContent() {
         isSaving={isSaving}
         lastVisibleStep={lastVisibleStep}
         message={message}
-        onBackToChoice={() => setFlowMode('choice')}
+        onBackToChoice={goBackFromCreateForm}
         onCreateGroup={openCreateGroup}
         onSaveActivity={saveActivity}
         privacy={privacy}
@@ -3187,7 +3203,7 @@ function CrearScreenContent() {
           {STEP2_DEBUG.header ? (
             <>
               <View style={styles.createHeader}>
-                <Pressable accessibilityLabel="Volver" accessibilityRole="button" onPress={isEditMode ? safeBack : () => setFlowMode('choice')} style={styles.createBackButton}>
+                <Pressable accessibilityLabel="Volver" accessibilityRole="button" onPress={goBackFromCreateForm} style={styles.createBackButton}>
                   <ArrowLeft color="#0E5A44" size={33} strokeWidth={2.2} />
                 </Pressable>
                 <View style={styles.createLogo}>
@@ -3312,7 +3328,7 @@ function CrearScreenContent() {
         {showHeaderSection ? (
         <>
         <View style={styles.createHeader}>
-          <Pressable accessibilityLabel="Volver" accessibilityRole="button" onPress={isEditMode ? safeBack : () => setFlowMode('choice')} style={styles.createBackButton}>
+          <Pressable accessibilityLabel="Volver" accessibilityRole="button" onPress={goBackFromCreateForm} style={styles.createBackButton}>
             <ArrowLeft color="#0E5A44" size={33} strokeWidth={2.2} />
           </Pressable>
           <View style={styles.createLogo}>
