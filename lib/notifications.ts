@@ -23,6 +23,8 @@ export type AppNotification = {
   activityId?: string
   activityTitle?: string
   body: string
+  chatId?: string
+  chatType?: 'activity' | 'group'
   createdAt: Date | null
   groupId?: string
   groupName?: string
@@ -40,6 +42,8 @@ export type CreateNotificationInput = {
   activityId?: string
   activityTitle?: string
   body: string
+  chatId?: string
+  chatType?: 'activity' | 'group'
   groupId?: string
   groupName?: string
   requesterId?: string
@@ -146,6 +150,8 @@ function mapNotification(id: string, data: Record<string, unknown>): AppNotifica
     activityId: readString(data.activityId) || undefined,
     activityTitle: readString(data.activityTitle) || undefined,
     body: readString(data.body),
+    chatId: readString(data.chatId) || undefined,
+    chatType: readString(data.chatType) === 'group' ? 'group' : readString(data.chatType) === 'activity' ? 'activity' : undefined,
     createdAt: readDate(data.createdAt),
     groupId: readString(data.groupId) || undefined,
     groupName: readString(data.groupName) || undefined,

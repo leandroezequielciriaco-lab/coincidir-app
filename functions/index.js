@@ -17,6 +17,10 @@ function readRecord(value) {
   return typeof value === 'object' && value !== null && !Array.isArray(value) ? value : {}
 }
 
+function readArray(value) {
+  return Array.isArray(value) ? value : []
+}
+
 function omitUndefinedFields(data) {
   return Object.fromEntries(
     Object.entries(data).filter(([, value]) => value !== undefined),
@@ -72,8 +76,174 @@ function getActivityStartMillis(data) {
   return Number.NaN
 }
 
+function collectUserIdsFromValue(value) {
+  const ids = new Set()
+
+  if (typeof value === 'string' && value.trim()) {
+    ids.add(value.trim())
+    return ids
+  }
+
+  if (Array.isArray(value)) {
+    value.forEach((item) => {
+      collectUserIdsFromValue(item).forEach((id) => ids.add(id))
+    })
+    return ids
+  }
+
+  if (typeof value === 'object' && value !== null) {
+    const directId = readString(value.uid)
+      || readString(value.userId)
+      || readString(value.id)
+      || readString(value.userUID)
+
+    if (directId) {
+      ids.add(directId)
+      return ids
+    }
+
+    Object.entries(value).forEach(([key, item]) => {
+      if (key.trim()) ids.add(key.trim())
+
+      if (typeof item === 'object' && item !== null) {
+        const nestedId = readString(item.uid)
+          || readString(item.userId)
+          || readString(item.id)
+          || readString(item.userUID)
+
+        if (nestedId) ids.add(nestedId)
+      }
+    })
+  }
+
+  return ids
+}
+
+function getParticipantIds(data) {
+  const fields = [
+    data.createdBy,
+    data.ownerId,
+    data.organizerId,
+    data.creatorId,
+    data.participantIds,
+    data.participants,
+    data.joinedUsers,
+    data.members,
+    data.attendees,
+    data.confirmedUsers,
+    data.confirmedParticipants,
+  ]
+  const ids = new Set()
+
+  fields.forEach((field) => {
+    collectUserIdsFromValue(field).forEach((id) => ids.add(id))
+  })
+
+  return Array.from(ids).filter(Boolean)
+}
+
+function getChatTitle(data, chatType) {
+  return readString(
+    data.title,
+    readString(data.name, chatType === 'group' ? 'Grupo' : 'Actividad'),
+  )
+}
+
+function truncateMessageText(value) {
+  const text = readString(value)
+  if (text.length <= 140) return text
+  return `${text.slice(0, 137)}...`
+}
+
 async function updatePushStatus(notificationRef, push) {
   await notificationRef.set({ push }, { merge: true })
+}
+
+async function createMessageNotifications(event, chatType) {
+  const snapshot = event.data
+  if (!snapshot) return
+
+  const db = getFirestore()
+  const chatId = event.params.chatId
+  const messageId = event.params.messageId
+  const message = snapshot.data() || {}
+  const senderId = readString(message.senderId)
+  const senderName = readString(message.senderName, 'Usuario')
+  const text = truncateMessageText(message.text)
+  const chatCollection = chatType === 'group' ? 'groupChats' : 'activityChats'
+  const sourceCollection = chatType === 'group' ? 'groups' : 'activities'
+
+  if (!chatId || !messageId || !senderId || !text) {
+    logger.warn('Message notification skipped: missing required fields', {
+      chatId,
+      chatType,
+      hasSenderId: Boolean(senderId),
+      hasText: Boolean(text),
+      messageId,
+    })
+    return
+  }
+
+  const chatSnapshot = await db.doc(`${chatCollection}/${chatId}`).get()
+  const chat = chatSnapshot.exists ? chatSnapshot.data() || {} : {}
+  const sourceId = readString(chat.sourceId, chatId)
+  const sourceSnapshot = await db.doc(`${sourceCollection}/${sourceId}`).get()
+  const source = sourceSnapshot.exists ? sourceSnapshot.data() || {} : {}
+  const chatTitle = getChatTitle({ ...source, ...chat }, chatType)
+  const participantIds = Array.from(new Set([
+    ...readArray(chat.participantIds).map((value) => readString(value)).filter(Boolean),
+    ...getParticipantIds(source),
+    ...getParticipantIds(chat),
+  ])).filter((userId) => userId && userId !== senderId)
+
+  if (participantIds.length === 0) {
+    logger.info('Message notifications skipped: no recipients', {
+      chatId,
+      chatType,
+      messageId,
+      senderId,
+    })
+    return
+  }
+
+  const batch = db.batch()
+
+  participantIds.forEach((userId) => {
+    const notificationId = [
+      'message',
+      chatType,
+      chatId,
+      messageId,
+      userId,
+    ].map((value) => value.replace(/[^A-Za-z0-9_-]/g, '_')).join('_')
+
+    batch.set(db.doc(`notifications/${notificationId}`), omitUndefinedFields({
+      activityId: chatType === 'activity' ? sourceId : undefined,
+      activityTitle: chatType === 'activity' ? chatTitle : undefined,
+      body: `${senderName}: ${text}`,
+      chatId,
+      chatType,
+      createdAt: FieldValue.serverTimestamp(),
+      groupId: chatType === 'group' ? sourceId : undefined,
+      groupName: chatType === 'group' ? chatTitle : undefined,
+      read: false,
+      senderId,
+      senderName,
+      title: `Nuevo mensaje en ${chatTitle}`,
+      type: 'message',
+      userId,
+    }))
+  })
+
+  await batch.commit()
+
+  logger.info('[NOTIF MESSAGE SEND]', {
+    chatId,
+    chatType,
+    messageId,
+    recipientCount: participantIds.length,
+    senderId,
+  })
 }
 
 exports.createInterestNotificationsOnActivityCreate = onDocumentCreated(
@@ -206,6 +376,16 @@ exports.createInterestNotificationsOnActivityCreate = onDocumentCreated(
   },
 )
 
+exports.createActivityMessageNotificationsOnMessageCreate = onDocumentCreated(
+  'activityChats/{chatId}/messages/{messageId}',
+  async (event) => createMessageNotifications(event, 'activity'),
+)
+
+exports.createGroupMessageNotificationsOnMessageCreate = onDocumentCreated(
+  'groupChats/{chatId}/messages/{messageId}',
+  async (event) => createMessageNotifications(event, 'group'),
+)
+
 exports.sendPushOnNotificationCreate = onDocumentCreated(
   'notifications/{notificationId}',
   async (event) => {
@@ -262,6 +442,15 @@ exports.sendPushOnNotificationCreate = onDocumentCreated(
         return
       }
 
+      if (readString(notification.type) === 'message') {
+        logger.info('[NOTIF MESSAGE SEND]', {
+          chatId: readString(notification.chatId) || null,
+          chatType: readString(notification.chatType) || null,
+          notificationId,
+          userId,
+        })
+      }
+
       const [ticket] = await expo.sendPushNotificationsAsync([
         {
           to: token,
@@ -273,6 +462,8 @@ exports.sendPushOnNotificationCreate = onDocumentCreated(
             notificationId,
             type: readString(notification.type) || undefined,
             activityId: readString(notification.activityId) || undefined,
+            chatId: readString(notification.chatId) || undefined,
+            chatType: readString(notification.chatType) || undefined,
             groupId: readString(notification.groupId) || undefined,
           }),
         },

@@ -170,6 +170,7 @@ function getNotificationBody(notification: AppNotification, activityName: string
 }
 
 function getNotificationActionLabel(notification: AppNotification) {
+  if (notification.chatId) return 'Ver chat'
   if (notification.groupId) return 'Ver grupo'
   if (notification.activityId) return 'Ver actividad'
   return ''
@@ -223,6 +224,18 @@ export default function NotificacionesScreen() {
       if (!notification.read) await markNotificationAsRead(notification.id)
     } catch (error) {
       if (__DEV__) console.warn('notification-mark-read-error', error)
+    }
+
+    if (notification.chatId) {
+      console.log('[NOTIF OPEN CHAT]', {
+        chatId: notification.chatId,
+        chatType: notification.chatType ?? 'activity',
+      })
+      router.push({
+        pathname: '/chat/[chatId]',
+        params: { chatId: notification.chatId, source: notification.chatType ?? 'activity' },
+      })
+      return
     }
 
     if (notification.groupId) {

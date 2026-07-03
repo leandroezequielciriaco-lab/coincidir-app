@@ -58,12 +58,26 @@ function readNotificationDataString(data, key) {
 
 function getNotificationActivityRoute(response) {
   const data = response?.notification?.request?.content?.data
+  const type = readNotificationDataString(data, 'type')
+  const chatId = readNotificationDataString(data, 'chatId')
+  const chatType = readNotificationDataString(data, 'chatType')
+
+  if (type === 'message' && chatId) {
+    return {
+      chatId,
+      chatType: chatType === 'group' ? 'group' : 'activity',
+      key: readNotificationDataString(data, 'notificationId') || `message:${chatId}`,
+      type: 'message',
+    }
+  }
+
   const activityId = readNotificationDataString(data, 'activityId')
   if (!activityId) return null
 
   return {
     activityId,
     key: readNotificationDataString(data, 'notificationId') || activityId,
+    type: 'activity',
   }
 }
 
@@ -76,6 +90,7 @@ async function configureAndroidNotificationChannel() {
     handleNotification: async () => ({
       shouldPlaySound: true,
       shouldSetBadge: true,
+      shouldShowAlert: true,
       shouldShowBanner: true,
       shouldShowList: true,
     }),
@@ -84,6 +99,7 @@ async function configureAndroidNotificationChannel() {
   await Notifications.setNotificationChannelAsync(ANDROID_NOTIFICATION_CHANNEL_ID, {
     name: 'COINCIDIR',
     importance: Notifications.AndroidImportance.MAX,
+    sound: 'default',
     vibrationPattern: [0, 250, 250, 250],
     enableVibrate: true,
   })
@@ -230,8 +246,18 @@ export default function RootLayout() {
   useEffect(() => {
     let isMounted = true
     let subscription
+    let receivedSubscription
 
     const queueNotificationRoute = (response) => {
+      const data = response?.notification?.request?.content?.data
+      if (readNotificationDataString(data, 'type') === 'message') {
+        console.log('[NOTIF MESSAGE RESPONSE]', {
+          chatId: readNotificationDataString(data, 'chatId') || null,
+          chatType: readNotificationDataString(data, 'chatType') || null,
+          notificationId: readNotificationDataString(data, 'notificationId') || null,
+        })
+      }
+
       const route = getNotificationActivityRoute(response)
       if (!route) return
       if (processedNotificationRouteKeysRef.current.has(route.key)) return
@@ -244,6 +270,17 @@ export default function RootLayout() {
     import('expo-notifications')
       .then((Notifications) => {
         if (!isMounted) return
+
+        receivedSubscription = Notifications.addNotificationReceivedListener((notification) => {
+          const data = notification?.request?.content?.data
+          if (readNotificationDataString(data, 'type') !== 'message') return
+
+          console.log('[NOTIF MESSAGE RECEIVED]', {
+            chatId: readNotificationDataString(data, 'chatId') || null,
+            chatType: readNotificationDataString(data, 'chatType') || null,
+            notificationId: readNotificationDataString(data, 'notificationId') || null,
+          })
+        })
 
         subscription = Notifications.addNotificationResponseReceivedListener(queueNotificationRoute)
 
@@ -262,6 +299,7 @@ export default function RootLayout() {
 
     return () => {
       isMounted = false
+      receivedSubscription?.remove()
       subscription?.remove()
     }
   }, [])
@@ -534,6 +572,18 @@ export default function RootLayout() {
     if (authLoading || legalLoading || !authState.user || needsLegalAcceptance || needsEmailVerification) return
 
     pendingNotificationRouteRef.current = null
+    if (pendingRoute.type === 'message') {
+      console.log('[NOTIF OPEN CHAT]', {
+        chatId: pendingRoute.chatId,
+        chatType: pendingRoute.chatType,
+      })
+      router.push({
+        pathname: '/chat/[chatId]',
+        params: { chatId: pendingRoute.chatId, source: pendingRoute.chatType },
+      })
+      return
+    }
+
     router.push({
       pathname: '/activity/[activityId]',
       params: { activityId: pendingRoute.activityId },
