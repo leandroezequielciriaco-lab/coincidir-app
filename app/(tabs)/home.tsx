@@ -608,6 +608,7 @@ export default function HomeScreen() {
   const [shareTarget, setShareTarget] = useState<InviteShareTarget>({ type: 'app' })
   const [userInterests, setUserInterests] = useState<string[]>([])
   const [isInterestBannerDismissed, setIsInterestBannerDismissed] = useState(false)
+  const [isInterestBannerCollapsed, setIsInterestBannerCollapsed] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
   const [debouncedSearchQuery, setDebouncedSearchQuery] = useState('')
   const [localGroups, setLocalGroups] = useState<LocalGroup[]>([])
@@ -662,6 +663,7 @@ export default function HomeScreen() {
       setUserEmail(null)
       setUserInterests([])
       setIsInterestBannerDismissed(false)
+      setIsInterestBannerCollapsed(false)
       return () => {
         mounted = false
       }
@@ -669,6 +671,7 @@ export default function HomeScreen() {
 
     setCurrentUserId(authUser.uid)
     setUserEmail(authUser.email ?? null)
+    setIsInterestBannerCollapsed(false)
 
     const authName = resolveUserDisplayName({ firebaseUser: authUser, fallback: '' })
     const bannerStorageKey = `${INTEREST_HOME_BANNER_STORAGE_PREFIX}:${authUser.uid}`
@@ -1184,10 +1187,19 @@ export default function HomeScreen() {
     })
   }
 
+  const collapseInterestBanner = () => {
+    setIsInterestBannerCollapsed(true)
+  }
+
+  const expandInterestBanner = () => {
+    setIsInterestBannerCollapsed(false)
+  }
+
   const dismissInterestBanner = async () => {
     if (!currentUserId) return
 
     setIsInterestBannerDismissed(true)
+    setIsInterestBannerCollapsed(false)
 
     try {
       await AsyncStorage.setItem(`${INTEREST_HOME_BANNER_STORAGE_PREFIX}:${currentUserId}`, '1')
@@ -1255,12 +1267,24 @@ export default function HomeScreen() {
           </View>
         </View>
 
-        {showInterestBanner ? (
+        {showInterestBanner && isInterestBannerCollapsed ? (
+          <PressScale
+            accessibilityLabel="Mostrar aviso de intereses"
+            accessibilityRole="button"
+            onPress={expandInterestBanner}
+            style={styles.interestBannerChip}
+            scaleTo={0.96}
+          >
+            <Text style={styles.interestBannerChipText}>🔔 Avisos por intereses</Text>
+          </PressScale>
+        ) : null}
+
+        {showInterestBanner && !isInterestBannerCollapsed ? (
           <View style={styles.interestBanner}>
             <Pressable
-              accessibilityLabel="No mostrar más este aviso"
+              accessibilityLabel="Colapsar aviso de intereses"
               accessibilityRole="button"
-              onPress={dismissInterestBanner}
+              onPress={collapseInterestBanner}
               style={styles.interestBannerClose}
             >
               <Text style={styles.interestBannerCloseText}>×</Text>
@@ -1725,6 +1749,25 @@ const styles = StyleSheet.create({
     position: 'relative',
     ...softShadow,
   },
+  interestBannerChip: {
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    backgroundColor: '#E7F3DE',
+    borderColor: '#006A32',
+    borderRadius: 999,
+    borderWidth: 1,
+    justifyContent: 'center',
+    marginTop: 18,
+    minHeight: 42,
+    paddingHorizontal: 16,
+  },
+  interestBannerChipText: {
+    color: '#063C31',
+    fontSize: 14,
+    fontWeight: '900',
+    letterSpacing: 0,
+    lineHeight: 18,
+  },
   interestBannerClose: {
     alignItems: 'center',
     borderRadius: 999,
@@ -1769,12 +1812,17 @@ const styles = StyleSheet.create({
   interestBannerButton: {
     alignItems: 'center',
     backgroundColor: '#006A32',
-    borderColor: '#004A25',
+    borderColor: '#003F1F',
     borderRadius: 999,
-    borderWidth: 1,
+    borderWidth: 2,
+    elevation: 2,
     justifyContent: 'center',
     minHeight: 48,
     paddingHorizontal: 18,
+    shadowColor: '#003F1F',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.18,
+    shadowRadius: 6,
   },
   interestBannerButtonText: {
     color: '#FFFFFF',
