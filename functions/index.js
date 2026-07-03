@@ -456,7 +456,6 @@ exports.sendPushOnNotificationCreate = onDocumentCreated(
           to: token,
           title,
           body,
-          sound: 'default',
           channelId: ANDROID_NOTIFICATION_CHANNEL_ID,
           data: omitUndefinedFields({
             notificationId,

@@ -90,7 +90,6 @@ async function configureAndroidNotificationChannel() {
     handleNotification: async () => ({
       shouldPlaySound: true,
       shouldSetBadge: true,
-      shouldShowAlert: true,
       shouldShowBanner: true,
       shouldShowList: true,
     }),
@@ -99,7 +98,6 @@ async function configureAndroidNotificationChannel() {
   await Notifications.setNotificationChannelAsync(ANDROID_NOTIFICATION_CHANNEL_ID, {
     name: 'COINCIDIR',
     importance: Notifications.AndroidImportance.MAX,
-    sound: 'default',
     vibrationPattern: [0, 250, 250, 250],
     enableVibrate: true,
   })
@@ -201,7 +199,7 @@ export default function RootLayout() {
   const pathname = usePathname()
   const router = useRouter()
   const [authState, setAuthState] = useState({ checked: false, user: null })
-  const [legalState, setLegalState] = useState({ checked: true, hasAccepted: false, userId: null })
+  const [legalState, setLegalState] = useState({ checked: false, hasAccepted: false, resolved: false, userId: null })
   const [isAcceptingLegal, setIsAcceptingLegal] = useState(false)
   const [legalAcceptanceError, setLegalAcceptanceError] = useState('')
   const [pendingNotificationRouteVersion, setPendingNotificationRouteVersion] = useState(0)
@@ -214,16 +212,16 @@ export default function RootLayout() {
   const processedNotificationRouteKeysRef = useRef(new Set())
   const legalLoading = Boolean(
     authState.user &&
-    (!legalState.checked || legalState.userId !== authState.user.uid)
+    (!legalState.resolved || legalState.userId !== authState.user.uid)
   )
   const needsLegalAcceptance = Boolean(
     authState.user &&
-    legalState.checked &&
+    legalState.resolved &&
     legalState.userId === authState.user.uid &&
     !legalState.hasAccepted
   )
   const isLegalDocumentRoute = pathname === '/legal/terms' || pathname === '/legal/privacy'
-  const shouldShowLegalGate = needsLegalAcceptance && !isLegalDocumentRoute
+  const shouldShowLegalGate = legalState.resolved && !legalLoading && needsLegalAcceptance && !isLegalDocumentRoute
 
   useEffect(() => {
     console.log('[ROOT MOUNT]', { instanceId })
@@ -357,37 +355,47 @@ export default function RootLayout() {
 
   useEffect(() => {
     if (!authState.checked) {
-      setLegalState({ checked: false, hasAccepted: false, userId: null })
+      setLegalState({ checked: false, hasAccepted: false, resolved: false, userId: null })
       return undefined
     }
 
     if (!authState.user) {
-      setLegalState({ checked: true, hasAccepted: false, userId: null })
+      setLegalState({ checked: true, hasAccepted: false, resolved: true, userId: null })
       return undefined
     }
 
     const userId = authState.user.uid
-    setLegalState((current) => {
-      if (current.userId === userId && current.checked) return current
-      return { checked: false, hasAccepted: false, userId }
+    setLegalState({
+      checked: false,
+      hasAccepted: false,
+      resolved: false,
+      userId,
     })
 
     try {
       const { db } = getFirebaseServices()
       return onSnapshot(
         doc(db, 'users', userId),
+        { includeMetadataChanges: true },
         (profileSnap) => {
           const profile = profileSnap.exists() ? profileSnap.data() : null
           const hasAccepted = hasAcceptedCurrentLegal(profile)
+          const fromCache = profileSnap.metadata.fromCache
+          const hasPendingWrites = profileSnap.metadata.hasPendingWrites
 
-          setLegalState({ checked: true, hasAccepted, userId })
+          if (fromCache || hasPendingWrites) {
+            setLegalState({ checked: false, hasAccepted: false, resolved: false, userId })
+            return
+          }
+
+          setLegalState({ checked: true, hasAccepted, resolved: true, userId })
         },
         () => {
-          setLegalState({ checked: true, hasAccepted: false, userId })
+          setLegalState({ checked: false, hasAccepted: false, resolved: false, userId })
         },
       )
     } catch {
-      setLegalState({ checked: true, hasAccepted: false, userId })
+      setLegalState({ checked: false, hasAccepted: false, resolved: false, userId })
       return undefined
     }
   }, [authState.checked, authState.user, instanceId])
@@ -404,11 +412,11 @@ export default function RootLayout() {
     const isVerificationBlockedRoute = isEmailVerificationBlockedRoute(pathname)
     const legalLoading = Boolean(
       authState.user &&
-      (!legalState.checked || legalState.userId !== authState.user.uid)
+      (!legalState.resolved || legalState.userId !== authState.user.uid)
     )
     const needsLegalAcceptance = Boolean(
       authState.user &&
-      legalState.checked &&
+      legalState.resolved &&
       legalState.userId === authState.user.uid &&
       !legalState.hasAccepted
     )
@@ -419,6 +427,7 @@ export default function RootLayout() {
       userId: authState.user?.uid ?? null,
       isPublicRoute,
       legalLoading,
+      legalResolved: legalState.resolved,
       needsLegalAcceptance,
       needsEmailVerification,
       isVerificationBlockedRoute,
@@ -559,11 +568,11 @@ export default function RootLayout() {
     const authLoading = !authState.checked
     const legalLoading = Boolean(
       authState.user &&
-      (!legalState.checked || legalState.userId !== authState.user.uid)
+      (!legalState.resolved || legalState.userId !== authState.user.uid)
     )
     const needsLegalAcceptance = Boolean(
       authState.user &&
-      legalState.checked &&
+      legalState.resolved &&
       legalState.userId === authState.user.uid &&
       !legalState.hasAccepted
     )
