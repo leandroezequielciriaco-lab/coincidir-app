@@ -207,6 +207,7 @@ export default function RootLayout() {
   const externalRouteRestoreAttemptedRef = useRef(false)
   const lastAuthenticatedAtRef = useRef(0)
   const redirectTimerRef = useRef(null)
+  const authNullResolutionTimerRef = useRef(null)
   const pushTokenRegistrationAttemptedRef = useRef(new Set())
   const pendingNotificationRouteRef = useRef(null)
   const processedNotificationRouteKeysRef = useRef(new Set())
@@ -326,7 +327,12 @@ export default function RootLayout() {
     try {
       console.log('[AUTH RESTORE START]', { screen: 'root' })
       const { auth } = getFirebaseServices()
-      return onAuthStateChanged(auth, async (user) => {
+      const unsubscribe = onAuthStateChanged(auth, async (user) => {
+        if (authNullResolutionTimerRef.current) {
+          clearTimeout(authNullResolutionTimerRef.current)
+          authNullResolutionTimerRef.current = null
+        }
+
         if (user) {
           lastAuthenticatedAtRef.current = Date.now()
           try {
@@ -344,8 +350,38 @@ export default function RootLayout() {
           screen: 'root',
           uid: user?.uid ?? null,
         })
-        setAuthState({ checked: true, user })
+        if (user) {
+          setAuthState({ checked: true, user })
+          return
+        }
+
+        setAuthState((current) => (
+          current.user
+            ? { checked: false, user: current.user }
+            : { checked: true, user: null }
+        ))
+
+        authNullResolutionTimerRef.current = setTimeout(() => {
+          authNullResolutionTimerRef.current = null
+          const restoredUser = auth.currentUser
+
+          if (restoredUser) {
+            lastAuthenticatedAtRef.current = Date.now()
+            setAuthState({ checked: true, user: restoredUser })
+            return
+          }
+
+          setAuthState({ checked: true, user: null })
+        }, 1500)
       })
+
+      return () => {
+        if (authNullResolutionTimerRef.current) {
+          clearTimeout(authNullResolutionTimerRef.current)
+          authNullResolutionTimerRef.current = null
+        }
+        unsubscribe()
+      }
     } catch (error) {
       console.error('[AUTH RESTORE ERROR]', error)
       setAuthState({ checked: true, user: null })

@@ -38,7 +38,7 @@ import {
   Zap,
 } from 'lucide-react-native'
 import type { LucideIcon } from 'lucide-react-native'
-import { onAuthStateChanged } from 'firebase/auth'
+import type { User as FirebaseUser } from 'firebase/auth'
 import {
   collection,
   deleteField,
@@ -78,6 +78,7 @@ import {
   type ActivityQuickCategoryId,
 } from '../../utils/activityDiscovery'
 import { getCategoryImage } from '../../utils/categoryImages'
+import { useGlobalAuth } from '../../utils/authContext'
 import { resolveUserDisplayName, readStoredUserName } from '../../utils/userNames'
 
 type CategoryId = 'culture' | 'groups' | 'hobbies' | 'outdoor' | 'sports' | 'training' | 'wellness'
@@ -574,6 +575,10 @@ function filterRecordsByCategory(records: CreatedRecord[], category: string) {
 
 export default function HomeScreen() {
   const router = useRouter()
+  const { checked: authChecked, user: authUser } = useGlobalAuth() as {
+    checked: boolean
+    user: FirebaseUser | null
+  }
   const [activeCategory, setActiveCategory] = useState('Todas')
   const [activeQuickCategory, setActiveQuickCategory] = useState<ActivityQuickCategoryId>('all')
   const [currentUserId, setCurrentUserId] = useState<string | null>(null)
@@ -637,54 +642,59 @@ export default function HomeScreen() {
 
   useEffect(() => {
     let mounted = true
-    let unsubscribe = () => {}
+
+    if (!authChecked) return () => {
+      mounted = false
+    }
+
+    if (!authUser) {
+      setCurrentUserId(null)
+      setUserName(null)
+      setUserEmail(null)
+      return () => {
+        mounted = false
+      }
+    }
+
+    setCurrentUserId(authUser.uid)
+    setUserEmail(authUser.email ?? null)
+
+    const authName = resolveUserDisplayName({ firebaseUser: authUser, fallback: '' })
 
     try {
-      const { auth, db } = getFirebaseServices()
-      unsubscribe = onAuthStateChanged(auth, async (user) => {
-        if (!mounted) return
+      const { db } = getFirebaseServices()
 
-        if (!user) {
-          setCurrentUserId(null)
-          setUserName(null)
-          setUserEmail(null)
-          return
-        }
+      getDoc(doc(db, 'users', authUser.uid))
+        .then((profileSnap) => {
+          if (!mounted) return
 
-        setCurrentUserId(user.uid)
-        setUserEmail(user.email ?? null)
-
-        const authName = resolveUserDisplayName({ firebaseUser: user, fallback: '' })
-
-        try {
-          const profileSnap = await getDoc(doc(db, 'users', user.uid))
           const profile = profileSnap.exists() ? profileSnap.data() : null
           const profileName = readStoredUserName(profile)
+          const cleanName = resolveUserDisplayName({
+            email: authUser.email,
+            fallback: '',
+            firebaseUser: authUser,
+            profile,
+          })
+          const nextName = cleanName || profileName || authName
 
-          if (mounted) {
-            const cleanName = resolveUserDisplayName({
-              email: user.email,
-              fallback: '',
-              firebaseUser: user,
-              profile,
-            })
-            setUserName(cleanName || profileName || authName || null)
+          if (nextName) setUserName(nextName)
+        })
+        .catch(() => {
+          if (mounted && authName) {
+            setUserName((current) => current || authName)
           }
-        } catch {
-          if (mounted) {
-            setUserName(authName || null)
-          }
-        }
-      })
+        })
     } catch {
-      setUserName(null)
+      if (authName) {
+        setUserName((current) => current || authName)
+      }
     }
 
     return () => {
       mounted = false
-      unsubscribe()
     }
-  }, [])
+  }, [authChecked, authUser])
 
   useEffect(() => {
     let unsubscribeActivities = () => {}
@@ -718,7 +728,9 @@ export default function HomeScreen() {
 
           setCreatedActivities(records)
         },
-        () => setCreatedActivities([]),
+        (error) => {
+          if (__DEV__) console.warn('[Home] activities snapshot error', error)
+        },
       )
 
       unsubscribeUsers = onSnapshot(
@@ -733,7 +745,9 @@ export default function HomeScreen() {
 
           setUserNamesById(nextNames)
         },
-        () => setUserNamesById({}),
+        (error) => {
+          if (__DEV__) console.warn('[Home] users snapshot error', error)
+        },
       )
 
       unsubscribeGroups = onSnapshot(
@@ -753,12 +767,12 @@ export default function HomeScreen() {
 
           setGroupImageUrlsByKey(nextImages)
         },
-        () => setGroupImageUrlsByKey({}),
+        (error) => {
+          if (__DEV__) console.warn('[Home] groups snapshot error', error)
+        },
       )
     } catch {
-      setCreatedActivities([])
-      setGroupImageUrlsByKey({})
-      setUserNamesById({})
+      if (__DEV__) console.warn('[Home] error creating discovery snapshots')
     }
 
     return () => {
