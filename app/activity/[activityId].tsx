@@ -883,6 +883,12 @@ export default function ActivityDetailScreen() {
   const confirmInterestedUser = (user: InterestedUser) => {
     if (!activityId || !activity || detail.isCancelled || isInterestedActionPending(user.uid, 'confirm')) return
 
+    if (Platform.OS === 'web' && typeof window !== 'undefined') {
+      const confirmed = window.confirm(`Confirmar participante\n\n¿Confirmar a ${user.name} como participante?`)
+      if (confirmed) void confirmInterestedUserNow(user)
+      return
+    }
+
     Alert.alert(
       'Confirmar participante',
       `¿Confirmar a ${user.name} como participante?`,
@@ -986,6 +992,12 @@ export default function ActivityDetailScreen() {
 
   const rejectInterestedUser = (user: InterestedUser) => {
     if (!activityId || !activity || detail.isCancelled || isInterestedActionPending(user.uid, 'reject')) return
+
+    if (Platform.OS === 'web' && typeof window !== 'undefined') {
+      const confirmed = window.confirm('Rechazar solicitud\n\n¿Rechazar esta solicitud?')
+      if (confirmed) void rejectInterestedUserNow(user)
+      return
+    }
 
     Alert.alert(
       'Rechazar solicitud',
@@ -1693,7 +1705,48 @@ export default function ActivityDetailScreen() {
                     <Text numberOfLines={1} style={styles.interestedName}>{user.name}</Text>
                     <Text style={styles.interestedSubtitle}>Quiere participar en esta actividad</Text>
                     <View style={styles.interestedActions}>
-                      {Platform.OS === 'android' ? (
+                      {Platform.OS === 'web' ? (
+                        <View style={styles.interestedPrimaryActions}>
+                          <Pressable
+                            accessibilityLabel={`Rechazar a ${user.name}`}
+                            accessibilityRole="button"
+                            disabled={detail.isCancelled || isInterestedActionPending(user.uid, 'reject')}
+                            onPress={() => {
+                              rejectInterestedUser(user)
+                            }}
+                            style={({ pressed }) => [
+                              styles.rejectAction,
+                              pressed && styles.interestedActionPressed,
+                              detail.isCancelled && styles.interestedActionDisabled,
+                            ]}
+                          >
+                            {isInterestedActionPending(user.uid, 'reject') ? (
+                              <ActivityIndicator color="#B42318" size="small" />
+                            ) : (
+                              <Text style={styles.rejectActionText}>Rechazar</Text>
+                            )}
+                          </Pressable>
+                          <Pressable
+                            accessibilityLabel={`Aceptar a ${user.name}`}
+                            accessibilityRole="button"
+                            disabled={detail.isCancelled || isInterestedActionPending(user.uid, 'confirm')}
+                            onPress={() => {
+                              confirmInterestedUser(user)
+                            }}
+                            style={({ pressed }) => [
+                              styles.confirmAction,
+                              pressed && styles.interestedActionPressed,
+                              detail.isCancelled && styles.interestedActionDisabled,
+                            ]}
+                          >
+                            {isInterestedActionPending(user.uid, 'confirm') ? (
+                              <ActivityIndicator color="#FFFFFF" size="small" />
+                            ) : (
+                              <Text style={styles.confirmActionText}>Aceptar</Text>
+                            )}
+                          </Pressable>
+                        </View>
+                      ) : Platform.OS === 'android' ? (
                         <View style={styles.androidInterestedActions}>
                           <Pressable
                             accessibilityLabel={`Rechazar a ${user.name}`}
