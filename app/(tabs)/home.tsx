@@ -87,7 +87,6 @@ const DEFAULT_CITY = 'Tandil'
 const NOTIFICATIONS_ROUTE = '/notificaciones' as Href
 const SETTINGS_ROUTE = '/ajustes' as Href
 const SELECTED_CITY_STORAGE_KEY = 'home:selectedCity'
-const INTEREST_HOME_BANNER_STORAGE_PREFIX = 'home:interestBannerDismissed'
 const cityOptions = ['Tandil', 'Buenos Aires', 'Mar del Plata', 'Córdoba', 'Rosario']
 
 const categories: { label: string; displayLabel: string }[] = [
@@ -606,8 +605,7 @@ export default function HomeScreen() {
   const [isResolvingCurrentLocation, setIsResolvingCurrentLocation] = useState(false)
   const [isInviteVisible, setIsInviteVisible] = useState(false)
   const [shareTarget, setShareTarget] = useState<InviteShareTarget>({ type: 'app' })
-  const [userInterests, setUserInterests] = useState<string[]>([])
-  const [isInterestBannerDismissed, setIsInterestBannerDismissed] = useState(false)
+  const [, setUserInterests] = useState<string[]>([])
   const [isInterestBannerCollapsed, setIsInterestBannerCollapsed] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
   const [debouncedSearchQuery, setDebouncedSearchQuery] = useState('')
@@ -662,7 +660,6 @@ export default function HomeScreen() {
       setUserName(null)
       setUserEmail(null)
       setUserInterests([])
-      setIsInterestBannerDismissed(false)
       setIsInterestBannerCollapsed(false)
       return () => {
         mounted = false
@@ -674,15 +671,6 @@ export default function HomeScreen() {
     setIsInterestBannerCollapsed(false)
 
     const authName = resolveUserDisplayName({ firebaseUser: authUser, fallback: '' })
-    const bannerStorageKey = `${INTEREST_HOME_BANNER_STORAGE_PREFIX}:${authUser.uid}`
-
-    AsyncStorage.getItem(bannerStorageKey)
-      .then((value) => {
-        if (mounted) setIsInterestBannerDismissed(value === '1')
-      })
-      .catch(() => {
-        if (mounted) setIsInterestBannerDismissed(false)
-      })
 
     try {
       const { db } = getFirebaseServices()
@@ -693,7 +681,8 @@ export default function HomeScreen() {
 
           const profile = profileSnap.exists() ? profileSnap.data() : null
           const profileName = readStoredUserName(profile)
-          setUserInterests(readStringList(profile?.interests ?? profile?.intereses ?? profile?.userInterests))
+          const nextInterests = readStringList(profile?.interests ?? profile?.intereses ?? profile?.userInterests)
+          setUserInterests(nextInterests)
           const cleanName = resolveUserDisplayName({
             email: authUser.email,
             fallback: '',
@@ -705,7 +694,9 @@ export default function HomeScreen() {
           if (nextName) setUserName(nextName)
         })
         .catch(() => {
-          if (mounted) setUserInterests([])
+          if (mounted) {
+            setUserInterests([])
+          }
           if (mounted && authName) {
             setUserName((current) => current || authName)
           }
@@ -816,9 +807,12 @@ export default function HomeScreen() {
         doc(db, 'users', currentUserId),
         (snapshot) => {
           const profile = snapshot.exists() ? snapshot.data() : null
-          setUserInterests(readStringList(profile?.interests ?? profile?.intereses ?? profile?.userInterests))
+          const nextInterests = readStringList(profile?.interests ?? profile?.intereses ?? profile?.userInterests)
+          setUserInterests(nextInterests)
         },
-        () => setUserInterests([]),
+        () => {
+          setUserInterests([])
+        },
       )
     } catch {
       setUserInterests([])
@@ -1172,19 +1166,15 @@ export default function HomeScreen() {
   const hasCategoryFilter = activeCategory !== 'Todas'
   const hasQuickCategoryFilter = activeQuickCategory !== 'all'
   const hasVisibleResults = nearbyMeetups.length > 0
-  const hasUserInterests = userInterests.length > 0
-  const showInterestBanner = Boolean(currentUserId && !isInterestBannerDismissed)
-  const showMissingInterestsCard = Boolean(currentUserId && !hasUserInterests)
+  const showInterestBanner = Boolean(currentUserId)
+  const showMissingInterestsCard = false
   const activityRecordsById = useMemo(
     () => new Map(filteredActivities.map((item) => [item.id, item])),
     [filteredActivities],
   )
 
   const openInterestEditor = () => {
-    router.push({
-      pathname: '/(tabs)/perfil',
-      params: { edit: '1' },
-    })
+    router.push('/(tabs)/perfil')
   }
 
   const collapseInterestBanner = () => {
@@ -1193,19 +1183,6 @@ export default function HomeScreen() {
 
   const expandInterestBanner = () => {
     setIsInterestBannerCollapsed(false)
-  }
-
-  const dismissInterestBanner = async () => {
-    if (!currentUserId) return
-
-    setIsInterestBannerDismissed(true)
-    setIsInterestBannerCollapsed(false)
-
-    try {
-      await AsyncStorage.setItem(`${INTEREST_HOME_BANNER_STORAGE_PREFIX}:${currentUserId}`, '1')
-    } catch {
-      // The banner remains dismissed for this session if local persistence is unavailable.
-    }
   }
 
   const openAppInvite = () => {
@@ -1268,15 +1245,18 @@ export default function HomeScreen() {
         </View>
 
         {showInterestBanner && isInterestBannerCollapsed ? (
-          <PressScale
+          <Pressable
             accessibilityLabel="Mostrar aviso de intereses"
             accessibilityRole="button"
             onPress={expandInterestBanner}
             style={styles.interestBannerChip}
-            scaleTo={0.96}
           >
-            <Text style={styles.interestBannerChipText}>🔔 Avisos por intereses</Text>
-          </PressScale>
+            <Text style={styles.interestBannerChipBell}>🔔</Text>
+            <Text numberOfLines={1} style={styles.interestBannerChipText}>Avisos por intereses</Text>
+            <View style={styles.interestBannerChipIcon}>
+              <ChevronDown color="#063C31" size={20} strokeWidth={2.5} />
+            </View>
+          </Pressable>
         ) : null}
 
         {showInterestBanner && !isInterestBannerCollapsed ? (
@@ -1291,14 +1271,11 @@ export default function HomeScreen() {
             </Pressable>
             <Text style={styles.interestBannerTitle}>🔔 No hace falta entrar todos los días</Text>
             <Text style={styles.interestBannerText}>
-              Elegí las actividades que te gustan y COINCIDIR te avisará cuando alguien publique una.
+              Elegí las actividades que te gustan una sola vez y COINCIDIR te avisará cuando alguien publique una actividad relacionada con tus intereses.
             </Text>
             <View style={styles.interestBannerActions}>
-              <PressScale onPress={openInterestEditor} style={styles.interestBannerButton} scaleTo={0.96}>
+              <Pressable onPress={openInterestEditor} style={styles.interestBannerButton}>
                 <Text style={styles.interestBannerButtonText}>Elegir mis intereses</Text>
-              </PressScale>
-              <Pressable accessibilityRole="button" onPress={dismissInterestBanner} style={styles.interestBannerSecondaryButton}>
-                <Text style={styles.interestBannerSecondaryText}>No mostrar más</Text>
               </Pressable>
             </View>
           </View>
@@ -1751,22 +1728,39 @@ const styles = StyleSheet.create({
   },
   interestBannerChip: {
     alignItems: 'center',
-    alignSelf: 'flex-start',
-    backgroundColor: '#E7F3DE',
-    borderColor: '#006A32',
-    borderRadius: 999,
+    backgroundColor: '#F0F8EC',
+    borderColor: '#B7DC9D',
+    borderRadius: 20,
     borderWidth: 1,
-    justifyContent: 'center',
-    marginTop: 18,
-    minHeight: 42,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 14,
+    marginTop: 12,
+    minHeight: 48,
     paddingHorizontal: 16,
+    paddingVertical: 12,
+    width: '100%',
+    ...softShadow,
   },
   interestBannerChipText: {
-    color: '#063C31',
+    color: '#004A25',
+    flex: 1,
+    flexShrink: 1,
     fontSize: 14,
-    fontWeight: '900',
+    fontWeight: '800',
     letterSpacing: 0,
     lineHeight: 18,
+    marginLeft: 8,
+  },
+  interestBannerChipBell: {
+    fontSize: 16,
+    lineHeight: 20,
+  },
+  interestBannerChipIcon: {
+    alignItems: 'flex-end',
+    flexShrink: 0,
+    marginLeft: 12,
+    width: 24,
   },
   interestBannerClose: {
     alignItems: 'center',
@@ -1806,11 +1800,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 10,
     marginTop: 16,
   },
   interestBannerButton: {
     alignItems: 'center',
+    alignSelf: 'flex-start',
     backgroundColor: '#006A32',
     borderColor: '#003F1F',
     borderRadius: 999,
@@ -1818,7 +1812,9 @@ const styles = StyleSheet.create({
     elevation: 2,
     justifyContent: 'center',
     minHeight: 48,
-    paddingHorizontal: 18,
+    opacity: 1,
+    paddingHorizontal: 20,
+    paddingVertical: 12,
     shadowColor: '#003F1F',
     shadowOffset: { width: 0, height: 3 },
     shadowOpacity: 0.18,
@@ -1827,21 +1823,9 @@ const styles = StyleSheet.create({
   interestBannerButtonText: {
     color: '#FFFFFF',
     fontSize: 15,
-    fontWeight: '900',
+    fontWeight: '800',
     letterSpacing: 0,
-  },
-  interestBannerSecondaryButton: {
-    alignItems: 'center',
-    borderRadius: 999,
-    justifyContent: 'center',
-    minHeight: 44,
-    paddingHorizontal: 12,
-  },
-  interestBannerSecondaryText: {
-    color: '#48645B',
-    fontSize: 14,
-    fontWeight: '900',
-    letterSpacing: 0,
+    opacity: 1,
   },
   missingInterestsCard: {
     alignItems: 'center',
