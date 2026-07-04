@@ -559,11 +559,15 @@ export default function PerfilScreen() {
   }, [activities, userId])
 
   const selectedInterests = optimisticInterests ?? expandUserInterests(profile.interests)
+  const selectedInterestPreview = selectedInterests.slice(0, 5)
+  const hiddenSelectedInterestsCount = Math.max(0, selectedInterests.length - selectedInterestPreview.length)
+  const selectedInterestSummary = selectedInterests.length > 0
+    ? `${selectedInterests.slice(0, 4).join(' · ')}${selectedInterests.length > 4 ? '...' : ''}`
+    : ''
   const visibleProfileInterestOptions = showAllProfileInterests
     ? editableInterests
-    : selectedInterests.length > 0
-      ? selectedInterests.slice(0, 8)
-      : editableInterests.slice(0, 8)
+    : selectedInterestPreview
+  const toggleProfileInterestsEditor = () => setShowAllProfileInterests((prev) => !prev)
 
   const toggleProfileInterest = async (interest: string) => {
     if (!userId || pendingInterest) return
@@ -698,24 +702,84 @@ export default function PerfilScreen() {
         <ProfileSection
   subtitle={showAllProfileInterests ? 'Listo' : 'Tocá para editar'}
   title="Mis intereses"
-  TitleIcon={Pencil}
-  onSubtitlePress={() =>
-    setShowAllProfileInterests((prev) => !prev)
-  }
+  TitleIcon={showAllProfileInterests ? Check : Pencil}
+  onSubtitlePress={toggleProfileInterestsEditor}
 >
-          <View style={styles.interestsCard}>
+          {showAllProfileInterests ? (
+            <View style={styles.interestsEditIntro}>
+              <Star color="#4B348A" size={20} strokeWidth={2.2} />
+              <Text style={styles.interestsEditIntroText}>
+                <Text style={styles.interestsEditIntroTitle}>Seleccioná las actividades que te interesan.{'\n'}</Text>
+                Te avisaremos cuando aparezcan nuevas propuestas relacionadas.
+              </Text>
+            </View>
+          ) : null}
+
+          <View style={[styles.interestsCard, showAllProfileInterests && styles.interestsCardEditing]}>
             {visibleProfileInterestOptions.length > 0 ? (
-              <View style={styles.chipWrap}>
-                {visibleProfileInterestOptions.map((interest) => (
-                  <InterestChip
-                    key={interest}
-                    label={interest}
-                    loading={pendingInterest === interest}
-                    onPress={() => void toggleProfileInterest(interest)}
-                    selected={selectedInterests.includes(interest)}
-                  />
-                ))}
-              </View>
+              showAllProfileInterests ? (
+                <View style={styles.chipWrap}>
+                  {visibleProfileInterestOptions.map((interest) => (
+                    <InterestChip
+                      key={interest}
+                      label={interest}
+                      loading={pendingInterest === interest}
+                      onPress={() => void toggleProfileInterest(interest)}
+                      selected={selectedInterests.includes(interest)}
+                    />
+                  ))}
+                  <Pressable
+                    onPress={() => {
+                      console.log('[PROFILE INTERESTS DONE BOTTOM]')
+                      toggleProfileInterestsEditor()
+                    }}
+                    style={{
+                      alignSelf: 'center',
+                      width: '78%',
+                      minHeight: 52,
+                      marginTop: 26,
+                      marginBottom: 34,
+                      borderRadius: 999,
+                      backgroundColor: '#006A32',
+                      borderColor: '#003F1F',
+                      borderWidth: 2,
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      opacity: 1,
+                      elevation: 4,
+                    }}
+                  >
+                    <Text
+                      style={{
+                        color: '#FFFFFF',
+                        fontSize: 17,
+                        fontWeight: '800',
+                        opacity: 1,
+                      }}
+                    >
+                      ✓ Listo
+                    </Text>
+                  </Pressable>
+                </View>
+              ) : (
+                <View style={styles.interestsSummary}>
+                  <View style={styles.interestsPreviewRow}>
+                    {selectedInterestPreview.map((interest) => (
+                      <InterestPreviewIcon key={interest} label={interest} />
+                    ))}
+                    {hiddenSelectedInterestsCount > 0 ? (
+                      <View style={styles.interestMoreBubble}>
+                        <Text style={styles.interestMoreText}>+{hiddenSelectedInterestsCount}</Text>
+                      </View>
+                    ) : null}
+                  </View>
+                  <Text numberOfLines={2} style={styles.interestsSummaryText}>{selectedInterestSummary}</Text>
+                  <View style={styles.interestsBenefit}>
+                    <Heart color="#17803C" size={18} strokeWidth={2.2} />
+                    <Text style={styles.interestsBenefitText}>Te avisaremos cuando se publique una actividad que coincida con tus intereses.</Text>
+                  </View>
+                </View>
+              )
             ) : (
               <View style={styles.interestsEmptyContent}>
                 <View style={styles.emptyIcon}>
@@ -725,7 +789,6 @@ export default function PerfilScreen() {
               </View>
             )}
           </View>
-          <Text style={styles.interestsHint}>Te avisamos cuando se publique una actividad pública que coincida con tus intereses.</Text>
         </ProfileSection>
 
         <ProfileListSection
@@ -801,6 +864,7 @@ function InterestChip({ label, loading = false, selected = false, onPress }: { l
     <PressScale
       accessibilityRole={interactive ? 'button' : undefined}
       accessibilityState={interactive ? { selected } : undefined}
+      containerStyle={interactive ? styles.chipContainer : undefined}
       disabled={loading}
       onPress={onPress}
       scaleTo={interactive ? 0.96 : 1}
@@ -816,10 +880,20 @@ function InterestChip({ label, loading = false, selected = false, onPress }: { l
         </View>
       ) : null}
       <View style={[styles.chipIcon, !interactive && styles.chipIconCompact, selected && styles.chipIconSelected]}>
-        <Icon color={selected ? '#006A32' : '#17803C'} size={interactive ? 21 : 18} strokeWidth={2.15} />
+        <Icon color={selected ? '#006A32' : '#17803C'} size={interactive ? 18 : 18} strokeWidth={2.15} />
       </View>
-      <Text style={[styles.chipText, !interactive && styles.chipTextCompact, selected && styles.chipTextSelected]}>{label}</Text>
+      <Text numberOfLines={2} style={[styles.chipText, !interactive && styles.chipTextCompact, selected && styles.chipTextSelected]}>{label}</Text>
     </PressScale>
+  )
+}
+
+function InterestPreviewIcon({ label }: { label: string }) {
+  const Icon = getInterestIcon(label)
+
+  return (
+    <View accessibilityLabel={label} style={styles.interestPreviewBubble}>
+      <Icon color="#007A3D" size={24} strokeWidth={2.15} />
+    </View>
   )
 }
 
@@ -2010,17 +2084,100 @@ const styles = StyleSheet.create({
     alignSelf: 'stretch',
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 11,
-    justifyContent: 'center',
+    gap: 14,
+    justifyContent: 'space-between',
   },
   interestsCard: {
     alignSelf: 'stretch',
     backgroundColor: '#FFFFFF',
     borderColor: '#E7E7E1',
+    borderRadius: 18,
+    borderWidth: 1,
+    minHeight: 0,
+    padding: 16,
+    ...cardShadow,
+  },
+  interestsCardEditing: {
+    padding: 14,
+  },
+  interestsSummary: {
+    gap: 12,
+  },
+  interestsPreviewRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 10,
+  },
+  interestPreviewBubble: {
+    alignItems: 'center',
+    backgroundColor: '#EEF7E9',
+    borderRadius: 999,
+    height: 48,
+    justifyContent: 'center',
+    width: 48,
+  },
+  interestMoreBubble: {
+    alignItems: 'center',
+    backgroundColor: '#F1F6EC',
+    borderRadius: 999,
+    height: 44,
+    justifyContent: 'center',
+    width: 44,
+  },
+  interestMoreText: {
+    color: '#007A3D',
+    fontSize: 14,
+    fontWeight: '900',
+    letterSpacing: 0,
+  },
+  interestsSummaryText: {
+    color: '#10231F',
+    fontSize: 15,
+    fontWeight: '900',
+    letterSpacing: 0,
+    lineHeight: 21,
+  },
+  interestsBenefit: {
+    alignItems: 'center',
+    backgroundColor: '#F0F8EC',
+    borderColor: '#E0ECDD',
     borderRadius: 14,
     borderWidth: 1,
-    minHeight: 72,
-    padding: 14,
+    flexDirection: 'row',
+    gap: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 11,
+  },
+  interestsBenefitText: {
+    color: '#315349',
+    flex: 1,
+    fontSize: 13,
+    fontWeight: '800',
+    letterSpacing: 0,
+    lineHeight: 18,
+  },
+  interestsEditIntro: {
+    alignItems: 'center',
+    backgroundColor: '#F7F2FB',
+    borderColor: '#E6DDF7',
+    borderRadius: 14,
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: 12,
+    marginBottom: 14,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+  },
+  interestsEditIntroText: {
+    color: '#39206C',
+    flex: 1,
+    fontSize: 13,
+    fontWeight: '700',
+    letterSpacing: 0,
+    lineHeight: 19,
+  },
+  interestsEditIntroTitle: {
+    fontWeight: '900',
   },
   interestsEmptyContent: {
     alignItems: 'center',
@@ -2047,21 +2204,22 @@ const styles = StyleSheet.create({
     minHeight: 36,
     paddingHorizontal: 14,
   },
+  chipContainer: {
+    width: '31%',
+  },
   chip: {
     alignItems: 'center',
     backgroundColor: '#FAFCF8',
     borderColor: '#DDE7DD',
-    borderRadius: 18,
+    borderRadius: 16,
     borderWidth: 1.3,
-    flexBasis: '30%',
-    flexGrow: 1,
-    gap: 8,
+    gap: 7,
     justifyContent: 'center',
-    minHeight: 92,
-    minWidth: 96,
-    paddingHorizontal: 10,
-    paddingVertical: 12,
+    minHeight: 118,
+    paddingHorizontal: 8,
+    paddingVertical: 10,
     position: 'relative',
+    width: '100%',
   },
   chipSelected: {
     backgroundColor: '#EAF7E7',
@@ -2082,9 +2240,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     backgroundColor: '#EFF6E9',
     borderRadius: 999,
-    height: 42,
+    height: 40,
     justifyContent: 'center',
-    width: 42,
+    width: 40,
   },
   chipIconSelected: {
     backgroundColor: '#D6EED5',
@@ -2095,10 +2253,10 @@ const styles = StyleSheet.create({
   },
   chipText: {
     color: '#10231F',
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: '900',
     letterSpacing: 0,
-    lineHeight: 16,
+    lineHeight: 15,
     textAlign: 'center',
   },
   chipTextSelected: {
@@ -2115,12 +2273,12 @@ const styles = StyleSheet.create({
     borderColor: '#FFFFFF',
     borderRadius: 999,
     borderWidth: 2,
-    height: 24,
+    height: 23,
     justifyContent: 'center',
     position: 'absolute',
-    right: 8,
-    top: 8,
-    width: 24,
+    right: 7,
+    top: 7,
+    width: 23,
     zIndex: 2,
   },
   emptyBlock: {
