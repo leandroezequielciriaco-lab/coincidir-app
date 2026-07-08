@@ -8,19 +8,56 @@ import {
   Plus,
   UserRound,
 } from 'lucide-react-native'
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Platform, StyleSheet, Text, View } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 
 import { getFirebaseServices } from '../../firebaseConfig'
-import { type ChatSummaryData, getUnreadCount } from '../../lib/chat'
+import { type ChatSummaryData, getUnreadCount, isUserParticipant } from '../../lib/chat'
+
+type FirestoreRecordMap = Record<string, Record<string, unknown>>
+type ChatSummaryMap = Record<string, ChatSummaryData>
+
+function mapSnapshotDocs<T extends Record<string, unknown>>(docs: { id: string; data: () => T }[]) {
+  return Object.fromEntries(docs.map((item) => [item.id, item.data()]))
+}
+
+function getVisibleUnreadCount({
+  chats,
+  sources,
+  userId,
+}: {
+  chats: ChatSummaryMap
+  sources: FirestoreRecordMap
+  userId: string | null
+}) {
+  if (!userId) return 0
+
+  return Object.entries(chats).reduce((total, [chatId, chatData]) => {
+    const sourceData = sources[chatId]
+    if (!sourceData || !isUserParticipant(sourceData, userId)) return total
+    return total + getUnreadCount(chatData, userId)
+  }, 0)
+}
 
 export default function TabsLayout() {
   const insets = useSafeAreaInsets()
   const [userId, setUserId] = useState<string | null>(null)
-  const [activityUnreadCount, setActivityUnreadCount] = useState(0)
-  const [groupUnreadCount, setGroupUnreadCount] = useState(0)
+  const [activities, setActivities] = useState<FirestoreRecordMap>({})
+  const [groups, setGroups] = useState<FirestoreRecordMap>({})
+  const [activityChats, setActivityChats] = useState<ChatSummaryMap>({})
+  const [groupChats, setGroupChats] = useState<ChatSummaryMap>({})
   const bottomInset = Math.max(insets.bottom, Platform.OS === 'ios' ? 18 : 10)
+  const activityUnreadCount = useMemo(() => getVisibleUnreadCount({
+    chats: activityChats,
+    sources: activities,
+    userId,
+  }), [activities, activityChats, userId])
+  const groupUnreadCount = useMemo(() => getVisibleUnreadCount({
+    chats: groupChats,
+    sources: groups,
+    userId,
+  }), [groups, groupChats, userId])
   const unreadMessagesCount = userId ? activityUnreadCount + groupUnreadCount : 0
   const unreadMessagesBadge = unreadMessagesCount > 0
     ? unreadMessagesCount > 9 ? '9+' : unreadMessagesCount
@@ -53,36 +90,46 @@ export default function TabsLayout() {
   }, [])
 
   useEffect(() => {
-    setActivityUnreadCount(0)
-    setGroupUnreadCount(0)
+    setActivities({})
+    setGroups({})
+    setActivityChats({})
+    setGroupChats({})
 
     if (!userId) return undefined
 
+    let unsubscribeActivities = () => {}
+    let unsubscribeGroups = () => {}
     let unsubscribeActivityChats = () => {}
     let unsubscribeGroupChats = () => {}
 
     try {
       const { db } = getFirebaseServices()
 
+      unsubscribeActivities = onSnapshot(collection(db, 'activities'), (snapshot) => {
+        setActivities(mapSnapshotDocs(snapshot.docs))
+      }, () => setActivities({}))
+
+      unsubscribeGroups = onSnapshot(collection(db, 'groups'), (snapshot) => {
+        setGroups(mapSnapshotDocs(snapshot.docs))
+      }, () => setGroups({}))
+
       unsubscribeActivityChats = onSnapshot(collection(db, 'activityChats'), (snapshot) => {
-        const activityUnread = snapshot.docs.reduce((total, item) => (
-          total + getUnreadCount(item.data() as ChatSummaryData, userId)
-        ), 0)
-        setActivityUnreadCount(activityUnread)
-      }, () => setActivityUnreadCount(0))
+        setActivityChats(mapSnapshotDocs(snapshot.docs as { id: string; data: () => ChatSummaryData }[]))
+      }, () => setActivityChats({}))
 
       unsubscribeGroupChats = onSnapshot(collection(db, 'groupChats'), (snapshot) => {
-        const groupUnread = snapshot.docs.reduce((total, item) => (
-          total + getUnreadCount(item.data() as ChatSummaryData, userId)
-        ), 0)
-        setGroupUnreadCount(groupUnread)
-      }, () => setGroupUnreadCount(0))
+        setGroupChats(mapSnapshotDocs(snapshot.docs as { id: string; data: () => ChatSummaryData }[]))
+      }, () => setGroupChats({}))
     } catch {
-      setActivityUnreadCount(0)
-      setGroupUnreadCount(0)
+      setActivities({})
+      setGroups({})
+      setActivityChats({})
+      setGroupChats({})
     }
 
     return () => {
+      unsubscribeActivities()
+      unsubscribeGroups()
       unsubscribeActivityChats()
       unsubscribeGroupChats()
     }
