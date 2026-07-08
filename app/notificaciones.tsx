@@ -430,6 +430,19 @@ function NotificationCard({
         !notification.read && styles.notificationCardUnread,
       ]}
     >
+      <View style={styles.notificationHeaderRow}>
+        <Text numberOfLines={1} style={styles.notificationTime}>{getRelativeTime(notification.createdAt)}</Text>
+        <Pressable
+          accessibilityLabel="Eliminar notificación"
+          accessibilityRole="button"
+          hitSlop={10}
+          onPress={onDelete}
+          style={({ pressed }) => [styles.deleteButton, pressed && styles.deleteButtonPressed]}
+        >
+          <Trash2 color="#8A3A32" size={18} strokeWidth={2.3} />
+        </Pressable>
+      </View>
+      <View style={styles.notificationContentRow}>
       {isWeb ? (
         <View
           accessibilityLabel={notification.title}
@@ -444,7 +457,6 @@ function NotificationCard({
           <View style={styles.notificationCopy}>
             <View style={styles.notificationTitleRow}>
               <Text numberOfLines={2} style={styles.notificationTitle}>{notification.title}</Text>
-              {!notification.read ? <View style={[styles.unreadDot, { backgroundColor: tone.accent }]} /> : null}
             </View>
             {destinationName ? (
               <Text numberOfLines={1} style={[styles.activityName, { color: tone.accent }]}>
@@ -473,7 +485,6 @@ function NotificationCard({
         <View style={styles.notificationCopy}>
           <View style={styles.notificationTitleRow}>
             <Text numberOfLines={2} style={styles.notificationTitle}>{notification.title}</Text>
-            {!notification.read ? <View style={[styles.unreadDot, { backgroundColor: tone.accent }]} /> : null}
           </View>
           {destinationName ? (
             <Text numberOfLines={1} style={[styles.activityName, { color: tone.accent }]}>
@@ -490,17 +501,7 @@ function NotificationCard({
         </View>
         </Pressable>
       )}
-      <View style={styles.notificationRightActions}>
-        <Text style={styles.notificationTime}>{getRelativeTime(notification.createdAt)}</Text>
-        <Pressable
-          accessibilityLabel="Eliminar notificación"
-          accessibilityRole="button"
-          hitSlop={10}
-          onPress={onDelete}
-          style={({ pressed }) => [styles.deleteButton, pressed && styles.deleteButtonPressed]}
-        >
-          <Trash2 color="#8A3A32" size={18} strokeWidth={2.3} />
-        </Pressable>
+        {!notification.read ? <View style={[styles.unreadDot, { backgroundColor: tone.accent }]} /> : null}
       </View>
     </View>
   )
@@ -664,13 +665,12 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   notificationCard: {
-    alignItems: 'flex-start',
+    alignItems: 'stretch',
     backgroundColor: '#FFFFFF',
     borderColor: '#E7E7E1',
     borderRadius: 20,
     borderWidth: 1,
-    flexDirection: 'row',
-    gap: 16,
+    gap: 10,
     minHeight: 132,
     paddingHorizontal: 18,
     paddingVertical: 18,
@@ -704,9 +704,16 @@ const styles = StyleSheet.create({
     minWidth: 0,
   },
   notificationHeaderRow: {
-    alignItems: 'flex-start',
+    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    minWidth: 0,
+  },
+  notificationContentRow: {
+    alignItems: 'center',
     flexDirection: 'row',
     gap: 10,
+    minWidth: 0,
   },
   notificationTitleWrap: {
     flex: 1,
@@ -736,7 +743,6 @@ const styles = StyleSheet.create({
     backgroundColor: '#17803C',
     borderRadius: 999,
     height: 8,
-    marginTop: 7,
     width: 8,
   },
   notificationBody: {
@@ -749,15 +755,11 @@ const styles = StyleSheet.create({
   },
   notificationTime: {
     color: '#56645F',
+    flexShrink: 1,
     fontSize: 13,
     fontWeight: '800',
     letterSpacing: 0,
     lineHeight: 18,
-  },
-  notificationRightActions: {
-    alignItems: 'flex-end',
-    gap: 8,
-    zIndex: 2,
   },
   deleteButton: {
     alignItems: 'center',
@@ -765,9 +767,9 @@ const styles = StyleSheet.create({
     borderColor: '#F4C7C2',
     borderRadius: 999,
     borderWidth: 1,
-    height: 34,
+    height: 44,
     justifyContent: 'center',
-    width: 34,
+    width: 44,
     zIndex: 3,
   },
   deleteButtonPressed: {
