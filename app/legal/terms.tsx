@@ -1,20 +1,39 @@
+import { useState } from 'react'
 import { useRouter } from 'expo-router'
 import { ChevronLeft, FileText } from 'lucide-react-native'
 import { Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
-import { SafeAreaView } from 'react-native-safe-area-context'
+import type { NativeScrollEvent, NativeSyntheticEvent } from 'react-native'
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 
 import {
   legalLastUpdated,
   legalTermsSections,
   legalTermsTitle,
 } from '../../constants/legal'
+import { LegalDocumentFooter } from '../../components/LegalDocumentFooter'
 
 export default function TermsScreen() {
   const router = useRouter()
+  const insets = useSafeAreaInsets()
+  const [hasReachedEnd, setHasReachedEnd] = useState(false)
+  const footerBottomPadding = Math.max(insets.bottom + 16, 48)
+  const scrollBottomPadding = Platform.OS === 'web' ? 36 : Math.max(insets.bottom + 32, 64)
+  const handleScroll = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
+    const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent
+    if (layoutMeasurement.height + contentOffset.y >= contentSize.height - 24) {
+      setHasReachedEnd(true)
+    }
+  }
 
   return (
     <SafeAreaView edges={['top']} style={styles.safeArea}>
-      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        contentContainerStyle={[styles.content, { paddingBottom: scrollBottomPadding }]}
+        onScroll={handleScroll}
+        scrollEventThrottle={16}
+        showsVerticalScrollIndicator={false}
+        style={styles.scroll}
+      >
         <View style={styles.header}>
           <Pressable
             accessibilityLabel="Volver"
@@ -51,6 +70,12 @@ export default function TermsScreen() {
           ))}
         </View>
       </ScrollView>
+      <LegalDocumentFooter
+        bottomPadding={footerBottomPadding}
+        disabled={!hasReachedEnd}
+        hasReachedEnd={hasReachedEnd}
+        onPress={() => router.back()}
+      />
     </SafeAreaView>
   )
 }
@@ -58,6 +83,9 @@ export default function TermsScreen() {
 const styles = StyleSheet.create({
   safeArea: {
     backgroundColor: '#F6F3EA',
+    flex: 1,
+  },
+  scroll: {
     flex: 1,
   },
   content: {
@@ -134,6 +162,7 @@ const styles = StyleSheet.create({
     borderColor: '#E7E7E1',
     borderRadius: 18,
     borderWidth: 1,
+    overflow: 'hidden',
     padding: 18,
   },
   section: {

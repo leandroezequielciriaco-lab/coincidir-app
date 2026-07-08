@@ -1,21 +1,40 @@
+import { useState } from 'react'
 import { useRouter } from 'expo-router'
 import type { Href } from 'expo-router'
 import { ChevronLeft, ChevronRight, ShieldCheck } from 'lucide-react-native'
 import { Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
-import { SafeAreaView } from 'react-native-safe-area-context'
+import type { NativeScrollEvent, NativeSyntheticEvent } from 'react-native'
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 
 import {
   legalLastUpdated,
   legalPrivacySections,
   legalPrivacyTitle,
 } from '../../constants/legal'
+import { LegalDocumentFooter } from '../../components/LegalDocumentFooter'
 
 export default function PrivacyPolicyScreen() {
   const router = useRouter()
+  const insets = useSafeAreaInsets()
+  const [hasReachedEnd, setHasReachedEnd] = useState(false)
+  const footerBottomPadding = Math.max(insets.bottom + 16, 48)
+  const scrollBottomPadding = Platform.OS === 'web' ? 36 : Math.max(insets.bottom + 32, 64)
+  const handleScroll = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
+    const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent
+    if (layoutMeasurement.height + contentOffset.y >= contentSize.height - 24) {
+      setHasReachedEnd(true)
+    }
+  }
 
   return (
     <SafeAreaView edges={['top']} style={styles.safeArea}>
-      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        contentContainerStyle={[styles.content, { paddingBottom: scrollBottomPadding }]}
+        onScroll={handleScroll}
+        scrollEventThrottle={16}
+        showsVerticalScrollIndicator={false}
+        style={styles.scroll}
+      >
         <View style={styles.header}>
           <Pressable
             accessibilityLabel="Volver"
@@ -50,24 +69,30 @@ export default function PrivacyPolicyScreen() {
               ))}
             </View>
           ))}
-        </View>
 
-        <Pressable
-          accessibilityLabel="Ver estándares de seguridad infantil"
-          accessibilityRole="link"
-          onPress={() => router.push('/child-safety' as Href)}
-          style={({ pressed }) => [styles.childSafetyLink, pressed && styles.pressed]}
-        >
-          <View style={styles.childSafetyIcon}>
-            <ShieldCheck color="#17803C" size={23} strokeWidth={2.2} />
-          </View>
-          <View style={styles.childSafetyCopy}>
-            <Text style={styles.childSafetyTitle}>Estándares de seguridad infantil</Text>
-            <Text style={styles.childSafetyText}>Política contra la explotación y el abuso sexual infantil</Text>
-          </View>
-          <ChevronRight color="#063C31" size={22} strokeWidth={2.2} />
-        </Pressable>
+          <Pressable
+            accessibilityLabel="Ver estándares de seguridad infantil"
+            accessibilityRole="link"
+            onPress={() => router.push('/child-safety' as Href)}
+            style={({ pressed }) => [styles.childSafetyLink, pressed && styles.childSafetyLinkPressed]}
+          >
+            <View style={styles.childSafetyIcon}>
+              <ShieldCheck color="#17803C" size={23} strokeWidth={2.2} />
+            </View>
+            <View style={styles.childSafetyCopy}>
+              <Text style={styles.childSafetyTitle}>Estándares de seguridad infantil</Text>
+              <Text style={styles.childSafetyText}>Política contra la explotación y el abuso sexual infantil</Text>
+            </View>
+            <ChevronRight color="#063C31" size={22} strokeWidth={2.2} />
+          </Pressable>
+        </View>
       </ScrollView>
+      <LegalDocumentFooter
+        bottomPadding={footerBottomPadding}
+        disabled={!hasReachedEnd}
+        hasReachedEnd={hasReachedEnd}
+        onPress={() => router.back()}
+      />
     </SafeAreaView>
   )
 }
@@ -75,6 +100,9 @@ export default function PrivacyPolicyScreen() {
 const styles = StyleSheet.create({
   safeArea: {
     backgroundColor: '#F6F3EA',
+    flex: 1,
+  },
+  scroll: {
     flex: 1,
   },
   content: {
@@ -151,6 +179,7 @@ const styles = StyleSheet.create({
     borderColor: '#E7E7E1',
     borderRadius: 18,
     borderWidth: 1,
+    overflow: 'hidden',
     padding: 18,
   },
   section: {
@@ -183,9 +212,13 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     flexDirection: 'row',
     gap: 12,
-    marginTop: 16,
+    marginBottom: 20,
+    marginTop: 4,
     minHeight: 78,
     padding: 14,
+  },
+  childSafetyLinkPressed: {
+    backgroundColor: '#F3FAF0',
   },
   childSafetyIcon: {
     alignItems: 'center',

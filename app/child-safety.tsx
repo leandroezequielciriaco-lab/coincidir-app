@@ -1,8 +1,12 @@
+import { useState } from 'react'
 import { Stack, useRouter } from 'expo-router'
 import Head from 'expo-router/head'
 import { ChevronLeft, Mail, ShieldCheck } from 'lucide-react-native'
 import { Linking, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
-import { SafeAreaView } from 'react-native-safe-area-context'
+import type { NativeScrollEvent, NativeSyntheticEvent } from 'react-native'
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
+
+import { LegalDocumentFooter } from '../components/LegalDocumentFooter'
 
 const CONTACT_EMAIL = 'appcoincidir@gmail.com'
 
@@ -54,6 +58,16 @@ const sections = [
 
 export default function ChildSafetyScreen() {
   const router = useRouter()
+  const insets = useSafeAreaInsets()
+  const [hasReachedEnd, setHasReachedEnd] = useState(false)
+  const footerBottomPadding = Math.max(insets.bottom + 16, 48)
+  const scrollBottomPadding = Platform.OS === 'web' ? 40 : Math.max(insets.bottom + 32, 72)
+  const handleScroll = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
+    const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent
+    if (layoutMeasurement.height + contentOffset.y >= contentSize.height - 24) {
+      setHasReachedEnd(true)
+    }
+  }
 
   const goBack = () => {
     if (router.canGoBack()) {
@@ -73,7 +87,13 @@ export default function ChildSafetyScreen() {
           name="description"
         />
       </Head>
-      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        contentContainerStyle={[styles.content, { paddingBottom: scrollBottomPadding }]}
+        onScroll={handleScroll}
+        scrollEventThrottle={16}
+        showsVerticalScrollIndicator={false}
+        style={styles.scroll}
+      >
         <View style={styles.header}>
           <Pressable
             accessibilityLabel="Volver"
@@ -109,28 +129,35 @@ export default function ChildSafetyScreen() {
               ))}
             </View>
           ))}
-        </View>
 
-        <Pressable
-          accessibilityHint="Abre tu aplicación de correo"
-          accessibilityLabel={`Enviar correo a ${CONTACT_EMAIL}`}
-          accessibilityRole="link"
-          onPress={() => void Linking.openURL(`mailto:${CONTACT_EMAIL}?subject=Denuncia%20de%20seguridad%20infantil%20-%20COINCIDIR`)}
-          style={({ pressed }) => [styles.contactButton, pressed && styles.pressed]}
-        >
-          <Mail color="#FFFFFF" size={21} strokeWidth={2.2} />
-          <View style={styles.contactCopy}>
-            <Text style={styles.contactLabel}>Canal de denuncias</Text>
-            <Text style={styles.contactEmail}>{CONTACT_EMAIL}</Text>
-          </View>
-        </Pressable>
+          <Pressable
+            accessibilityHint="Abre tu aplicación de correo"
+            accessibilityLabel={`Enviar correo a ${CONTACT_EMAIL}`}
+            accessibilityRole="link"
+            onPress={() => void Linking.openURL(`mailto:${CONTACT_EMAIL}?subject=Denuncia%20de%20seguridad%20infantil%20-%20COINCIDIR`)}
+            style={({ pressed }) => [styles.contactButton, pressed && styles.contactButtonPressed]}
+          >
+            <Mail color="#064E3B" size={21} strokeWidth={2.2} />
+            <View style={styles.contactCopy}>
+              <Text style={styles.contactLabel}>Canal de denuncias</Text>
+              <Text style={styles.contactEmail}>{CONTACT_EMAIL}</Text>
+            </View>
+          </Pressable>
+        </View>
       </ScrollView>
+      <LegalDocumentFooter
+        bottomPadding={footerBottomPadding}
+        disabled={!hasReachedEnd}
+        hasReachedEnd={hasReachedEnd}
+        onPress={goBack}
+      />
     </SafeAreaView>
   )
 }
 
 const styles = StyleSheet.create({
   safeArea: { backgroundColor: '#F6F3EA', flex: 1 },
+  scroll: { flex: 1 },
   content: {
     paddingBottom: 40,
     paddingHorizontal: 20,
@@ -154,17 +181,18 @@ const styles = StyleSheet.create({
   eyebrow: { color: '#17803C', fontSize: 12, fontWeight: '900', letterSpacing: 1.4, marginBottom: 5 },
   title: { color: '#063C31', fontSize: 29, fontWeight: '900', lineHeight: 35, textAlign: 'center' },
   updated: { color: '#596A65', fontSize: 14, fontWeight: '800', lineHeight: 20, marginTop: 8, textAlign: 'center' },
-  document: { backgroundColor: '#FFFFFF', borderColor: '#E7E7E1', borderRadius: 18, borderWidth: 1, padding: 18 },
+  document: { backgroundColor: '#FFFFFF', borderColor: '#E7E7E1', borderRadius: 18, borderWidth: 1, overflow: 'hidden', padding: 18 },
   intro: { color: '#314641', fontSize: 16, fontWeight: '700', lineHeight: 24, marginBottom: 21 },
   section: { marginBottom: 20 },
   sectionTitle: { color: '#063C31', fontSize: 18, fontWeight: '900', lineHeight: 24, marginBottom: 8 },
   paragraph: { color: '#314641', fontSize: 15, fontWeight: '600', lineHeight: 23, marginBottom: 8 },
   bullet: { paddingLeft: 8 },
   contactButton: {
-    alignItems: 'center', alignSelf: 'stretch', backgroundColor: '#17803C', borderRadius: 18,
-    flexDirection: 'row', gap: 12, marginTop: 16, minHeight: 68, paddingHorizontal: 18, paddingVertical: 12,
+    alignItems: 'center', alignSelf: 'stretch', backgroundColor: '#E9F6E4', borderColor: '#CFE3C2', borderRadius: 18, borderWidth: 1,
+    flexDirection: 'row', gap: 12, marginBottom: 20, marginTop: 4, minHeight: 68, paddingHorizontal: 18, paddingVertical: 12,
   },
+  contactButtonPressed: { backgroundColor: '#DFF3E2' },
   contactCopy: { flex: 1 },
-  contactLabel: { color: '#DFF3E2', fontSize: 12, fontWeight: '800', lineHeight: 17 },
-  contactEmail: { color: '#FFFFFF', fontSize: 15, fontWeight: '900', lineHeight: 21 },
+  contactLabel: { color: '#064E3B', fontSize: 12, fontWeight: '800', lineHeight: 17 },
+  contactEmail: { color: '#314641', fontSize: 15, fontWeight: '900', lineHeight: 21 },
 })
