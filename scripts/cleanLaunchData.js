@@ -6,7 +6,7 @@
  * - activityChats and any subcollections below each activity chat document
  * - groups and any subcollections below each group document
  * - groupChats and any subcollections below each group chat document
- * - notifications related to activities, groups, activity chats, or group chats
+ * - all notifications, so the launch starts from a clean notification inbox
  *
  * It does not delete users, Firebase Auth users, Firebase config, Functions,
  * rules, or Storage files.
@@ -16,7 +16,6 @@ const REQUIRED_ENV = 'CONFIRM_CLEAN_LAUNCH_DATA'
 const REQUIRED_ENV_VALUE = 'yes'
 const FINAL_CONFIRMATION = 'DELETE LAUNCH DATA'
 const FIRESTORE_BATCH_LIMIT = 450
-const QUERY_IN_LIMIT = 10
 
 let admin
 
@@ -40,14 +39,6 @@ function initializeFirebaseAdmin() {
     credential: admin.credential.applicationDefault(),
     projectId: getProjectId(),
   })
-}
-
-function chunk(values, size) {
-  const chunks = []
-  for (let index = 0; index < values.length; index += size) {
-    chunks.push(values.slice(index, index + size))
-  }
-  return chunks
 }
 
 function uniqueRefs(refs) {
@@ -91,57 +82,12 @@ async function collectDescendantDocumentRefs(documentRef) {
   return descendants
 }
 
-async function collectNotificationRefs(db, {
-  activityChatIds,
-  activityIds,
-  groupChatIds,
-  groupIds,
-}) {
-  const refs = []
-  const notifications = db.collection('notifications')
-
-  for (const ids of chunk(activityIds, QUERY_IN_LIMIT)) {
-    const snapshot = await notifications.where('activityId', 'in', ids).get()
-    snapshot.docs.forEach((documentSnapshot) => refs.push(documentSnapshot.ref))
-  }
-
-  for (const ids of chunk(groupIds, QUERY_IN_LIMIT)) {
-    const snapshot = await notifications.where('groupId', 'in', ids).get()
-    snapshot.docs.forEach((documentSnapshot) => refs.push(documentSnapshot.ref))
-  }
-
-  for (const ids of chunk(activityChatIds, QUERY_IN_LIMIT)) {
-    const snapshot = await notifications.where('chatId', 'in', ids).get()
-    snapshot.docs.forEach((documentSnapshot) => {
-      if (documentSnapshot.get('chatType') === 'activity') refs.push(documentSnapshot.ref)
-    })
-  }
-
-  for (const ids of chunk(groupChatIds, QUERY_IN_LIMIT)) {
-    const snapshot = await notifications.where('chatId', 'in', ids).get()
-    snapshot.docs.forEach((documentSnapshot) => {
-      if (documentSnapshot.get('chatType') === 'group') refs.push(documentSnapshot.ref)
-    })
-  }
-
-  return uniqueRefs(refs)
-}
-
 async function buildDeletionPlan(db) {
   const activityRefs = await getCollectionDocumentRefs(db, 'activities')
   const activityChatRefs = await getCollectionDocumentRefs(db, 'activityChats')
   const groupRefs = await getCollectionDocumentRefs(db, 'groups')
   const groupChatRefs = await getCollectionDocumentRefs(db, 'groupChats')
-  const activityIds = activityRefs.map((ref) => ref.id)
-  const activityChatIds = activityChatRefs.map((ref) => ref.id)
-  const groupIds = groupRefs.map((ref) => ref.id)
-  const groupChatIds = groupChatRefs.map((ref) => ref.id)
-  const notificationRefs = await collectNotificationRefs(db, {
-    activityChatIds,
-    activityIds,
-    groupChatIds,
-    groupIds,
-  })
+  const notificationRefs = await getCollectionDocumentRefs(db, 'notifications')
   const descendantRefs = []
 
   for (const ref of [...activityRefs, ...activityChatRefs, ...groupRefs, ...groupChatRefs]) {
@@ -173,7 +119,7 @@ function printPlanSummary(plan) {
   console.log(`Chats de actividades: ${plan.activityChatRefs.length}`)
   console.log(`Grupos: ${plan.groupRefs.length}`)
   console.log(`Chats de grupos: ${plan.groupChatRefs.length}`)
-  console.log(`Notificaciones relacionadas: ${plan.notificationRefs.length}`)
+  console.log(`Notificaciones: ${plan.notificationRefs.length}`)
   console.log(`Documentos en subcolecciones relacionadas: ${plan.descendantRefs.length}`)
 }
 
