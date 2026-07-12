@@ -16,7 +16,7 @@ import * as ImagePicker from 'expo-image-picker'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { useLocalSearchParams, useRouter } from 'expo-router'
 import { onAuthStateChanged } from 'firebase/auth'
-import { arrayRemove, arrayUnion, collection, deleteDoc, deleteField, doc, getDoc, increment, onSnapshot, serverTimestamp, updateDoc } from 'firebase/firestore'
+import { arrayRemove, arrayUnion, collection, deleteDoc, deleteField, doc, getDoc, increment, onSnapshot, runTransaction, serverTimestamp, updateDoc } from 'firebase/firestore'
 import {
   ArrowLeft,
   CalendarDays,
@@ -57,6 +57,11 @@ type ActivityRecord = {
 }
 type PendingRequest = {
   id: string
+  name: string
+}
+type GroupMember = {
+  id: string
+  isOwner: boolean
   name: string
 }
 
@@ -125,6 +130,56 @@ function getPendingRequests(data: GroupData) {
   }).filter((request) => !memberIds.has(request.id))
 }
 
+function readMemberProfileName(profile: unknown) {
+  return profile && typeof profile === 'object'
+    ? readStoredUserName(profile as Record<string, unknown>)
+    : ''
+}
+
+function getGroupOwnerName(data: GroupData, fallback = 'Integrante') {
+  return readString(
+    data.ownerName,
+    readString(data.organizerName, readString(data.createdByName, readString(data.creatorName, fallback))),
+  )
+}
+
+function getGroupMembers(data: GroupData) {
+  const ownerId = getOwnerId(data)
+  const memberProfiles = data.memberProfiles && typeof data.memberProfiles === 'object' && !Array.isArray(data.memberProfiles)
+    ? data.memberProfiles as Record<string, unknown>
+    : {}
+  const memberIds = getGroupMemberIds(data)
+  const orderedIds = [
+    ownerId,
+    ...memberIds.filter((id) => id !== ownerId),
+  ].filter(Boolean)
+
+  return Array.from(new Set(orderedIds)).map<GroupMember>((id) => ({
+    id,
+    isOwner: Boolean(ownerId && id === ownerId),
+    name: id === ownerId
+      ? getGroupOwnerName(data, readMemberProfileName(memberProfiles[id]) || 'Integrante')
+      : readMemberProfileName(memberProfiles[id]) || 'Integrante',
+  }))
+}
+
+function getGroupMemberCountAfterRemoval(data: GroupData, targetUserId: string) {
+  const ownerId = getOwnerId(data)
+  const ids = new Set(getGroupMemberIds(data).filter((id) => id !== targetUserId))
+  if (ownerId) ids.add(ownerId)
+  return ids.size
+}
+
+function isMemberCollectionEntryForUser(item: unknown, userId: string) {
+  if (typeof item === 'string') return item === userId
+  if (item && typeof item === 'object') {
+    const record = item as Record<string, unknown>
+    return readString(record.uid, readString(record.id, readString(record.userId))) === userId
+  }
+
+  return false
+}
+
 function hasPendingRequest(data: GroupData, userId: string | null) {
   return hasPendingGroupRequest(data, userId)
 }
@@ -180,6 +235,7 @@ export default function GroupDetailScreen() {
   const [isRemovingGroupPhoto, setIsRemovingGroupPhoto] = useState(false)
   const [isSavingGroupEdits, setIsSavingGroupEdits] = useState(false)
   const [deleteGroupError, setDeleteGroupError] = useState('')
+  const [removingMemberId, setRemovingMemberId] = useState<string | null>(null)
 
   useEffect(() => {
     try {
@@ -378,6 +434,7 @@ export default function GroupDetailScreen() {
     return groupActivities.find((activity) => getActivityStartTime(activity.data) >= now) ?? null
   }, [groupActivities])
   const pendingRequests = useMemo(() => getPendingRequests(group ?? {}), [group])
+  const groupMembers = useMemo(() => getGroupMembers(group ?? {}), [group])
   const hasRequestedJoin = useMemo(() => hasPendingRequest(group ?? {}, userId), [group, userId])
 
   const requestJoinGroup = async () => {
@@ -591,6 +648,135 @@ export default function GroupDetailScreen() {
     } finally {
       setPendingRequestAction(null)
     }
+  }
+
+  const removeGroupMember = async (targetUserId: string) => {
+    if (!groupId || !userId || !targetUserId || removingMemberId) return
+
+    setRemovingMemberId(targetUserId)
+    try {
+      const { auth, db } = getFirebaseServices()
+      const currentUserId = auth.currentUser?.uid ?? userId
+      if (!currentUserId) throw new Error('auth-required')
+
+      const groupRef = doc(db, 'groups', groupId)
+      const chatRef = doc(db, 'groupChats', groupId)
+
+      await runTransaction(db, async (transaction) => {
+        const snapshot = await transaction.get(groupRef)
+        if (!snapshot.exists()) throw new Error('group-not-found')
+
+        const latestGroup = snapshot.data() as GroupData
+        const latestOwnerId = getOwnerId(latestGroup)
+        if (!latestOwnerId || latestOwnerId !== currentUserId) throw new Error('not-group-owner')
+        if (targetUserId === latestOwnerId) throw new Error('cannot-remove-owner')
+        if (!getGroupMemberIds(latestGroup).includes(targetUserId)) throw new Error('member-not-found')
+
+        const nextMemberCount = getGroupMemberCountAfterRemoval(latestGroup, targetUserId)
+        const updates: Record<string, unknown> = {
+          [`joinedUsers.${targetUserId}`]: deleteField(),
+          [`memberProfiles.${targetUserId}`]: deleteField(),
+          [`membershipRequests.${targetUserId}`]: deleteField(),
+          [`pendingMembers.${targetUserId}`]: deleteField(),
+          memberCount: nextMemberCount,
+          membersCount: nextMemberCount,
+          updatedAt: serverTimestamp(),
+        }
+
+        if (Array.isArray(latestGroup.memberIds)) {
+          updates.memberIds = latestGroup.memberIds.filter((item) => !isMemberCollectionEntryForUser(item, targetUserId))
+        } else if (latestGroup.memberIds && typeof latestGroup.memberIds === 'object') {
+          updates[`memberIds.${targetUserId}`] = deleteField()
+        }
+
+        if (Array.isArray(latestGroup.members)) {
+          updates.members = latestGroup.members.filter((item) => !isMemberCollectionEntryForUser(item, targetUserId))
+        } else if (latestGroup.members && typeof latestGroup.members === 'object') {
+          updates[`members.${targetUserId}`] = deleteField()
+        }
+
+        transaction.update(groupRef, updates)
+      })
+
+      let chatCleanupFailed = false
+      try {
+        const chatSnapshot = await getDoc(chatRef)
+        if (chatSnapshot.exists()) {
+          const chatData = chatSnapshot.data() as Record<string, unknown>
+          const chatUpdates: Record<string, unknown> = {
+            [`lastReadBy.${targetUserId}`]: deleteField(),
+            [`unreadBy.${targetUserId}`]: deleteField(),
+            updatedAt: serverTimestamp(),
+          }
+
+          if (Array.isArray(chatData.participantIds)) {
+            chatUpdates.participantIds = chatData.participantIds.filter((item) => !isMemberCollectionEntryForUser(item, targetUserId))
+          } else if (chatData.participantIds && typeof chatData.participantIds === 'object') {
+            chatUpdates[`participantIds.${targetUserId}`] = deleteField()
+          }
+
+          await updateDoc(chatRef, chatUpdates)
+        }
+      } catch (chatError) {
+        chatCleanupFailed = true
+        if (__DEV__) console.warn('[GROUP MEMBER CHAT CLEANUP ERROR]', {
+          error: getErrorMessage(chatError),
+          groupId,
+          targetUserId,
+        })
+      }
+
+      if (chatCleanupFailed) {
+        Alert.alert('Integrante quitado', 'La persona fue quitada del grupo, pero no pudimos limpiar todos los datos del chat.')
+        return
+      }
+
+      showGroupRequestFeedback('Integrante quitado del grupo')
+    } catch (error) {
+      const errorMessage = getErrorMessage(error)
+      if (__DEV__) console.warn('[GROUP MEMBER REMOVE ERROR]', { error: errorMessage, groupId, targetUserId, userId })
+
+      if (errorMessage.includes('permission-denied')) {
+        Alert.alert('No tenés permisos', 'Firestore rechazó esta operación por permisos. El integrante no fue quitado.')
+      } else if (errorMessage.includes('cannot-remove-owner')) {
+        Alert.alert('No podés quitar al organizador', 'El organizador debe permanecer en el grupo.')
+      } else if (errorMessage.includes('not-group-owner')) {
+        Alert.alert('No podés quitar integrantes', 'Solo el organizador actual puede quitar integrantes del grupo.')
+      } else if (errorMessage.includes('member-not-found')) {
+        Alert.alert('Integrante no encontrado', 'Esta persona ya no figura como miembro del grupo.')
+      } else {
+        Alert.alert('No pudimos quitar al integrante', `Intentá nuevamente en unos segundos. Detalle: ${errorMessage}`)
+      }
+    } finally {
+      setRemovingMemberId(null)
+    }
+  }
+
+  const confirmRemoveGroupMember = (member: GroupMember) => {
+    if (!isOwner || member.isOwner || removingMemberId) return
+
+    if (Platform.OS === 'web') {
+      const confirmed = typeof window !== 'undefined'
+        ? window.confirm('Quitar integrante\n\n¿Querés quitar a esta persona del grupo? Perderá el acceso al grupo y a su chat.')
+        : false
+      if (confirmed) void removeGroupMember(member.id)
+      return
+    }
+
+    Alert.alert(
+      'Quitar integrante',
+      '¿Querés quitar a esta persona del grupo? Perderá el acceso al grupo y a su chat.',
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        {
+          text: 'Quitar',
+          style: 'destructive',
+          onPress: () => {
+            void removeGroupMember(member.id)
+          },
+        },
+      ],
+    )
   }
 
   const chooseGroupPhotoFromLibrary = async () => {
@@ -1063,6 +1249,49 @@ export default function GroupDetailScreen() {
               {isLeavingGroup ? <ActivityIndicator color="#B63232" /> : <X color="#B63232" size={20} strokeWidth={2.6} />}
               <Text style={styles.leaveGroupButtonText}>Dejar grupo</Text>
             </PressScale>
+          ) : null}
+
+          {isOwner ? (
+            <View style={styles.membersBlock}>
+              <Text style={styles.requestsTitle}>Integrantes del grupo</Text>
+              <View style={styles.membersList}>
+                {groupMembers.map((member) => {
+                  const isRemovingMember = removingMemberId === member.id
+                  return (
+                    <View key={member.id} style={styles.memberRow}>
+                      <View style={styles.memberCopy}>
+                        <Text numberOfLines={1} style={styles.memberName}>{member.name}</Text>
+                        <Text style={styles.memberRole}>{member.isOwner ? 'Organizador' : 'Integrante'}</Text>
+                      </View>
+                      {member.isOwner ? (
+                        <View style={styles.ownerBadge}>
+                          <Text style={styles.ownerBadgeText}>Organizador</Text>
+                        </View>
+                      ) : (
+                        <Pressable
+                          accessibilityLabel={`Quitar integrante ${member.name}`}
+                          accessibilityRole="button"
+                          disabled={Boolean(removingMemberId)}
+                          onPress={() => confirmRemoveGroupMember(member)}
+                          style={({ pressed }) => [
+                            styles.removeMemberButton,
+                            pressed && styles.requestButtonPressed,
+                            Boolean(removingMemberId) && styles.requestButtonDisabled,
+                          ]}
+                        >
+                          {isRemovingMember ? (
+                            <ActivityIndicator color="#B42318" size="small" />
+                          ) : (
+                            <Trash2 color="#B42318" size={16} strokeWidth={2.6} />
+                          )}
+                          <Text style={styles.removeMemberButtonText}>{isRemovingMember ? 'Quitando...' : 'Quitar'}</Text>
+                        </Pressable>
+                      )}
+                    </View>
+                  )
+                })}
+              </View>
+            </View>
           ) : null}
 
           {isOwner && pendingRequests.length > 0 ? (
@@ -1561,6 +1790,84 @@ const styles = StyleSheet.create({
   leaveGroupButtonText: {
     color: '#B63232',
     fontSize: 15,
+    fontWeight: '900',
+    letterSpacing: 0,
+  },
+  membersBlock: {
+    backgroundColor: '#F8FAF6',
+    borderColor: '#DDEAD7',
+    borderRadius: 16,
+    borderWidth: 1,
+    gap: 10,
+    marginTop: 18,
+    padding: 14,
+  },
+  membersList: {
+    gap: 10,
+  },
+  memberRow: {
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    borderColor: '#E7E7E1',
+    borderRadius: 14,
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: 12,
+    justifyContent: 'space-between',
+    minHeight: 62,
+    padding: 12,
+  },
+  memberCopy: {
+    flex: 1,
+    minWidth: 0,
+  },
+  memberName: {
+    color: '#071D19',
+    fontSize: 14,
+    fontWeight: '900',
+    letterSpacing: 0,
+    lineHeight: 19,
+  },
+  memberRole: {
+    color: '#596A65',
+    fontSize: 12,
+    fontWeight: '700',
+    letterSpacing: 0,
+    lineHeight: 17,
+    marginTop: 2,
+  },
+  ownerBadge: {
+    alignItems: 'center',
+    backgroundColor: '#EEF8F0',
+    borderColor: '#B7DC9D',
+    borderRadius: 999,
+    borderWidth: 1,
+    justifyContent: 'center',
+    minHeight: 34,
+    paddingHorizontal: 10,
+  },
+  ownerBadgeText: {
+    color: '#006A32',
+    fontSize: 12,
+    fontWeight: '900',
+    letterSpacing: 0,
+  },
+  removeMemberButton: {
+    alignItems: 'center',
+    backgroundColor: '#FFF4F4',
+    borderColor: '#F2B8B5',
+    borderRadius: 10,
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: 7,
+    justifyContent: 'center',
+    minHeight: 38,
+    minWidth: 104,
+    paddingHorizontal: 12,
+  },
+  removeMemberButtonText: {
+    color: '#B42318',
+    fontSize: 13,
     fontWeight: '900',
     letterSpacing: 0,
   },

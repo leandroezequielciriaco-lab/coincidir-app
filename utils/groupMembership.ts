@@ -12,6 +12,8 @@ export function getGroupOwnerId(group: Record<string, unknown> | null | undefine
   return readString(group.ownerId)
     || readString(group.createdBy)
     || readString(group.creatorId)
+    || readString(group.createdById)
+    || readString(group.organizerId)
     || readString(group.userId)
 }
 
