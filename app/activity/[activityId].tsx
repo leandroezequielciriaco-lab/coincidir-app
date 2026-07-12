@@ -1695,7 +1695,7 @@ export default function ActivityDetailScreen() {
             </View>
           ) : null}
 
-          {isOrganizer && detail.action === 'interest' && !detail.isGroupActivity ? (
+          {isOrganizer && detail.action === 'interest' ? (
             <View style={styles.interestedCard}>
               <Text style={styles.organizerEyebrow}>Personas interesadas</Text>
               <Text style={styles.interestedCount}>{getInterestedCountLabel(detail.interestedCount)}</Text>

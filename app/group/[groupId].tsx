@@ -982,14 +982,34 @@ export default function GroupDetailScreen() {
                   <Text style={styles.groupPhotoRemoveText}>Eliminar foto</Text>
                 </PressScale>
               ) : null}
-              <PressScale
+              <Pressable
                 disabled={isSavingGroupEdits}
                 onPress={saveGroupEdits}
-                style={[styles.editGroupSaveButton, isSavingGroupEdits && styles.editGroupSaveButtonDisabled]}
-                scaleTo={0.97}
+                style={{
+                  alignItems: 'center',
+                  backgroundColor: isSavingGroupEdits ? '#A5D6A7' : '#66BB6A',
+                  borderColor: '#2E7D32',
+                  borderRadius: 14,
+                  borderWidth: 1,
+                  justifyContent: 'center',
+                  minHeight: 48,
+                  width: '100%',
+                }}
               >
-                {isSavingGroupEdits ? <ActivityIndicator color="#3B5F4A" /> : <Text style={styles.editGroupSaveText}>Guardar cambios</Text>}
-              </PressScale>
+                {isSavingGroupEdits ? (
+                  <ActivityIndicator color="#000000" />
+                ) : (
+                  <Text
+                    style={{
+                      color: '#000000',
+                      fontSize: 18,
+                      fontWeight: '800',
+                    }}
+                  >
+                    Guardar cambios
+                  </Text>
+                )}
+              </Pressable>
             </View>
           ) : null}
 
@@ -1432,27 +1452,6 @@ const styles = StyleSheet.create({
     fontWeight: '900',
     letterSpacing: 0,
     lineHeight: 17,
-  },
-  editGroupSaveButton: {
-    alignItems: 'center',
-    backgroundColor: '#006A32',
-    borderColor: '#005229',
-    borderWidth: 1,
-    borderRadius: 12,
-    height: 44,
-    justifyContent: 'center',
-    marginTop: 2,
-    width: '100%',
-  },
-  editGroupSaveButtonDisabled: {
-    backgroundColor: '#E8F1EA',
-    borderColor: '#B9D2C0',
-  },
-  editGroupSaveText: {
-    color: '#FFFFFF',
-    fontSize: 14,
-    fontWeight: '900',
-    letterSpacing: 0,
   },
   memberStatus: {
     alignItems: 'center',
