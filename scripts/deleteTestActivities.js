@@ -13,7 +13,12 @@
  *   chatId + chatType === "activity" for the same activityId.
  */
 
+// =========================
+// ACTIVIDADES A ELIMINAR
+// =========================
 const ACTIVITY_IDS = [
+  // Pegar aquí los IDs de las actividades a eliminar
+  // Ejemplo:
   // 'activityId-1',
   // 'activityId-2',
 ]
@@ -36,6 +41,26 @@ function getUniqueActivityIds(ids) {
       .map((id) => (typeof id === 'string' ? id.trim() : ''))
       .filter(Boolean),
   ))
+}
+
+function askFinalConfirmation(activityIds) {
+  return new Promise((resolve) => {
+    const readline = require('readline')
+    const rl = readline.createInterface({
+      input: process.stdin,
+      output: process.stdout,
+    })
+
+    console.log(`Actividades a eliminar: ${activityIds.length}`)
+    console.log('activityId:')
+    activityIds.forEach((activityId) => {
+      console.log(`- ${activityId}`)
+    })
+    rl.question('Confirmación final: escribí DELETE para continuar: ', (answer) => {
+      rl.close()
+      resolve(answer === 'DELETE')
+    })
+  })
 }
 
 function getProjectId() {
@@ -193,13 +218,20 @@ async function main() {
   const activityIds = getUniqueActivityIds(ACTIVITY_IDS)
 
   if (activityIds.length === 0) {
-    throw new Error('ACTIVITY_IDS esta vacio. Agrega al menos un activityId al inicio del archivo.')
+    console.log('No hay actividades para eliminar.')
+    return
   }
 
   if (process.env[CONFIRMATION_ENV] !== CONFIRMATION_VALUE) {
     throw new Error(
       `Confirmacion requerida: ejecuta con ${CONFIRMATION_ENV}=${CONFIRMATION_VALUE}.`,
     )
+  }
+
+  const confirmed = await askFinalConfirmation(activityIds)
+  if (!confirmed) {
+    console.log('Operación cancelada.')
+    return
   }
 
   initializeFirebaseAdmin()
