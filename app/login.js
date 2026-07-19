@@ -1,6 +1,7 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   ActivityIndicator,
+  Animated,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -16,6 +17,7 @@ import {
   signInWithCredential,
   signInWithEmailAndPassword,
   signInWithPopup,
+  signOut,
 } from 'firebase/auth'
 import { doc, getDoc, serverTimestamp, setDoc } from 'firebase/firestore'
 import { ArrowLeft, ArrowRight, Check, Eye, EyeOff, LockKeyhole, Mail } from 'lucide-react-native'
@@ -26,7 +28,8 @@ import CoincidirLogo from '../components/CoincidirLogo'
 import GoogleLogo from '../components/GoogleLogo'
 import { styles } from '../components/LoginScreen.styles'
 import { reloadAuthUser } from '../utils/authParticipation'
-import { getLegalAcceptanceFields, hasAcceptedCurrentLegal } from '../constants/legal'
+import { hasAcceptedCurrentLegal } from '../constants/legal'
+import { saveCurrentLegalAcceptance } from '../utils/legalAcceptance'
 import { getGoogleProfileNameRepairFields, readCleanString } from '../utils/userNames'
 
 const googleWebClientId = process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID
@@ -143,7 +146,7 @@ function readProfileString(profile, field) {
   return typeof value === 'string' && value.trim() ? value.trim() : ''
 }
 
-async function saveGoogleProfile(user, { acceptLegal = false, isNewUser = false } = {}) {
+async function saveGoogleProfile(user, { acceptLegal = false } = {}) {
   const { db } = getFirebaseServices()
   const userRef = doc(db, 'users', user.uid)
   const userSnap = await getDoc(userRef)
@@ -159,8 +162,8 @@ async function saveGoogleProfile(user, { acceptLegal = false, isNewUser = false 
     readProfileString(existingProfile, 'avatar')
   const shouldUseGooglePhoto = Boolean(googlePhotoURL && !photoRemoved && !existingPhotoURL && !existingAvatarURL)
   const hasCurrentLegalAcceptance = hasAcceptedCurrentLegal(existingProfile)
-  const requiresLegalAcceptance = (!hasCurrentLegalAcceptance || isNewUser) && !acceptLegal
-  if (requiresLegalAcceptance) return { requiresLegalAcceptance: true }
+  const shouldSaveLegalAcceptance = !hasCurrentLegalAcceptance
+  if (shouldSaveLegalAcceptance && !acceptLegal) return { requiresLegalAcceptance: true }
   const googleName = readCleanString(user.displayName)
   const nameRepairFields = getGoogleProfileNameRepairFields(existingProfile, user)
 
@@ -174,7 +177,6 @@ async function saveGoogleProfile(user, { acceptLegal = false, isNewUser = false 
     provider: 'google',
     updatedAt: serverTimestamp(),
     lastLoginAt: serverTimestamp(),
-    ...(acceptLegal ? getLegalAcceptanceFields(serverTimestamp()) : {}),
   }
 
   if (!userSnap.exists()) {
@@ -182,6 +184,9 @@ async function saveGoogleProfile(user, { acceptLegal = false, isNewUser = false 
       ...profile,
       createdAt: serverTimestamp(),
     })
+    if (shouldSaveLegalAcceptance) {
+      await saveCurrentLegalAcceptance(user.uid)
+    }
     return { requiresLegalAcceptance: false }
   }
 
@@ -196,10 +201,12 @@ async function saveGoogleProfile(user, { acceptLegal = false, isNewUser = false 
       provider: 'google',
       updatedAt: serverTimestamp(),
       lastLoginAt: serverTimestamp(),
-      ...(acceptLegal ? getLegalAcceptanceFields(serverTimestamp()) : {}),
     },
     { merge: true },
   )
+  if (shouldSaveLegalAcceptance) {
+    await saveCurrentLegalAcceptance(user.uid)
+  }
   return { requiresLegalAcceptance: false }
 }
 
@@ -215,12 +222,36 @@ export default function LoginScreen() {
   const [isGoogleSubmitting, setIsGoogleSubmitting] = useState(false)
   const [error, setError] = useState('')
   const [hasAcceptedLegal, setHasAcceptedLegal] = useState(false)
+  const [showLegalHelp, setShowLegalHelp] = useState(true)
+  const legalHelpAnimation = useRef(new Animated.Value(1)).current
 
   const canSubmit = useMemo(
     () => email.trim().length > 0 && password.length > 0,
     [email, password],
   )
   const showLegalRequiredMessage = params.legalRequired === '1'
+
+  useEffect(() => {
+    if (!hasAcceptedLegal) {
+      setShowLegalHelp(true)
+      Animated.timing(legalHelpAnimation, {
+        duration: 180,
+        toValue: 1,
+        useNativeDriver: false,
+      }).start()
+      return
+    }
+
+    Animated.timing(legalHelpAnimation, {
+      duration: 180,
+      toValue: 0,
+      useNativeDriver: false,
+    }).start(({ finished }) => {
+      if (finished) {
+        setShowLegalHelp(false)
+      }
+    })
+  }, [hasAcceptedLegal, legalHelpAnimation])
 
   const completeGoogleUserLogin = async (user, { isNewUser = false } = {}) => {
     try {
@@ -231,14 +262,22 @@ export default function LoginScreen() {
         isNewUser,
       })
 
-      const profileResult = await saveGoogleProfile(user, { acceptLegal: hasAcceptedLegal, isNewUser })
+      const profileResult = await saveGoogleProfile(user, { acceptLegal: hasAcceptedLegal })
       if (profileResult.requiresLegalAcceptance) {
         setError('Para continuar con Google necesitás aceptar los Términos y Condiciones y la Política de Privacidad.')
+        const { auth } = getFirebaseServices()
+        await signOut(auth).catch((signOutError) => {
+          console.warn('[GOOGLE LOGIN LEGAL SIGNOUT ERROR]', signOutError)
+        })
         return
       }
       router.replace('/home')
     } catch (googleLoginError) {
       console.error('Error login Google', googleLoginError)
+      const { auth } = getFirebaseServices()
+      await signOut(auth).catch((signOutError) => {
+        console.warn('[GOOGLE LOGIN CLEANUP SIGNOUT ERROR]', signOutError)
+      })
       setError(getFriendlyGoogleLoginError(googleLoginError))
     } finally {
       setIsGoogleSubmitting(false)
@@ -304,8 +343,15 @@ export default function LoginScreen() {
       return
     }
 
+    if (!hasAcceptedLegal) {
+      setError('Debés aceptar los Términos y Condiciones y la Política de Privacidad para continuar.')
+      return
+    }
+
     setIsSubmitting(true)
     setError('')
+
+    let authenticatedUser = null
 
     try {
       const { auth, db } = getFirebaseServices()
@@ -314,20 +360,23 @@ export default function LoginScreen() {
         email.trim(),
         password,
       )
+      authenticatedUser = credential.user
       await reloadAuthUser(credential.user)
       const profileRef = doc(db, 'users', credential.user.uid)
       const profileSnap = await getDoc(profileRef)
       const profile = profileSnap.exists() ? profileSnap.data() : null
       if (!hasAcceptedCurrentLegal(profile)) {
-        if (!hasAcceptedLegal) {
-          setError('Para continuar necesitás aceptar los Términos y Condiciones y la Política de Privacidad.')
-          return
-        }
-        await setDoc(profileRef, getLegalAcceptanceFields(serverTimestamp()), { merge: true })
+        await saveCurrentLegalAcceptance(credential.user.uid)
       }
 
       router.replace('/home')
     } catch (loginError) {
+      if (authenticatedUser) {
+        const { auth } = getFirebaseServices()
+        await signOut(auth).catch((signOutError) => {
+          console.warn('[EMAIL LOGIN CLEANUP SIGNOUT ERROR]', signOutError)
+        })
+      }
       setError(getFriendlyLoginError(loginError))
     } finally {
       setIsSubmitting(false)
@@ -336,6 +385,11 @@ export default function LoginScreen() {
 
   const handleGoogleLogin = async () => {
     if (isSubmitting || isGoogleSubmitting) {
+      return
+    }
+
+    if (!hasAcceptedLegal) {
+      setError('Debés aceptar los Términos y Condiciones y la Política de Privacidad para continuar con Google.')
       return
     }
 
@@ -525,7 +579,7 @@ export default function LoginScreen() {
                 {hasAcceptedLegal ? <Check color="#FFFFFF" size={17} strokeWidth={3} /> : null}
               </Pressable>
               <Text style={styles.legalAcceptanceText}>
-                He leído y acepto los{' '}
+                Acepto los{' '}
                 <Text onPress={() => router.push('/legal/terms')} style={styles.legalLink}>
                   Términos y Condiciones
                 </Text>
@@ -537,16 +591,37 @@ export default function LoginScreen() {
               </Text>
             </View>
 
+            {showLegalHelp ? (
+              <Animated.View
+                style={[
+                  styles.legalHelpAnimatedWrap,
+                  {
+                    maxHeight: legalHelpAnimation.interpolate({
+                      inputRange: [0, 1],
+                      outputRange: [0, 72],
+                    }),
+                    opacity: legalHelpAnimation,
+                  },
+                ]}
+              >
+                <View style={styles.legalHelpCard}>
+                  <Text style={styles.legalHelpText}>
+                    ☝️ Para continuar, aceptá los Términos y Condiciones y la Política de Privacidad.
+                  </Text>
+                </View>
+              </Animated.View>
+            ) : null}
+
             {error ? <Text style={styles.errorText}>{error}</Text> : null}
 
             <Pressable
               accessibilityLabel="Ingresar"
               accessibilityRole="button"
-              disabled={isSubmitting || isGoogleSubmitting}
+              disabled={isSubmitting || isGoogleSubmitting || !hasAcceptedLegal}
               onPress={handleLogin}
               style={[
                 styles.submitButton,
-                (isSubmitting || isGoogleSubmitting) && styles.submitButtonDisabled,
+                (isSubmitting || isGoogleSubmitting || !hasAcceptedLegal) && styles.submitButtonDisabled,
               ]}
             >
               {isSubmitting ? (
@@ -568,9 +643,12 @@ export default function LoginScreen() {
             <Pressable
               accessibilityLabel="Continuar con Google"
               accessibilityRole="button"
-              disabled={isSubmitting || isGoogleSubmitting}
+              disabled={isSubmitting || isGoogleSubmitting || !hasAcceptedLegal}
               onPress={handleGoogleLogin}
-              style={styles.googleButton}
+              style={[
+                styles.googleButton,
+                (isSubmitting || isGoogleSubmitting || !hasAcceptedLegal) && styles.googleButtonDisabled,
+              ]}
             >
               {isGoogleSubmitting ? (
                 <ActivityIndicator color="#155C47" />

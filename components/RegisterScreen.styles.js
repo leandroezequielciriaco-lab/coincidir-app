@@ -228,7 +228,17 @@ export const styles = StyleSheet.create({
     transform: [{ scale: 0.99 }],
   },
   primaryButtonDisabled: {
-    opacity: 0.72,
+    backgroundColor: '#8BA79B',
+    opacity: 1,
+    ...Platform.select({
+      web: {
+        boxShadow: 'none',
+      },
+      default: {
+        elevation: 0,
+        shadowOpacity: 0,
+      },
+    }),
   },
   primaryButtonText: {
     color: '#FFFFFF',

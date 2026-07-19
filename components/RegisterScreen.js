@@ -32,8 +32,8 @@ import {
 import CoincidirLogo from './CoincidirLogo'
 import { styles } from './RegisterScreen.styles'
 import { getFirebaseServices } from '../firebaseConfig'
-import { getLegalAcceptanceFields } from '../constants/legal'
 import { sendLocalizedEmailVerification } from '../utils/authParticipation'
+import { saveCurrentLegalAcceptance } from '../utils/legalAcceptance'
 
 const isWeb = Platform.OS === 'web'
 const REGISTRATION_EMAIL_VERIFICATION_MESSAGE =
@@ -97,25 +97,22 @@ function validateForm(form) {
 }
 
 async function saveRegistrationProfile(user, form, fullName) {
-  try {
-    const { db } = getFirebaseServices()
+  const { db } = getFirebaseServices()
 
-    await updateProfile(user, {
-      displayName: fullName,
-    })
+  await updateProfile(user, {
+    displayName: fullName,
+  })
 
-    await setDoc(doc(db, 'users', user.uid), {
-      fullName,
-      email: form.email.trim().toLowerCase(),
-      birthDate: form.birthDate.trim(),
-      city: form.city.trim(),
-      ...getLegalAcceptanceFields(serverTimestamp()),
-      createdAt: serverTimestamp(),
-      updatedAt: serverTimestamp(),
-    })
-  } catch (profileError) {
-    console.warn('Cuenta creada, pero no pudimos guardar el perfil en Firestore.', profileError)
-  }
+  await setDoc(doc(db, 'users', user.uid), {
+    fullName,
+    email: form.email.trim().toLowerCase(),
+    birthDate: form.birthDate.trim(),
+    city: form.city.trim(),
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
+  })
+
+  await saveCurrentLegalAcceptance(user.uid)
 }
 
 function InputIcon({ type }) {
@@ -233,7 +230,7 @@ export default function RegisterScreen() {
     }
 
     if (!hasAcceptedLegal) {
-      setError('Para crear tu cuenta necesitás aceptar los Términos y Condiciones y la Política de Privacidad.')
+      setError('Debés aceptar los Términos y Condiciones y la Política de Privacidad para crear tu cuenta.')
       return
     }
 
@@ -356,7 +353,7 @@ export default function RegisterScreen() {
                   {hasAcceptedLegal ? <Check color="#FFFFFF" size={17} strokeWidth={3} /> : null}
                 </Pressable>
                 <Text style={styles.legalAcceptanceText}>
-                  He leído y acepto los{' '}
+                  Acepto los{' '}
                   <Text onPress={() => router.push('/legal/terms')} style={styles.termsStrong}>
                     Términos y Condiciones
                   </Text>
@@ -372,12 +369,12 @@ export default function RegisterScreen() {
 
               <Pressable
                 accessibilityRole="button"
-                disabled={isSubmitting}
+                disabled={isSubmitting || !hasAcceptedLegal}
                 onPress={handleSubmit}
                 style={({ pressed }) => [
                   styles.primaryButton,
-                  pressed && styles.primaryButtonPressed,
-                  isSubmitting && styles.primaryButtonDisabled,
+                  pressed && hasAcceptedLegal && !isSubmitting && styles.primaryButtonPressed,
+                  (isSubmitting || !hasAcceptedLegal) && styles.primaryButtonDisabled,
                 ]}
               >
                 {isSubmitting ? (

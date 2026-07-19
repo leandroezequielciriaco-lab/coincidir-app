@@ -2,9 +2,9 @@ import { Stack, usePathname, useRouter } from 'expo-router'
 import Constants from 'expo-constants'
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import { useEffect, useRef, useState } from 'react'
-import { ActivityIndicator, AppState, Modal, Platform, Pressable, StyleSheet, Text, View } from 'react-native'
+import { AppState, Platform } from 'react-native'
 import { SafeAreaProvider } from 'react-native-safe-area-context'
-import { onAuthStateChanged } from 'firebase/auth'
+import { onAuthStateChanged, signOut } from 'firebase/auth'
 import { doc, onSnapshot, serverTimestamp, setDoc } from 'firebase/firestore'
 import '../global.css'
 import { getFirebaseServices } from '../firebaseConfig'
@@ -12,7 +12,7 @@ import { AuthContext } from '../utils/authContext'
 import { consumePendingExternalReturnRoute } from '../utils/externalReturnRoute'
 import { getJsInstanceId } from '../utils/jsInstance'
 import { canParticipate, isGoogleUser, reloadAuthUser } from '../utils/authParticipation'
-import { getLegalAcceptanceFields, hasAcceptedCurrentLegal } from '../constants/legal'
+import { hasAcceptedCurrentLegal } from '../constants/legal'
 
 const PUBLIC_ROUTES = new Set([
   '/',
@@ -200,29 +200,16 @@ export default function RootLayout() {
   const router = useRouter()
   const [authState, setAuthState] = useState({ checked: false, user: null })
   const [legalState, setLegalState] = useState({ checked: false, hasAccepted: false, resolved: false, userId: null })
-  const [isAcceptingLegal, setIsAcceptingLegal] = useState(false)
-  const [legalAcceptanceError, setLegalAcceptanceError] = useState('')
   const [pendingNotificationRouteVersion, setPendingNotificationRouteVersion] = useState(0)
   const instanceId = getJsInstanceId()
   const externalRouteRestoreAttemptedRef = useRef(false)
   const lastAuthenticatedAtRef = useRef(0)
   const redirectTimerRef = useRef(null)
   const authNullResolutionTimerRef = useRef(null)
+  const legalRedirectingUserRef = useRef(null)
   const pushTokenRegistrationAttemptedRef = useRef(new Set())
   const pendingNotificationRouteRef = useRef(null)
   const processedNotificationRouteKeysRef = useRef(new Set())
-  const legalLoading = Boolean(
-    authState.user &&
-    (!legalState.resolved || legalState.userId !== authState.user.uid)
-  )
-  const needsLegalAcceptance = Boolean(
-    authState.user &&
-    legalState.resolved &&
-    legalState.userId === authState.user.uid &&
-    !legalState.hasAccepted
-  )
-  const isLegalDocumentRoute = pathname === '/legal/terms' || pathname === '/legal/privacy'
-  const shouldShowLegalGate = legalState.resolved && !legalLoading && needsLegalAcceptance && !isLegalDocumentRoute
 
   useEffect(() => {
     console.log('[ROOT MOUNT]', { instanceId })
@@ -480,12 +467,49 @@ export default function RootLayout() {
       }
 
       if (needsLegalAcceptance) {
+        if (pathname === '/legal/terms' || pathname === '/legal/privacy') {
+          console.log('[ROUTE GUARD KEEP CURRENT]', {
+            path: pathname,
+            reason: 'authenticated_needs_legal_acceptance_viewing_legal_document',
+          })
+          return
+        }
+
+        if (legalRedirectingUserRef.current === authState.user.uid) {
+          return
+        }
+
+        legalRedirectingUserRef.current = authState.user.uid
         console.log('[ROUTE GUARD KEEP CURRENT]', {
           path: pathname,
-          reason: 'authenticated_needs_legal_acceptance',
+          reason: 'authenticated_needs_legal_acceptance_redirect_to_login',
         })
+        // Defensive fallback for legacy or inconsistent users. New login flows save
+        // legal acceptance before navigation; future reacceptance can replace this
+        // with a dedicated screen instead of routing through Login.
+        const redirectToLegalLogin = async () => {
+          try {
+            const { auth } = getFirebaseServices()
+            if (auth.currentUser) {
+              await signOut(auth)
+            }
+          } catch (error) {
+            console.error('[LEGAL ACCEPTANCE SIGNOUT ERROR]', error)
+          } finally {
+            setAuthState({ checked: true, user: null })
+            setLegalState({ checked: true, hasAccepted: false, resolved: true, userId: null })
+            router.replace({
+              pathname: '/login',
+              params: { legalRequired: '1' },
+            })
+          }
+        }
+
+        redirectToLegalLogin()
         return
       }
+
+      legalRedirectingUserRef.current = null
 
       if (needsEmailVerification) {
         if (isVerificationBlockedRoute) {
@@ -542,6 +566,8 @@ export default function RootLayout() {
       })
       return
     }
+
+    legalRedirectingUserRef.current = null
 
     if (pathname === '/') {
       console.log('[ROUTE GUARD REDIRECT]', { from: pathname, to: '/onboarding', reason: 'root_without_user' })
@@ -635,27 +661,6 @@ export default function RootLayout() {
     })
   }, [authState.checked, authState.user, legalState, pathname, pendingNotificationRouteVersion, router])
 
-  const acceptCurrentLegal = async () => {
-    if (!authState.user || isAcceptingLegal) return
-
-    setIsAcceptingLegal(true)
-    setLegalAcceptanceError('')
-
-    try {
-      const { db } = getFirebaseServices()
-      await setDoc(
-        doc(db, 'users', authState.user.uid),
-        getLegalAcceptanceFields(serverTimestamp()),
-        { merge: true },
-      )
-    } catch (error) {
-      console.error('[LEGAL ACCEPTANCE ERROR]', error)
-      setLegalAcceptanceError('No pudimos guardar tu aceptacion. Intenta nuevamente.')
-    } finally {
-      setIsAcceptingLegal(false)
-    }
-  }
-
   return (
     <AuthContext.Provider value={authState}>
       <SafeAreaProvider>
@@ -664,129 +669,7 @@ export default function RootLayout() {
             headerShown: false,
           }}
         />
-        <Modal animationType="fade" transparent visible={shouldShowLegalGate}>
-          <View style={styles.legalGateBackdrop}>
-            <View style={styles.legalGateCard}>
-              <Text style={styles.legalGateTitle}>Terminos y privacidad</Text>
-              <Text style={styles.legalGateBody}>
-                Para continuar usando COINCIDIR, acepta los Terminos y Condiciones y la Politica de Privacidad vigentes.
-              </Text>
-
-              <View style={styles.legalGateLinks}>
-                <Pressable
-                  accessibilityLabel="Ver terminos y condiciones"
-                  accessibilityRole="button"
-                  onPress={() => router.push('/legal/terms')}
-                  style={({ pressed }) => [styles.legalGateLink, pressed && styles.legalGatePressed]}
-                >
-                  <Text style={styles.legalGateLinkText}>Ver terminos</Text>
-                </Pressable>
-
-                <Pressable
-                  accessibilityLabel="Ver politica de privacidad"
-                  accessibilityRole="button"
-                  onPress={() => router.push('/legal/privacy')}
-                  style={({ pressed }) => [styles.legalGateLink, pressed && styles.legalGatePressed]}
-                >
-                  <Text style={styles.legalGateLinkText}>Ver privacidad</Text>
-                </Pressable>
-              </View>
-
-              {legalAcceptanceError ? <Text style={styles.legalGateError}>{legalAcceptanceError}</Text> : null}
-
-              <Pressable
-                accessibilityLabel="Aceptar terminos y politica de privacidad"
-                accessibilityRole="button"
-                disabled={isAcceptingLegal || legalLoading}
-                onPress={acceptCurrentLegal}
-                style={({ pressed }) => [
-                  styles.legalGateButton,
-                  (pressed || isAcceptingLegal || legalLoading) && styles.legalGateButtonPressed,
-                ]}
-              >
-                {isAcceptingLegal ? (
-                  <ActivityIndicator color="#FFFFFF" />
-                ) : (
-                  <Text style={styles.legalGateButtonText}>Aceptar y continuar</Text>
-                )}
-              </Pressable>
-            </View>
-          </View>
-        </Modal>
       </SafeAreaProvider>
     </AuthContext.Provider>
   )
 }
-
-const styles = StyleSheet.create({
-  legalGateBackdrop: {
-    alignItems: 'center',
-    backgroundColor: 'rgba(6, 28, 24, 0.58)',
-    flex: 1,
-    justifyContent: 'center',
-    padding: 24,
-  },
-  legalGateCard: {
-    backgroundColor: '#FCFAF3',
-    borderRadius: 8,
-    maxWidth: 420,
-    padding: 22,
-    width: '100%',
-  },
-  legalGateTitle: {
-    color: '#063C31',
-    fontSize: 21,
-    fontWeight: '800',
-    marginBottom: 8,
-  },
-  legalGateBody: {
-    color: '#37534B',
-    fontSize: 15,
-    lineHeight: 22,
-    marginBottom: 18,
-  },
-  legalGateLinks: {
-    flexDirection: 'row',
-    gap: 10,
-    marginBottom: 16,
-  },
-  legalGateLink: {
-    borderColor: '#C9D8C8',
-    borderRadius: 8,
-    borderWidth: 1,
-    flex: 1,
-    paddingHorizontal: 12,
-    paddingVertical: 11,
-  },
-  legalGatePressed: {
-    opacity: 0.75,
-  },
-  legalGateLinkText: {
-    color: '#155C47',
-    fontSize: 14,
-    fontWeight: '700',
-    textAlign: 'center',
-  },
-  legalGateError: {
-    color: '#B3261E',
-    fontSize: 13,
-    lineHeight: 18,
-    marginBottom: 12,
-  },
-  legalGateButton: {
-    alignItems: 'center',
-    backgroundColor: '#155C47',
-    borderRadius: 8,
-    justifyContent: 'center',
-    minHeight: 50,
-    paddingHorizontal: 16,
-  },
-  legalGateButtonPressed: {
-    opacity: 0.82,
-  },
-  legalGateButtonText: {
-    color: '#FFFFFF',
-    fontSize: 16,
-    fontWeight: '800',
-  },
-})

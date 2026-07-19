@@ -144,6 +144,25 @@ export const styles = StyleSheet.create({
     color: '#155C47',
     fontWeight: '900',
   },
+  legalHelpAnimatedWrap: {
+    overflow: 'hidden',
+  },
+  legalHelpCard: {
+    backgroundColor: '#FFF8E6',
+    borderColor: '#F2E4B8',
+    borderRadius: 14,
+    borderWidth: 1,
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+  },
+  legalHelpText: {
+    color: '#2D352F',
+    fontSize: 13,
+    fontWeight: '800',
+    letterSpacing: 0,
+    lineHeight: 18,
+    textAlign: 'center',
+  },
   iconButton: {
     width: 42,
     height: 42,
@@ -183,7 +202,10 @@ export const styles = StyleSheet.create({
     elevation: 3,
   },
   submitButtonDisabled: {
-    opacity: 0.72,
+    backgroundColor: '#8BA79B',
+    elevation: 0,
+    opacity: 1,
+    shadowOpacity: 0,
   },
   submitText: {
     color: '#FFFFFF',
@@ -227,6 +249,11 @@ export const styles = StyleSheet.create({
     justifyContent: 'center',
     minHeight: 60,
     paddingHorizontal: 18,
+  },
+  googleButtonDisabled: {
+    backgroundColor: '#F4F6F2',
+    borderColor: '#C9D8C8',
+    opacity: 1,
   },
   googleButtonText: {
     color: '#1F2D2A',
