@@ -29,19 +29,27 @@ import {
 } from 'firebase/firestore'
 import {
   ArrowLeft,
+  BadgeDollarSign,
+  BarChart3,
   CalendarDays,
+  Car,
   Check,
   Clock3,
-  DollarSign,
+  CloudRain,
   Dumbbell,
+  Heart,
   Leaf,
   Lock,
   MapPin,
   Mountain,
   PauseCircle,
+  PawPrint,
   Pencil,
+  Sparkles,
+  Tag,
   Trash2,
   UsersRound,
+  WalletCards,
   Waves,
 } from 'lucide-react-native'
 import type { LucideIcon } from 'lucide-react-native'
@@ -85,6 +93,14 @@ type ConfirmedParticipant = {
 }
 type InterestedAction = 'confirm' | 'reject'
 type UserNamesById = Record<string, string>
+type FeatureChip = {
+  backgroundColor: string
+  borderColor: string
+  color: string
+  Icon: LucideIcon
+  key: string
+  label: string
+}
 
 function readString(value: unknown, fallback = '') {
   return typeof value === 'string' && value.trim() ? value.trim() : fallback
@@ -143,6 +159,28 @@ function getAdditionalSettings(data: ActivityData) {
   return typeof data.additionalSettings === 'object' && data.additionalSettings
     ? data.additionalSettings as ActivityData
     : {}
+}
+
+function readStoredString(data: ActivityData, field: string) {
+  const additionalSettings = getAdditionalSettings(data)
+  return readString(additionalSettings[field], readString(data[field]))
+}
+
+function readStringList(value: unknown) {
+  if (Array.isArray(value)) {
+    return value
+      .map((item) => readString(item))
+      .filter(Boolean)
+  }
+
+  const stringValue = readString(value)
+  return stringValue ? [stringValue] : []
+}
+
+function readStoredStringList(data: ActivityData, field: string) {
+  const additionalSettings = getAdditionalSettings(data)
+  const additionalValues = readStringList(additionalSettings[field])
+  return additionalValues.length > 0 ? additionalValues : readStringList(data[field])
 }
 
 function getParticipantCount(data: ActivityData) {
@@ -220,7 +258,7 @@ function getInterestedCount(data: ActivityData) {
 
 function getMaxParticipants(data: ActivityData) {
   const additionalSettings = getAdditionalSettings(data)
-  return Math.max(1, readNumber(additionalSettings.maxParticipants, 10))
+  return Math.max(1, readNumber(additionalSettings.maxParticipants, readNumber(data.maxParticipants, 10)))
 }
 
 function hasUserInMap(value: unknown, userId: string) {
@@ -335,16 +373,6 @@ function getIcon(data: ActivityData): LucideIcon {
   return UsersRound
 }
 
-function getPriceLabel(data: ActivityData) {
-  const additionalSettings = getAdditionalSettings(data)
-  const cost = readString(additionalSettings.cost, readString(data.cost, 'Gratis'))
-  const price = readString(additionalSettings.price, readString(data.price))
-  const currency = readString(additionalSettings.currency, readString(data.currency, 'ARS'))
-
-  if (cost === 'Gratis' || !price) return 'Gratis'
-  return `${currency} ${price} por persona`
-}
-
 function getOrganizerName(data: ActivityData) {
   return readString(data.organizerName)
     || readString(data.createdByName)
@@ -418,6 +446,104 @@ function getLocationCoordinate(data: ActivityData, field: 'latitude' | 'longitud
   }
 
   return null
+}
+
+function createFeatureChip(
+  key: string,
+  label: string,
+  Icon: LucideIcon,
+  color: string,
+  backgroundColor: string,
+  borderColor: string,
+): FeatureChip {
+  return { backgroundColor, borderColor, color, Icon, key, label }
+}
+
+function getCanonicalLabel(value: string, labels: string[]) {
+  const normalizedValue = normalize(value)
+  return labels.find((label) => normalize(label) === normalizedValue) ?? ''
+}
+
+function getCostFeatureChip(data: ActivityData) {
+  const cost = readStoredString(data, 'cost')
+  if (!cost) return null
+
+  const normalizedCost = normalize(cost)
+  const price = readStoredString(data, 'price')
+  const currency = readStoredString(data, 'currency')
+
+  if (normalizedCost === 'gratis') {
+    return createFeatureChip('cost', 'Gratis', BadgeDollarSign, '#0E5A44', '#EFF8F0', '#D8ECD8')
+  }
+
+  if (normalizedCost === 'a la gorra') {
+    return createFeatureChip('cost', 'A la gorra', WalletCards, '#7A4A00', '#FFF7EC', '#F3DFB8')
+  }
+
+  if (normalizedCost === 'pago') {
+    const label = price && currency ? `${currency} ${price}` : 'Pago'
+    return createFeatureChip('cost', label, Tag, '#4B348A', '#F6F2FE', '#E7DDF8')
+  }
+
+  return createFeatureChip('cost', cost, Tag, '#4B348A', '#F6F2FE', '#E7DDF8')
+}
+
+function getActivityFeatureChips(data: ActivityData) {
+  const chips: FeatureChip[] = []
+  const level = getCanonicalLabel(readStoredString(data, 'level'), [
+    'Principiante',
+    'Intermedio',
+    'Avanzado',
+    'Todos los niveles',
+  ])
+  const environment = getCanonicalLabel(readStoredString(data, 'environment'), [
+    'Tranquilo',
+    'Social',
+    'Deportivo',
+    'Familiar',
+    'Relax',
+  ])
+  const costChip = getCostFeatureChip(data)
+
+  if (level) {
+    const Icon = level === 'Todos los niveles' ? UsersRound : level === 'Avanzado' ? BarChart3 : Sparkles
+    chips.push(createFeatureChip('level', level, Icon, '#4B348A', '#F6F2FE', '#E7DDF8'))
+  }
+
+  if (environment) {
+    const environmentConfig: Record<string, Omit<FeatureChip, 'key' | 'label'>> = {
+      Tranquilo: { Icon: Leaf, color: '#168A37', backgroundColor: '#F2FAF3', borderColor: '#D8ECD8' },
+      Social: { Icon: UsersRound, color: '#B85B00', backgroundColor: '#FFF7EC', borderColor: '#F3DFB8' },
+      Deportivo: { Icon: Dumbbell, color: '#2563EB', backgroundColor: '#F0F5FF', borderColor: '#D9E5FF' },
+      Familiar: { Icon: Heart, color: '#7A22C7', backgroundColor: '#F8F0FF', borderColor: '#E7D3FA' },
+      Relax: { Icon: Sparkles, color: '#B8296A', backgroundColor: '#FFF0F6', borderColor: '#F7CFE1' },
+    }
+    const config = environmentConfig[environment]
+    chips.push(createFeatureChip('environment', environment, config.Icon, config.color, config.backgroundColor, config.borderColor))
+  }
+
+  if (costChip) chips.push(costChip)
+
+  const normalizedQuickSettings = readStoredStringList(data, 'quickSettings').map((item) => normalize(item))
+  const hasQuickSetting = (values: string[]) => values.some((value) => normalizedQuickSettings.includes(value))
+
+  if (hasQuickSetting(['lluvia se suspende', 'se suspende por lluvia'])) {
+    chips.push(createFeatureChip('quick-rain', 'Se suspende por lluvia', CloudRain, '#2563EB', '#F0F5FF', '#D9E5FF'))
+  }
+
+  if (hasQuickSetting(['mascotas permitidas'])) {
+    chips.push(createFeatureChip('quick-pets', 'Mascotas permitidas', PawPrint, '#0E5A44', '#EFF8F0', '#D8ECD8'))
+  }
+
+  if (hasQuickSetting(['tengo lugar en auto'])) {
+    chips.push(createFeatureChip('quick-car', 'Tengo lugar en auto', Car, '#7A4A00', '#FFF7EC', '#F3DFB8'))
+  }
+
+  if (hasQuickSetting(['punto de encuentro'])) {
+    chips.push(createFeatureChip('quick-meeting-point', 'Punto de encuentro', MapPin, '#4B348A', '#F6F2FE', '#E7DDF8'))
+  }
+
+  return chips.filter((chip, index, list) => list.findIndex((item) => item.key === chip.key) === index)
 }
 
 function getInterestedCountLabel(count: number) {
@@ -711,7 +837,7 @@ export default function ActivityDetailScreen() {
       organizer: getOrganizerProfile(activity, organizerProfile),
       participantCount: safeCount,
       participants: getConfirmedParticipants(data, userNamesById),
-      price: getPriceLabel(data),
+      features: getActivityFeatureChips(data),
       subcategory: readString(data.subcategory),
       time: readString(data.time, 'Horario a definir'),
       title: getActivityPrimaryTitle(data),
@@ -1520,8 +1646,30 @@ export default function ActivityDetailScreen() {
             {detail.isFull ? 'Actividad completa' : `${availablePlaces} lugares disponibles`}
           </Text>
 
+          {detail.features.length > 0 ? (
+            <View style={styles.featuresSection}>
+              <Text style={styles.featuresTitle}>Características</Text>
+              <View style={styles.featuresGrid}>
+                {detail.features.map((item) => (
+                  <View
+                    key={item.key}
+                    style={[
+                      styles.featureChip,
+                      {
+                        backgroundColor: item.backgroundColor,
+                        borderColor: item.borderColor,
+                      },
+                    ]}
+                  >
+                    <item.Icon color={item.color} size={16} strokeWidth={2.5} />
+                    <Text style={[styles.featureChipText, { color: item.color }]}>{item.label}</Text>
+                  </View>
+                ))}
+              </View>
+            </View>
+          ) : null}
+
           {detail.subcategory ? <InfoRow Icon={Lock} label={detail.subcategory} /> : null}
-          <InfoRow Icon={DollarSign} label={detail.price} />
 
           <Text style={styles.description}>{detail.description}</Text>
 
@@ -2155,6 +2303,39 @@ const styles = StyleSheet.create({
   },
   fullText: {
     color: '#A33232',
+  },
+  featuresSection: {
+    marginBottom: 16,
+  },
+  featuresTitle: {
+    color: '#39206C',
+    fontSize: 12,
+    fontWeight: '900',
+    letterSpacing: 0,
+    marginBottom: 10,
+  },
+  featuresGrid: {
+    alignItems: 'flex-start',
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  featureChip: {
+    alignItems: 'center',
+    borderRadius: 999,
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: 6,
+    maxWidth: '100%',
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+  },
+  featureChipText: {
+    flexShrink: 1,
+    fontSize: 13,
+    fontWeight: '900',
+    letterSpacing: 0,
+    lineHeight: 17,
   },
   description: {
     color: '#193F37',

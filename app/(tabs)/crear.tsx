@@ -874,6 +874,17 @@ function readRecord(value: unknown): ActivityData {
   return typeof value === 'object' && value !== null && !Array.isArray(value) ? value as ActivityData : {}
 }
 
+function readStringList(value: unknown) {
+  if (Array.isArray(value)) {
+    return value
+      .map((item) => readString(item))
+      .filter(Boolean)
+  }
+
+  const stringValue = readString(value)
+  return stringValue ? [stringValue] : []
+}
+
 function getVisibilityFromPrivacy(value: string): 'approval' | 'group' | 'public' {
   const normalized = normalize(value)
   if (normalized.includes('grupo') || normalized === 'group') return 'group'
@@ -1413,9 +1424,10 @@ function CrearScreenContent() {
         const additionalSettings = readRecord(data.additionalSettings)
         const existingCost = readString(additionalSettings.cost, readString(data.cost, 'Gratis'))
         const existingCurrency = readString(additionalSettings.currency, readString(data.currency, 'ARS'))
-        const existingQuickSettings = Array.isArray(additionalSettings.quickSettings)
-          ? additionalSettings.quickSettings.filter((item): item is string => typeof item === 'string')
-          : []
+        const additionalQuickSettings = readStringList(additionalSettings.quickSettings)
+        const existingQuickSettings = additionalQuickSettings.length > 0
+          ? additionalQuickSettings
+          : readStringList(data.quickSettings)
 
         setCustomName(getActivityCustomName(data))
         setCategory(existingCategory)
