@@ -70,13 +70,31 @@ export function AppUpdateModal({ onLater, updateState }) {
           <Pressable
             accessibilityRole="button"
             onPress={openStore}
-            style={({ pressed }) => [
-              styles.primaryButton,
-              pressed && styles.buttonPressed,
-            ]}
+            style={({ pressed }) => ({
+              alignItems: 'center',
+              backgroundColor: pressed ? '#00562A' : '#006A32',
+              borderRadius: 8,
+              flexDirection: 'row',
+              gap: 8,
+              justifyContent: 'center',
+              marginTop: 22,
+              minHeight: 48,
+              opacity: pressed ? 0.92 : 1,
+              paddingHorizontal: 16,
+              width: '100%',
+            })}
           >
             <ExternalLink color="#FFFFFF" size={18} strokeWidth={2.5} />
-            <Text style={styles.primaryButtonText}>Actualizar</Text>
+            <Text
+              style={{
+                color: '#FFFFFF',
+                fontSize: 16,
+                fontWeight: '900',
+                letterSpacing: 0,
+              }}
+            >
+              Actualizar
+            </Text>
           </Pressable>
 
           {!isRequired ? (
@@ -167,23 +185,6 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     letterSpacing: 0,
     lineHeight: 20,
-  },
-  primaryButton: {
-    alignItems: 'center',
-    backgroundColor: '#006A32',
-    borderRadius: 8,
-    flexDirection: 'row',
-    gap: 8,
-    justifyContent: 'center',
-    marginTop: 22,
-    minHeight: 48,
-    paddingHorizontal: 16,
-  },
-  primaryButtonText: {
-    color: '#FFFFFF',
-    fontSize: 16,
-    fontWeight: '900',
-    letterSpacing: 0,
   },
   laterButton: {
     alignItems: 'center',
