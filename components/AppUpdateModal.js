@@ -32,6 +32,8 @@ export function AppUpdateModal({ onLater, updateState }) {
     if (!isRequired) onLater?.()
   }
 
+  console.log('[APP UPDATE MODAL] nuevo botón renderizado')
+
   return (
     <Modal
       animationType="fade"
@@ -67,35 +69,44 @@ export function AppUpdateModal({ onLater, updateState }) {
             ) : null}
           </ScrollView>
 
-          <Pressable
-            accessibilityRole="button"
-            onPress={openStore}
-            style={({ pressed }) => ({
-              alignItems: 'center',
-              backgroundColor: pressed ? '#00562A' : '#006A32',
+          <View
+            style={{
+              backgroundColor: '#006A32',
               borderRadius: 8,
-              flexDirection: 'row',
-              gap: 8,
-              justifyContent: 'center',
-              marginTop: 22,
+              marginTop: 30,
               minHeight: 48,
-              opacity: pressed ? 0.92 : 1,
-              paddingHorizontal: 16,
+              overflow: 'hidden',
               width: '100%',
-            })}
+            }}
           >
-            <ExternalLink color="#FFFFFF" size={18} strokeWidth={2.5} />
-            <Text
-              style={{
-                color: '#FFFFFF',
-                fontSize: 16,
-                fontWeight: '900',
-                letterSpacing: 0,
-              }}
+            <Pressable
+              accessibilityRole="button"
+              onPress={openStore}
+              style={({ pressed }) => ({
+                alignItems: 'center',
+                alignSelf: 'stretch',
+                backgroundColor: pressed ? 'rgba(0,0,0,0.12)' : 'transparent',
+                flexDirection: 'row',
+                gap: 8,
+                justifyContent: 'center',
+                minHeight: 48,
+                paddingHorizontal: 16,
+                width: '100%',
+              })}
             >
-              Actualizar
-            </Text>
-          </Pressable>
+              <ExternalLink color="#FFFFFF" size={18} strokeWidth={2.5} />
+              <Text
+                style={{
+                  color: '#FFFFFF',
+                  fontSize: 16,
+                  fontWeight: '900',
+                  letterSpacing: 0,
+                }}
+              >
+                Actualizar
+              </Text>
+            </Pressable>
+          </View>
 
           {!isRequired ? (
             <Pressable
