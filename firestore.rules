@@ -1,0 +1,167 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function uid() {
+      return request.auth.uid;
+    }
+
+    function isActivityOwner(data) {
+      return signedIn() && (
+        data.createdBy == uid() ||
+        data.organizerId == uid() ||
+        data.creatorId == uid() ||
+        data.ownerId == uid() ||
+        data.userId == uid() ||
+        data.createdById == uid()
+      );
+    }
+
+    function isGroupOwner(data) {
+      return signedIn() && (
+        data.ownerId == uid() ||
+        data.createdBy == uid() ||
+        data.creatorId == uid() ||
+        data.userId == uid() ||
+        data.organizerId == uid() ||
+        data.createdById == uid()
+      );
+    }
+
+    function activitySafeUpdateOnly() {
+      return request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+        'joinedUsers',
+        'participantIds',
+        'participants',
+        'participantsCount',
+        'interestedUsers',
+        'interestedCount',
+        'interestRequests',
+        'members',
+        'memberProfiles',
+        'membershipRequests',
+        'pendingMembers',
+        'groupId',
+        'groupName',
+        'visibility',
+        'additionalSettings',
+        'updatedAt'
+      ]);
+    }
+
+    function groupSafeUpdateOnly() {
+      return request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+        'joinedUsers',
+        'participantIds',
+        'memberIds',
+        'members',
+        'memberProfiles',
+        'membershipRequests',
+        'pendingMembers',
+        'memberCount',
+        'membersCount',
+        'updatedAt'
+      ]);
+    }
+
+    match /users/{userId} {
+      allow read: if signedIn();
+      allow create, update: if signedIn() && userId == uid();
+      allow delete: if signedIn() && userId == uid();
+    }
+
+    match /activities/{activityId} {
+      allow read: if signedIn();
+
+      allow create: if signedIn() && isActivityOwner(request.resource.data);
+
+      allow update: if signedIn() && (
+        isActivityOwner(resource.data) ||
+        activitySafeUpdateOnly()
+      );
+
+      allow delete: if signedIn() && isActivityOwner(resource.data);
+    }
+
+    match /groups/{groupId} {
+      allow read: if signedIn();
+
+      allow create: if signedIn() && isGroupOwner(request.resource.data);
+
+      allow update: if signedIn() && (
+        isGroupOwner(resource.data) ||
+        groupSafeUpdateOnly()
+      );
+
+      allow delete: if signedIn() && isGroupOwner(resource.data);
+    }
+
+    match /appConfig/{documentId} {
+      allow read: if request.auth != null;
+      allow write: if false;
+    }
+
+    match /notifications/{notificationId} {
+      allow read: if signedIn() && resource.data.userId == uid();
+
+      allow create: if signedIn();
+
+      allow update: if signedIn() && (
+        resource.data.userId == uid() ||
+        resource.data.senderId == uid() ||
+        resource.data.requesterId == uid()
+      );
+
+      allow delete: if signedIn() && (
+        resource.data.userId == uid() ||
+        resource.data.senderId == uid() ||
+        resource.data.requesterId == uid()
+      );
+    }
+
+    match /activityChats/{chatId} {
+      allow read: if signedIn();
+      allow create, update: if signedIn();
+      allow delete: if false;
+
+      match /messages/{messageId} {
+        allow read: if signedIn();
+
+        allow create: if signedIn()
+          && request.resource.data.senderId == uid();
+
+        allow update: if signedIn()
+          && resource.data.senderId == uid();
+
+        allow delete: if false;
+      }
+    }
+
+    match /groupChats/{chatId} {
+      allow read: if signedIn();
+      allow create, update: if signedIn();
+      allow delete: if false;
+
+      match /messages/{messageId} {
+        allow read: if signedIn();
+
+        allow create: if signedIn()
+          && request.resource.data.senderId == uid();
+
+        allow update: if signedIn()
+          && resource.data.senderId == uid();
+
+        allow delete: if false;
+      }
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

@@ -13,6 +13,8 @@ import { consumePendingExternalReturnRoute } from '../utils/externalReturnRoute'
 import { getJsInstanceId } from '../utils/jsInstance'
 import { canParticipate, isGoogleUser, reloadAuthUser } from '../utils/authParticipation'
 import { hasAcceptedCurrentLegal } from '../constants/legal'
+import { AppUpdateModal } from '../components/AppUpdateModal'
+import { useAppUpdateState } from '../utils/appUpdate'
 
 const PUBLIC_ROUTES = new Set([
   '/',
@@ -200,6 +202,7 @@ export default function RootLayout() {
   const router = useRouter()
   const [authState, setAuthState] = useState({ checked: false, user: null })
   const [legalState, setLegalState] = useState({ checked: false, hasAccepted: false, resolved: false, userId: null })
+  const appUpdate = useAppUpdateState()
   const [pendingNotificationRouteVersion, setPendingNotificationRouteVersion] = useState(0)
   const instanceId = getJsInstanceId()
   const externalRouteRestoreAttemptedRef = useRef(false)
@@ -668,6 +671,10 @@ export default function RootLayout() {
           screenOptions={{
             headerShown: false,
           }}
+        />
+        <AppUpdateModal
+          onLater={appUpdate.dismissRecommendedUpdate}
+          updateState={appUpdate.updateState}
         />
       </SafeAreaProvider>
     </AuthContext.Provider>
