@@ -5,6 +5,7 @@ import {
   AppState,
   Image,
   Linking,
+  Modal,
   Platform,
   Pressable,
   ScrollView,
@@ -17,6 +18,7 @@ import { SafeAreaView } from 'react-native-safe-area-context'
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router'
 import { onAuthStateChanged } from 'firebase/auth'
 import {
+  addDoc,
   collection,
   deleteField,
   deleteDoc,
@@ -66,12 +68,21 @@ import {
 import { getFirebaseServices } from '../../firebaseConfig'
 import { readRemoteGroupPhotoUrl } from '../../lib/groupPhotos'
 import { notifyActivityCancelled, notifyActivityConfirmed, notifyActivityInterest, notifyActivityJoined, notifyActivityRejected } from '../../lib/notifications'
+import {
+  addCalendarDays,
+  buildDuplicatedActivityPayload,
+  formatActivityDate,
+  formatLongActivityDate,
+  getActivitySourceDate,
+  startOfLocalDay,
+} from '../../utils/activityDuplication'
 import { getActivityGroupMeta } from '../../utils/activityGroups'
 import { getActivityCustomName, getActivityPrimaryTitle } from '../../utils/activityTitles'
 import { requireVerifiedParticipation } from '../../utils/authParticipation'
 import { getActivityVisualState } from '../../utils/activityDiscovery'
 import { getCategoryImage } from '../../utils/categoryImages'
 import { savePendingExternalReturnRoute } from '../../utils/externalReturnRoute'
+import { isDeletedGroup, isGroupMember } from '../../utils/groupMembership'
 import { getJsInstanceId } from '../../utils/jsInstance'
 import { resolveUserDisplayName, readStoredUserName } from '../../utils/userNames'
 
@@ -92,6 +103,7 @@ type ConfirmedParticipant = {
   uid: string
 }
 type InterestedAction = 'confirm' | 'reject'
+type DuplicateStep = 'options' | 'custom'
 type UserNamesById = Record<string, string>
 type FeatureChip = {
   backgroundColor: string
@@ -109,6 +121,22 @@ function readString(value: unknown, fallback = '') {
 function readNumber(value: unknown, fallback = 0) {
   return typeof value === 'number' && Number.isFinite(value) ? value : fallback
 }
+
+const duplicateWeekDays = ['L', 'M', 'M', 'J', 'V', 'S', 'D']
+const duplicateMonthNames = [
+  'enero',
+  'febrero',
+  'marzo',
+  'abril',
+  'mayo',
+  'junio',
+  'julio',
+  'agosto',
+  'septiembre',
+  'octubre',
+  'noviembre',
+  'diciembre',
+]
 
 function getErrorMessage(error: unknown) {
   if (typeof error === 'object' && error) {
@@ -572,6 +600,51 @@ function getInitials(name: string) {
     .join('')
 }
 
+function getDuplicateCalendarDays(monthDate: Date) {
+  const firstDay = new Date(monthDate.getFullYear(), monthDate.getMonth(), 1)
+  const lastDay = new Date(monthDate.getFullYear(), monthDate.getMonth() + 1, 0)
+  const leadingEmptyDays = (firstDay.getDay() + 6) % 7
+  const days: (Date | null)[] = Array.from({ length: leadingEmptyDays }, () => null)
+
+  for (let day = 1; day <= lastDay.getDate(); day += 1) {
+    days.push(new Date(monthDate.getFullYear(), monthDate.getMonth(), day))
+  }
+
+  while (days.length % 7 !== 0) {
+    days.push(null)
+  }
+
+  return days
+}
+
+function getDuplicateCalendarMonthTitle(value: Date) {
+  return `${duplicateMonthNames[value.getMonth()]} ${value.getFullYear()}`
+}
+
+function isSameLocalDay(left: Date, right: Date) {
+  return startOfLocalDay(left).getTime() === startOfLocalDay(right).getTime()
+}
+
+function getTimeMinutes(value: string) {
+  const match = value.match(/(\d{1,2}):(\d{2})/)
+  if (!match) return null
+
+  const hours = Number(match[1])
+  const minutes = Number(match[2])
+  if (!Number.isFinite(hours) || !Number.isFinite(minutes)) return null
+
+  return Math.min(23, Math.max(0, hours)) * 60 + Math.min(59, Math.max(0, minutes))
+}
+
+function getActivityDateTimeMillis(date: Date, time: string) {
+  const minutes = getTimeMinutes(time)
+  if (minutes === null) return Number.NaN
+
+  const dateTime = startOfLocalDay(date)
+  dateTime.setHours(Math.floor(minutes / 60), minutes % 60, 0, 0)
+  return dateTime.getTime()
+}
+
 export default function ActivityDetailScreen() {
   const router = useRouter()
   const { activityId } = useLocalSearchParams<{ activityId?: string }>()
@@ -601,6 +674,12 @@ export default function ActivityDetailScreen() {
   const [isCancellingActivity, setIsCancellingActivity] = useState(false)
   const [localGroups, setLocalGroups] = useState<LocalGroup[]>([])
   const [isOpeningLocation, setIsOpeningLocation] = useState(false)
+  const [isDuplicateModalVisible, setIsDuplicateModalVisible] = useState(false)
+  const [duplicateStep, setDuplicateStep] = useState<DuplicateStep>('options')
+  const [duplicateSelectedDate, setDuplicateSelectedDate] = useState<Date | null>(null)
+  const [duplicateCalendarMonth, setDuplicateCalendarMonth] = useState(startOfLocalDay(new Date()))
+  const [isDuplicatingActivity, setIsDuplicatingActivity] = useState(false)
+  const [duplicateError, setDuplicateError] = useState('')
   const openedExternalMapsRef = useRef(false)
 
   const loadLocalGroups = useCallback(async () => {
@@ -1479,6 +1558,157 @@ export default function ActivityDetailScreen() {
     })
   }
 
+  const resetDuplicateFlow = () => {
+    const sourceDate = activity ? getActivitySourceDate(activity) : null
+    const initialDate = sourceDate ? addCalendarDays(sourceDate, 7) : addCalendarDays(new Date(), 7)
+
+    setDuplicateStep('options')
+    setDuplicateSelectedDate(initialDate)
+    setDuplicateCalendarMonth(new Date(initialDate.getFullYear(), initialDate.getMonth(), 1))
+    setDuplicateError('')
+  }
+
+  const openDuplicateModal = () => {
+    if (!isOrganizer || !activity) return
+    resetDuplicateFlow()
+    setIsDuplicateModalVisible(true)
+  }
+
+  const closeDuplicateModal = () => {
+    if (isDuplicatingActivity) return
+    setIsDuplicateModalVisible(false)
+    setDuplicateError('')
+  }
+
+  const validateDuplicateGroupPermission = async (sourceActivity: ActivityData, userId: string) => {
+    const groupMeta = getActivityGroupMeta(sourceActivity)
+    if (!groupMeta.groupId) return true
+
+    const { db } = getFirebaseServices()
+    const groupSnapshot = await getDoc(doc(db, 'groups', groupMeta.groupId))
+    if (!groupSnapshot.exists()) {
+      setDuplicateError('No pudimos duplicar la actividad porque el grupo ya no está disponible.')
+      return false
+    }
+
+    const groupData = groupSnapshot.data() as ActivityData
+    if (isDeletedGroup(groupData)) {
+      setDuplicateError('No pudimos duplicar la actividad porque el grupo fue eliminado.')
+      return false
+    }
+
+    if (!isGroupMember(groupData, userId)) {
+      setDuplicateError('No podés duplicar esta actividad porque ya no tenés permisos en el grupo.')
+      return false
+    }
+
+    return true
+  }
+
+  const showDuplicateSuccess = (createdActivityId: string, date: Date) => {
+    const formattedDate = formatLongActivityDate(date)
+
+    Alert.alert(
+      'Actividad duplicada',
+      `Actividad duplicada correctamente para el ${formattedDate}.`,
+      [
+        {
+          text: 'Ver actividad',
+          onPress: () => router.push({
+            pathname: '/activity/[activityId]',
+            params: { activityId: createdActivityId },
+          }),
+        },
+        { text: 'Cerrar', style: 'cancel' },
+      ],
+    )
+  }
+
+  const duplicateActivityForDate = async (targetDate: Date | null) => {
+    if (isDuplicatingActivity) return
+
+    setDuplicateError('')
+
+    if (!activityId || !activity || !targetDate) {
+      setDuplicateError('No pudimos preparar la fecha para duplicar la actividad.')
+      return
+    }
+
+    const activityTime = readString(activity.time)
+    if (!activityTime) {
+      setDuplicateError('La actividad original no tiene una hora válida para conservar.')
+      return
+    }
+
+    const targetDateTime = getActivityDateTimeMillis(targetDate, activityTime)
+    if (!Number.isFinite(targetDateTime) || targetDateTime <= Date.now()) {
+      setDuplicateError('Elegí una fecha y hora futuras para crear la copia.')
+      return
+    }
+
+    setIsDuplicatingActivity(true)
+
+    try {
+      const { auth, db } = getFirebaseServices()
+      const user = auth.currentUser
+
+      if (!user) {
+        setDuplicateError('Necesitás iniciar sesión para duplicar esta actividad.')
+        return
+      }
+
+      if (!(await requireVerifiedParticipation(auth))) return
+
+      const targetRef = doc(db, 'activities', activityId)
+      const snapshot = await getDoc(targetRef)
+      if (!snapshot.exists()) {
+        setDuplicateError('No encontramos la actividad original para duplicarla.')
+        return
+      }
+
+      const latestActivity = snapshot.data() as ActivityData
+      if (getCreatorId(latestActivity) !== user.uid) {
+        setDuplicateError('Solo quien organiza la actividad puede duplicarla.')
+        return
+      }
+
+      const canDuplicateGroupActivity = await validateDuplicateGroupPermission(latestActivity, user.uid)
+      if (!canDuplicateGroupActivity) return
+
+      const payload = buildDuplicatedActivityPayload(latestActivity, targetDate, user.uid)
+      const createdRef = await addDoc(collection(db, 'activities'), payload)
+
+      setIsDuplicateModalVisible(false)
+      resetDuplicateFlow()
+      showDuplicateSuccess(createdRef.id, targetDate)
+    } catch (error) {
+      const message = getErrorMessage(error)
+      setDuplicateError(`No pudimos duplicar la actividad. Detalle: ${message}`)
+    } finally {
+      setIsDuplicatingActivity(false)
+    }
+  }
+
+  const duplicateInSevenDays = () => {
+    const sourceDate = activity ? getActivitySourceDate(activity) : null
+    if (!sourceDate) {
+      setDuplicateError('No pudimos leer la fecha original de la actividad.')
+      return
+    }
+
+    void duplicateActivityForDate(addCalendarDays(sourceDate, 7))
+  }
+
+  const openCustomDuplicateDate = () => {
+    const sourceDate = activity ? getActivitySourceDate(activity) : null
+    const initialDate = sourceDate ? addCalendarDays(sourceDate, 7) : addCalendarDays(new Date(), 7)
+
+    setDuplicateSelectedDate(initialDate)
+    setDuplicateCalendarMonth(new Date(initialDate.getFullYear(), initialDate.getMonth(), 1))
+    setDuplicateStep('custom')
+    setDuplicateError('')
+  }
+
   if (isLoading) {
     return (
       <SafeAreaView style={styles.safeArea}>
@@ -1787,6 +2017,23 @@ export default function ActivityDetailScreen() {
                   <Text style={styles.editActivityText}>Editar actividad</Text>
                 </PressScale>
                 <PressScale
+                  accessibilityLabel="Duplicar actividad"
+                  accessibilityRole="button"
+                  disabled={isDuplicatingActivity}
+                  onPress={openDuplicateModal}
+                  scaleTo={0.97}
+                  style={[styles.duplicateActivityButton, isDuplicatingActivity && styles.duplicateActivityButtonDisabled]}
+                >
+                  {isDuplicatingActivity ? (
+                    <ActivityIndicator color="#155C47" size="small" />
+                  ) : (
+                    <>
+                      <CalendarDays color="#155C47" size={18} strokeWidth={2.8} />
+                      <Text style={styles.duplicateActivityText}>Duplicar actividad</Text>
+                    </>
+                  )}
+                </PressScale>
+                <PressScale
                   accessibilityLabel="Cancelar actividad"
                   accessibilityRole="button"
                   disabled={detail.isCancelled || isCancellingActivity}
@@ -1998,6 +2245,158 @@ export default function ActivityDetailScreen() {
         target={inviteTarget}
         visible={isInviteVisible}
       />
+      <Modal
+        animationType="fade"
+        onRequestClose={closeDuplicateModal}
+        transparent
+        visible={isDuplicateModalVisible}
+      >
+        <View style={styles.duplicateModalBackdrop}>
+          <View style={styles.duplicateModalCard}>
+            <Text style={styles.duplicateModalTitle}>Duplicar actividad</Text>
+            <Text style={styles.duplicateModalText}>
+              Se va a crear una actividad nueva e independiente, sin participantes ni interesados.
+            </Text>
+
+            {duplicateStep === 'options' ? (
+              <View style={styles.duplicateModalActions}>
+                <Pressable
+                  accessibilityRole="button"
+                  disabled={isDuplicatingActivity}
+                  onPress={duplicateInSevenDays}
+                  style={({ pressed }) => [
+                    styles.duplicatePrimaryOption,
+                    pressed && styles.duplicateOptionPressed,
+                    isDuplicatingActivity && styles.duplicateOptionDisabled,
+                  ]}
+                >
+                  {isDuplicatingActivity ? (
+                    <ActivityIndicator color="#FFFFFF" size="small" />
+                  ) : (
+                    <Text style={styles.duplicatePrimaryOptionText}>Dentro de 7 días</Text>
+                  )}
+                </Pressable>
+                <Pressable
+                  accessibilityRole="button"
+                  disabled={isDuplicatingActivity}
+                  onPress={openCustomDuplicateDate}
+                  style={({ pressed }) => [
+                    styles.duplicateSecondaryOption,
+                    pressed && styles.duplicateOptionPressed,
+                    isDuplicatingActivity && styles.duplicateOptionDisabled,
+                  ]}
+                >
+                  <Text style={styles.duplicateSecondaryOptionText}>Elegir otra fecha</Text>
+                </Pressable>
+                <Pressable
+                  accessibilityRole="button"
+                  disabled={isDuplicatingActivity}
+                  onPress={closeDuplicateModal}
+                  style={({ pressed }) => [styles.duplicateCancelOption, pressed && styles.duplicateOptionPressed]}
+                >
+                  <Text style={styles.duplicateCancelOptionText}>Cancelar</Text>
+                </Pressable>
+              </View>
+            ) : (
+              <View style={styles.duplicateCustomBlock}>
+                <View style={styles.duplicateCalendarHeader}>
+                  <Pressable
+                    accessibilityLabel="Mes anterior"
+                    accessibilityRole="button"
+                    onPress={() => setDuplicateCalendarMonth((current) => new Date(current.getFullYear(), current.getMonth() - 1, 1))}
+                    style={styles.duplicateMonthButton}
+                  >
+                    <Text style={styles.duplicateMonthButtonText}>‹</Text>
+                  </Pressable>
+                  <Text style={styles.duplicateCalendarTitle}>{getDuplicateCalendarMonthTitle(duplicateCalendarMonth)}</Text>
+                  <Pressable
+                    accessibilityLabel="Mes siguiente"
+                    accessibilityRole="button"
+                    onPress={() => setDuplicateCalendarMonth((current) => new Date(current.getFullYear(), current.getMonth() + 1, 1))}
+                    style={styles.duplicateMonthButton}
+                  >
+                    <Text style={styles.duplicateMonthButtonText}>›</Text>
+                  </Pressable>
+                </View>
+                <View style={styles.duplicateWeekRow}>
+                  {duplicateWeekDays.map((day, index) => (
+                    <Text key={`${day}:${index}`} style={styles.duplicateWeekDay}>{day}</Text>
+                  ))}
+                </View>
+                <View style={styles.duplicateCalendarGrid}>
+                  {getDuplicateCalendarDays(duplicateCalendarMonth).map((day, index) => {
+                    const isSelected = Boolean(day && duplicateSelectedDate && isSameLocalDay(day, duplicateSelectedDate))
+                    const isPast = Boolean(day && getActivityDateTimeMillis(day, readString(activity?.time)) <= Date.now())
+
+                    return (
+                      <Pressable
+                        accessibilityRole={day ? 'button' : undefined}
+                        disabled={!day || isPast || isDuplicatingActivity}
+                        key={day ? day.toISOString() : `empty:${index}`}
+                        onPress={() => day && setDuplicateSelectedDate(day)}
+                        style={({ pressed }) => [
+                          styles.duplicateDayCell,
+                          !day && styles.duplicateDayCellEmpty,
+                          isSelected && styles.duplicateDayCellSelected,
+                          isPast && styles.duplicateDayCellDisabled,
+                          pressed && styles.duplicateOptionPressed,
+                        ]}
+                      >
+                        <Text style={[
+                          styles.duplicateDayText,
+                          isSelected && styles.duplicateDayTextSelected,
+                          isPast && styles.duplicateDayTextDisabled,
+                        ]}>
+                          {day ? day.getDate() : ''}
+                        </Text>
+                      </Pressable>
+                    )
+                  })}
+                </View>
+                <View style={styles.duplicateSelectedSummary}>
+                  <Text style={styles.duplicateSelectedLabel}>Nueva fecha</Text>
+                  <Text style={styles.duplicateSelectedValue}>
+                    {duplicateSelectedDate ? `${formatActivityDate(duplicateSelectedDate)} · ${detail.time}` : `Elegí una fecha · ${detail.time}`}
+                  </Text>
+                </View>
+                <View style={styles.duplicateModalActions}>
+                  <Pressable
+                    accessibilityRole="button"
+                    disabled={!duplicateSelectedDate || isDuplicatingActivity}
+                    onPress={() => void duplicateActivityForDate(duplicateSelectedDate)}
+                    style={({ pressed }) => [
+                      styles.duplicatePrimaryOption,
+                      pressed && styles.duplicateOptionPressed,
+                      (!duplicateSelectedDate || isDuplicatingActivity) && styles.duplicateOptionDisabled,
+                    ]}
+                  >
+                    {isDuplicatingActivity ? (
+                      <ActivityIndicator color="#FFFFFF" size="small" />
+                    ) : (
+                      <Text style={styles.duplicatePrimaryOptionText}>Crear copia</Text>
+                    )}
+                  </Pressable>
+                  <Pressable
+                    accessibilityRole="button"
+                    disabled={isDuplicatingActivity}
+                    onPress={() => {
+                      setDuplicateStep('options')
+                      setDuplicateError('')
+                    }}
+                    style={({ pressed }) => [styles.duplicateCancelOption, pressed && styles.duplicateOptionPressed]}
+                  >
+                    <Text style={styles.duplicateCancelOptionText}>Cancelar</Text>
+                  </Pressable>
+                </View>
+              </View>
+            )}
+
+            {duplicateError ? (
+              <Text style={styles.duplicateErrorText}>{duplicateError}</Text>
+            ) : null}
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   )
 }
@@ -2678,6 +3077,21 @@ const styles = StyleSheet.create({
     minHeight: 48,
     paddingHorizontal: 18,
   },
+  duplicateActivityButton: {
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    borderColor: '#B8DCCB',
+    borderRadius: 14,
+    borderWidth: 1.5,
+    flexDirection: 'row',
+    gap: 8,
+    justifyContent: 'center',
+    minHeight: 48,
+    paddingHorizontal: 18,
+  },
+  duplicateActivityButtonDisabled: {
+    opacity: 0.62,
+  },
   cancelActivityButton: {
     alignItems: 'center',
     backgroundColor: '#FFFFFF',
@@ -2703,6 +3117,12 @@ const styles = StyleSheet.create({
     letterSpacing: 0,
   },
   editActivityText: {
+    color: '#155C47',
+    fontSize: 15,
+    fontWeight: '900',
+    letterSpacing: 0,
+  },
+  duplicateActivityText: {
     color: '#155C47',
     fontSize: 15,
     fontWeight: '900',
@@ -2742,5 +3162,196 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '900',
     letterSpacing: 0,
+  },
+  duplicateModalBackdrop: {
+    alignItems: 'center',
+    backgroundColor: 'rgba(10, 18, 14, 0.56)',
+    flex: 1,
+    justifyContent: 'center',
+    padding: 20,
+  },
+  duplicateModalCard: {
+    backgroundColor: '#FFFCF5',
+    borderColor: '#DDE8DE',
+    borderRadius: 16,
+    borderWidth: 1,
+    maxWidth: 420,
+    padding: 20,
+    width: '100%',
+  },
+  duplicateModalTitle: {
+    color: '#063C31',
+    fontSize: 20,
+    fontWeight: '900',
+    letterSpacing: 0,
+    marginBottom: 8,
+  },
+  duplicateModalText: {
+    color: '#42564E',
+    fontSize: 14,
+    fontWeight: '600',
+    letterSpacing: 0,
+    lineHeight: 20,
+    marginBottom: 16,
+  },
+  duplicateModalActions: {
+    gap: 10,
+  },
+  duplicatePrimaryOption: {
+    alignItems: 'center',
+    backgroundColor: '#006A32',
+    borderRadius: 12,
+    justifyContent: 'center',
+    minHeight: 48,
+    paddingHorizontal: 16,
+  },
+  duplicatePrimaryOptionText: {
+    color: '#FFFFFF',
+    fontSize: 15,
+    fontWeight: '900',
+    letterSpacing: 0,
+  },
+  duplicateSecondaryOption: {
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    borderColor: '#B8DCCB',
+    borderRadius: 12,
+    borderWidth: 1.5,
+    justifyContent: 'center',
+    minHeight: 48,
+    paddingHorizontal: 16,
+  },
+  duplicateSecondaryOptionText: {
+    color: '#155C47',
+    fontSize: 15,
+    fontWeight: '900',
+    letterSpacing: 0,
+  },
+  duplicateCancelOption: {
+    alignItems: 'center',
+    borderRadius: 12,
+    justifyContent: 'center',
+    minHeight: 44,
+    paddingHorizontal: 16,
+  },
+  duplicateCancelOptionText: {
+    color: '#4B348A',
+    fontSize: 15,
+    fontWeight: '900',
+    letterSpacing: 0,
+  },
+  duplicateOptionPressed: {
+    opacity: 0.84,
+  },
+  duplicateOptionDisabled: {
+    opacity: 0.58,
+  },
+  duplicateCustomBlock: {
+    gap: 12,
+  },
+  duplicateCalendarHeader: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  duplicateCalendarTitle: {
+    color: '#063C31',
+    fontSize: 15,
+    fontWeight: '900',
+    letterSpacing: 0,
+    textTransform: 'capitalize',
+  },
+  duplicateMonthButton: {
+    alignItems: 'center',
+    backgroundColor: '#EEF6F0',
+    borderRadius: 10,
+    height: 36,
+    justifyContent: 'center',
+    width: 36,
+  },
+  duplicateMonthButtonText: {
+    color: '#155C47',
+    fontSize: 24,
+    fontWeight: '900',
+    lineHeight: 28,
+  },
+  duplicateWeekRow: {
+    flexDirection: 'row',
+    gap: 4,
+  },
+  duplicateWeekDay: {
+    color: '#6A7A74',
+    flex: 1,
+    fontSize: 12,
+    fontWeight: '900',
+    letterSpacing: 0,
+    textAlign: 'center',
+  },
+  duplicateCalendarGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 4,
+  },
+  duplicateDayCell: {
+    alignItems: 'center',
+    aspectRatio: 1,
+    backgroundColor: '#FFFFFF',
+    borderColor: '#DDE8DE',
+    borderRadius: 10,
+    borderWidth: 1,
+    justifyContent: 'center',
+    width: '13.75%',
+  },
+  duplicateDayCellEmpty: {
+    backgroundColor: 'transparent',
+    borderColor: 'transparent',
+  },
+  duplicateDayCellSelected: {
+    backgroundColor: '#006A32',
+    borderColor: '#006A32',
+  },
+  duplicateDayCellDisabled: {
+    opacity: 0.36,
+  },
+  duplicateDayText: {
+    color: '#183F35',
+    fontSize: 13,
+    fontWeight: '900',
+    letterSpacing: 0,
+  },
+  duplicateDayTextSelected: {
+    color: '#FFFFFF',
+  },
+  duplicateDayTextDisabled: {
+    color: '#7A817D',
+  },
+  duplicateSelectedSummary: {
+    backgroundColor: '#F2FAF3',
+    borderColor: '#D8ECD8',
+    borderRadius: 12,
+    borderWidth: 1,
+    padding: 12,
+  },
+  duplicateSelectedLabel: {
+    color: '#527064',
+    fontSize: 12,
+    fontWeight: '900',
+    letterSpacing: 0,
+    marginBottom: 3,
+    textTransform: 'uppercase',
+  },
+  duplicateSelectedValue: {
+    color: '#063C31',
+    fontSize: 15,
+    fontWeight: '900',
+    letterSpacing: 0,
+  },
+  duplicateErrorText: {
+    color: '#B42318',
+    fontSize: 13,
+    fontWeight: '800',
+    letterSpacing: 0,
+    lineHeight: 18,
+    marginTop: 12,
   },
 })

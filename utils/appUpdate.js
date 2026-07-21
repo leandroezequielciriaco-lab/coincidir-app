@@ -47,10 +47,50 @@ export function compareAppVersion(installedVersionCode, config) {
   }
 
   if (latestVersionCode > 0 && installedVersionCode < latestVersionCode) {
-    return config.forceUpdate ? 'required' : 'recommended'
+    return 'recommended'
   }
 
   return null
+}
+
+function getAppUpdateDecisionReason(installedVersionCode, config, updateType) {
+  if (Platform.OS !== 'android') return 'platform_not_android'
+  if (typeof installedVersionCode !== 'number') return 'missing_installed_version_code'
+  if (!config) return 'missing_remote_config'
+  if (!config.enabled) return 'remote_updates_disabled'
+
+  const minimumVersionCode = readNumber(config.minimumVersionCode, 0)
+  const latestVersionCode = readNumber(config.latestVersionCode, 0)
+
+  if (updateType === 'required') {
+    return 'installed_version_below_minimum_version_code'
+  }
+
+  if (updateType === 'recommended') {
+    return 'installed_version_below_latest_version_code'
+  }
+
+  if (latestVersionCode > 0 && installedVersionCode >= latestVersionCode) {
+    return 'installed_version_at_or_above_latest_version_code'
+  }
+
+  if (minimumVersionCode <= 0 && latestVersionCode <= 0) {
+    return 'remote_version_codes_not_configured'
+  }
+
+  return 'no_update_required'
+}
+
+function logAppUpdateDecision(installedVersionCode, config, updateType, reason) {
+  console.log('[APP UPDATE CHECK]', {
+    enabled: config?.enabled ?? null,
+    forceUpdate: config?.forceUpdate ?? null,
+    installedVersionCode,
+    latestVersionCode: config?.latestVersionCode ?? null,
+    minimumVersionCode: config?.minimumVersionCode ?? null,
+    reason,
+    result: updateType,
+  })
 }
 
 export async function fetchAppUpdateConfig() {
@@ -75,14 +115,30 @@ export async function fetchAppUpdateConfig() {
 }
 
 export async function resolveAppUpdateState() {
-  if (Platform.OS !== 'android') return null
+  if (Platform.OS !== 'android') {
+    logAppUpdateDecision(null, null, null, 'platform_not_android')
+    return null
+  }
 
   try {
     const installedVersionCode = getInstalledAndroidVersionCode()
-    if (typeof installedVersionCode !== 'number') return null
+    if (typeof installedVersionCode !== 'number') {
+      logAppUpdateDecision(installedVersionCode, null, null, 'missing_installed_version_code')
+      return null
+    }
 
-    const config = await fetchAppUpdateConfig()
+    let config
+    try {
+      config = await fetchAppUpdateConfig()
+    } catch (error) {
+      logAppUpdateDecision(installedVersionCode, null, null, 'firestore_read_failed')
+      console.warn('[APP UPDATE FIRESTORE ERROR]', error)
+      return null
+    }
+
     const updateType = compareAppVersion(installedVersionCode, config)
+    const reason = getAppUpdateDecisionReason(installedVersionCode, config, updateType)
+    logAppUpdateDecision(installedVersionCode, config, updateType, reason)
     if (!updateType) return null
 
     return {
@@ -91,7 +147,7 @@ export async function resolveAppUpdateState() {
       updateType,
     }
   } catch (error) {
-    if (__DEV__) console.warn('[APP UPDATE CHECK ERROR]', error)
+    console.warn('[APP UPDATE CHECK ERROR]', error)
     return null
   }
 }

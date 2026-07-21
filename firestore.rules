@@ -102,7 +102,7 @@ service cloud.firestore {
     }
 
     match /appConfig/{documentId} {
-      allow read: if request.auth != null;
+      allow read: if documentId == 'version';
       allow write: if false;
     }
 
