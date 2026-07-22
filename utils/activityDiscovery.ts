@@ -107,7 +107,7 @@ export function getActivityStartMillis(data: Record<string, unknown>, now = Date
   return Number.NaN
 }
 
-function getActivityEndMillis(data: Record<string, unknown>, startsAt: number) {
+export function getActivityEndMillis(data: Record<string, unknown>, startsAt: number) {
   const direct = timestampToMillis(data.endAt ?? data.endsAt ?? data.endDateTime)
   if (Number.isFinite(direct)) return direct
 

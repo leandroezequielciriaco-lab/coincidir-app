@@ -4,6 +4,7 @@ import {
   FlatList,
   Image,
   Platform,
+  Pressable,
   StyleSheet,
   Text,
   TextInput,
@@ -15,6 +16,7 @@ import type { Href } from 'expo-router'
 import { onAuthStateChanged } from 'firebase/auth'
 import { collection, onSnapshot } from 'firebase/firestore'
 import {
+  CalendarDays,
   Camera,
   MessageCircle,
   MessagesSquare,
@@ -41,8 +43,14 @@ import {
   normalize,
   readString,
 } from '../../lib/chat'
+import { getActivityEndMillis, getActivityStartMillis } from '../../utils/activityDiscovery'
+
+type ActivityChatStatus = 'upcoming' | 'inProgress' | 'finished'
+type ChatFilter = 'all' | 'active' | 'finished'
 
 type ChatListItem = {
+  activityDateTimeLabel?: string
+  activityStatus?: ActivityChatStatus
   chatData?: ChatSummaryData
   id: string
   participantCount: number
@@ -51,6 +59,12 @@ type ChatListItem = {
   title: string
   unreadCount: number
 }
+
+const chatFilters: { id: ChatFilter; label: string }[] = [
+  { id: 'all', label: 'Todos' },
+  { id: 'active', label: 'Activos' },
+  { id: 'finished', label: 'Finalizados' },
+]
 
 const upcomingItems = [
   { title: 'Chats privados', description: 'Conversar en privado con otros participantes.', Icon: UsersRound, tone: 'violet' },
@@ -76,6 +90,78 @@ function getChatSearchText(item: ChatListItem) {
   ].filter(Boolean).join(' '))
 }
 
+function capitalize(value: string) {
+  return value ? `${value.charAt(0).toUpperCase()}${value.slice(1)}` : value
+}
+
+function isSameLocalDay(left: Date, right: Date) {
+  return left.getFullYear() === right.getFullYear()
+    && left.getMonth() === right.getMonth()
+    && left.getDate() === right.getDate()
+}
+
+function formatActivityChatDateTime(startsAt: number) {
+  if (!Number.isFinite(startsAt)) return ''
+
+  const date = new Date(startsAt)
+  const today = new Date()
+  const tomorrow = new Date(today)
+  tomorrow.setDate(today.getDate() + 1)
+
+  const time = date.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })
+  let dateLabel = ''
+
+  if (isSameLocalDay(date, today)) {
+    dateLabel = 'Hoy'
+  } else if (isSameLocalDay(date, tomorrow)) {
+    dateLabel = 'Mañana'
+  } else {
+    dateLabel = capitalize(new Intl.DateTimeFormat('es-AR', {
+      day: 'numeric',
+      month: 'short',
+      weekday: 'short',
+    }).format(date).replace(',', '').replace(/\.$/, ''))
+  }
+
+  return `${dateLabel} · ${time}`
+}
+
+function getActivityChatStatus(data: Record<string, unknown>, now: number): ActivityChatStatus {
+  const startsAt = getActivityStartMillis(data, now)
+  const endedAt = getActivityEndMillis(data, startsAt)
+
+  if (Number.isFinite(startsAt) && now < startsAt) return 'upcoming'
+  if (Number.isFinite(startsAt) && Number.isFinite(endedAt) && now <= endedAt) return 'inProgress'
+  if (Number.isFinite(endedAt) && now > endedAt) return 'finished'
+
+  return 'upcoming'
+}
+
+function getStatusLabel(status: ActivityChatStatus) {
+  if (status === 'inProgress') return 'En curso'
+  if (status === 'finished') return 'Finalizada'
+  return 'Próxima'
+}
+
+function getCountLabel(count: number, source: ChatSource) {
+  if (source === 'group') return count === 1 ? 'miembro' : 'miembros'
+  return count === 1 ? 'participante' : 'participantes'
+}
+
+function matchesChatFilter(item: ChatListItem, filter: ChatFilter) {
+  if (filter === 'all') return true
+  if (item.source === 'group') return filter === 'active'
+  if (filter === 'active') return item.activityStatus !== 'finished'
+  return item.activityStatus === 'finished'
+}
+
+function getEmptyMessage(filter: ChatFilter, searchQuery: string) {
+  if (searchQuery.trim()) return 'No encontramos chats que coincidan con tu búsqueda.'
+  if (filter === 'active') return 'No tenés chats de actividades activas.'
+  if (filter === 'finished') return 'No tenés chats de actividades finalizadas.'
+  return ''
+}
+
 export default function MensajesScreen() {
   const router = useRouter()
   const [userId, setUserId] = useState<string | null>(null)
@@ -85,6 +171,8 @@ export default function MensajesScreen() {
   const [groupChats, setGroupChats] = useState<Record<string, ChatSummaryData>>({})
   const [isLoading, setIsLoading] = useState(true)
   const [searchQuery, setSearchQuery] = useState('')
+  const [selectedFilter, setSelectedFilter] = useState<ChatFilter>('all')
+  const [now, setNow] = useState(() => Date.now())
 
   useEffect(() => {
     try {
@@ -142,18 +230,29 @@ export default function MensajesScreen() {
     }
   }, [])
 
+  useEffect(() => {
+    const intervalId = setInterval(() => setNow(Date.now()), 60 * 1000)
+    return () => clearInterval(intervalId)
+  }, [])
+
   const chats = useMemo(() => {
     const activityItems: ChatListItem[] = activities
       .filter((item) => isUserParticipant(item.data, userId))
-      .map((item) => ({
-        chatData: activityChats[item.id],
-        id: item.id,
-        participantCount: getParticipantCount(item.data, 'activity'),
-        source: 'activity',
-        sourceData: item.data,
-        title: getChatTitle(item.data, 'activity'),
-        unreadCount: getUnreadCount(activityChats[item.id], userId),
-      }))
+      .map((item) => {
+        const startsAt = getActivityStartMillis(item.data, now)
+
+        return {
+          activityDateTimeLabel: formatActivityChatDateTime(startsAt),
+          activityStatus: getActivityChatStatus(item.data, now),
+          chatData: activityChats[item.id],
+          id: item.id,
+          participantCount: getParticipantCount(item.data, 'activity'),
+          source: 'activity',
+          sourceData: item.data,
+          title: getChatTitle(item.data, 'activity'),
+          unreadCount: getUnreadCount(activityChats[item.id], userId),
+        }
+      })
 
     const groupItems: ChatListItem[] = groups
       .filter((item) => isUserParticipant(item.data, userId))
@@ -169,12 +268,15 @@ export default function MensajesScreen() {
 
     return [...activityItems, ...groupItems]
       .filter((item) => getChatSearchText(item).includes(normalize(searchQuery)))
+      .filter((item) => matchesChatFilter(item, selectedFilter))
       .sort((left, right) => {
         const leftTime = getTimestampMillis(left.chatData?.lastMessageAt) || getTimestampMillis(left.sourceData.updatedAt ?? left.sourceData.createdAt)
         const rightTime = getTimestampMillis(right.chatData?.lastMessageAt) || getTimestampMillis(right.sourceData.updatedAt ?? right.sourceData.createdAt)
         return rightTime - leftTime
       })
-  }, [activities, activityChats, groups, groupChats, searchQuery, userId])
+  }, [activities, activityChats, groups, groupChats, now, searchQuery, selectedFilter, userId])
+
+  const emptyMessage = getEmptyMessage(selectedFilter, searchQuery)
 
   const openChat = (item: ChatListItem) => {
     router.push({
@@ -197,7 +299,7 @@ export default function MensajesScreen() {
     <SafeAreaView edges={['top']} style={styles.safeArea}>
       <FlatList
         style={Platform.OS === 'web' ? styles.webListFrame : undefined}
-        ListEmptyComponent={<EmptyState onExplore={() => router.push('/explorar')} />}
+        ListEmptyComponent={emptyMessage ? <FilteredEmptyState message={emptyMessage} /> : <EmptyState onExplore={() => router.push('/explorar')} />}
         ListFooterComponent={<UpcomingBlock />}
         ListHeaderComponent={(
           <View style={styles.header}>
@@ -218,6 +320,25 @@ export default function MensajesScreen() {
                 value={searchQuery}
               />
             </View>
+
+            <View style={styles.filterSegment}>
+              {chatFilters.map((filter) => {
+                const isSelected = selectedFilter === filter.id
+
+                return (
+                  <Pressable
+                    accessibilityRole="button"
+                    key={filter.id}
+                    onPress={() => setSelectedFilter(filter.id)}
+                    style={[styles.filterButton, isSelected && styles.filterButtonSelected]}
+                  >
+                    <Text style={[styles.filterButtonText, isSelected && styles.filterButtonTextSelected]}>
+                      {filter.label}
+                    </Text>
+                  </Pressable>
+                )
+              })}
+            </View>
           </View>
         )}
         contentContainerStyle={styles.listContent}
@@ -233,21 +354,37 @@ export default function MensajesScreen() {
 
 function ChatRow({ item, onPress }: { item: ChatListItem; onPress: () => void }) {
   const lastSender = readString(item.chatData?.lastMessageSenderName)
-  const lastMessage = readString(item.chatData?.lastMessageText, 'Todavia no hay mensajes. Se el primero en coordinar.')
+  const lastMessage = readString(item.chatData?.lastMessageText, 'Todavía no hay mensajes. Sé el primero en coordinar.')
   const preview = lastSender ? `${lastSender}: ${lastMessage}` : lastMessage
   const time = formatChatTime(item.chatData?.lastMessageAt)
+  const isFinished = item.activityStatus === 'finished'
 
   return (
     <PressScale accessibilityRole="button" onPress={onPress} scaleTo={0.985} style={styles.chatCard}>
-      <Image source={getChatImage(item.sourceData, item.source)} style={styles.chatImage} />
+      <Image source={getChatImage(item.sourceData, item.source)} style={[styles.chatImage, isFinished && styles.chatImageFinished]} />
       <View style={styles.chatCopy}>
         <View style={styles.chatTopLine}>
           <Text numberOfLines={1} style={styles.chatTitle}>{item.title}</Text>
           <Text style={styles.chatTime}>{time}</Text>
         </View>
-        <Text style={styles.chatParticipants}>
-          {item.participantCount} {item.source === 'group' ? 'miembros' : 'participantes'}
-        </Text>
+        {item.source === 'activity' && item.activityDateTimeLabel ? (
+          <View style={styles.activityDateRow}>
+            <CalendarDays color={isFinished ? '#7B827E' : '#2D8060'} size={14} strokeWidth={2.2} />
+            <Text numberOfLines={1} style={[styles.activityDateText, isFinished && styles.finishedSecondaryText]}>
+              {item.activityDateTimeLabel}
+            </Text>
+          </View>
+        ) : null}
+        <View style={styles.chatMetaRow}>
+          <Text style={[styles.chatParticipants, isFinished && styles.finishedSecondaryText]}>
+            {item.participantCount} {getCountLabel(item.participantCount, item.source)}
+          </Text>
+          {item.activityStatus ? (
+            <View style={[styles.statusChip, styles[`${item.activityStatus}Chip`]]}>
+              <Text style={[styles.statusChipText, styles[`${item.activityStatus}ChipText`]]}>{getStatusLabel(item.activityStatus)}</Text>
+            </View>
+          ) : null}
+        </View>
         <Text numberOfLines={1} style={styles.chatPreview}>{preview}</Text>
       </View>
       {item.unreadCount > 0 ? (
@@ -256,6 +393,14 @@ function ChatRow({ item, onPress }: { item: ChatListItem; onPress: () => void })
         </View>
       ) : null}
     </PressScale>
+  )
+}
+
+function FilteredEmptyState({ message }: { message: string }) {
+  return (
+    <View style={styles.filteredEmptyState}>
+      <Text style={styles.filteredEmptyText}>{message}</Text>
+    </View>
   )
 }
 
@@ -377,6 +522,37 @@ const styles = StyleSheet.create({
     letterSpacing: 0,
     marginLeft: 10,
   },
+  filterSegment: {
+    backgroundColor: '#FFFFFF',
+    borderColor: '#E8EFEA',
+    borderRadius: 14,
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: 6,
+    marginTop: 12,
+    padding: 4,
+    width: '100%',
+  },
+  filterButton: {
+    alignItems: 'center',
+    borderRadius: 10,
+    flex: 1,
+    justifyContent: 'center',
+    minHeight: 36,
+    paddingHorizontal: 8,
+  },
+  filterButtonSelected: {
+    backgroundColor: '#35AE69',
+  },
+  filterButtonText: {
+    color: '#34445F',
+    fontSize: 13,
+    fontWeight: '900',
+    letterSpacing: 0,
+  },
+  filterButtonTextSelected: {
+    color: '#FFFFFF',
+  },
   chatCard: {
     alignItems: 'center',
     backgroundColor: '#FFFFFF',
@@ -393,6 +569,9 @@ const styles = StyleSheet.create({
     borderRadius: 26,
     height: 58,
     width: 58,
+  },
+  chatImageFinished: {
+    opacity: 0.68,
   },
   chatCopy: {
     flex: 1,
@@ -422,7 +601,30 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '700',
     letterSpacing: 0,
-    marginTop: 3,
+  },
+  activityDateRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 5,
+    marginTop: 4,
+  },
+  activityDateText: {
+    color: '#2D8060',
+    flex: 1,
+    fontSize: 12,
+    fontWeight: '800',
+    letterSpacing: 0,
+    lineHeight: 16,
+  },
+  chatMetaRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 8,
+    justifyContent: 'space-between',
+    marginTop: 4,
+  },
+  finishedSecondaryText: {
+    color: '#7B827E',
   },
   chatPreview: {
     color: '#263A34',
@@ -431,6 +633,43 @@ const styles = StyleSheet.create({
     letterSpacing: 0,
     lineHeight: 18,
     marginTop: 7,
+  },
+  statusChip: {
+    alignItems: 'center',
+    borderRadius: 999,
+    borderWidth: 1,
+    flexShrink: 0,
+    justifyContent: 'center',
+    maxWidth: 92,
+    minHeight: 22,
+    paddingHorizontal: 8,
+  },
+  statusChipText: {
+    fontSize: 11,
+    fontWeight: '900',
+    letterSpacing: 0,
+    lineHeight: 14,
+  },
+  upcomingChip: {
+    backgroundColor: '#EAF8EA',
+    borderColor: '#BFE2BF',
+  },
+  upcomingChipText: {
+    color: '#0E7138',
+  },
+  inProgressChip: {
+    backgroundColor: '#EEF5FF',
+    borderColor: '#C9DCF8',
+  },
+  inProgressChipText: {
+    color: '#2366B5',
+  },
+  finishedChip: {
+    backgroundColor: '#F0F1F0',
+    borderColor: '#D7DAD7',
+  },
+  finishedChipText: {
+    color: '#666D69',
   },
   unreadBadge: {
     alignItems: 'center',
@@ -486,6 +725,20 @@ const styles = StyleSheet.create({
     lineHeight: 23,
     marginTop: 12,
     maxWidth: 310,
+    textAlign: 'center',
+  },
+  filteredEmptyState: {
+    alignItems: 'center',
+    paddingBottom: 22,
+    paddingHorizontal: 18,
+    paddingTop: 38,
+  },
+  filteredEmptyText: {
+    color: '#34445F',
+    fontSize: 15,
+    fontWeight: '700',
+    letterSpacing: 0,
+    lineHeight: 22,
     textAlign: 'center',
   },
   exploreButton: {
