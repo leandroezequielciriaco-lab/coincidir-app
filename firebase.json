@@ -23,6 +23,13 @@
       "**/.*",
       "**/node_modules/**"
     ],
+    "redirects": [
+      {
+        "source": "/descargar",
+        "destination": "https://play.google.com/store/apps/details?id=com.leandroezequielciriaco.coincidir",
+        "type": 302
+      }
+    ],
     "rewrites": [
       {
         "source": "**",

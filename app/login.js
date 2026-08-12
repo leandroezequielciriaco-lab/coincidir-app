@@ -3,6 +3,7 @@ import {
   ActivityIndicator,
   Animated,
   KeyboardAvoidingView,
+  Linking,
   Platform,
   Pressable,
   ScrollView,
@@ -20,7 +21,7 @@ import {
   signOut,
 } from 'firebase/auth'
 import { doc, getDoc, serverTimestamp, setDoc } from 'firebase/firestore'
-import { ArrowLeft, ArrowRight, Check, Eye, EyeOff, LockKeyhole, Mail } from 'lucide-react-native'
+import { ArrowLeft, ArrowRight, Check, Download, Eye, EyeOff, LockKeyhole, Mail } from 'lucide-react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 
 import { getFirebaseServices } from '../firebaseConfig'
@@ -34,6 +35,7 @@ import { getGoogleProfileNameRepairFields, readCleanString } from '../utils/user
 
 const googleWebClientId = process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID
 const googleIosClientId = process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID
+const coincidirDownloadUrl = 'https://coincidir.web.app/descargar'
 const isWeb = Platform.OS === 'web'
 let googleSignInModule = null
 
@@ -457,6 +459,12 @@ export default function LoginScreen() {
     router.replace('/onboarding')
   }
 
+  const openPlayStore = () => {
+    Linking.openURL(coincidirDownloadUrl).catch((error) => {
+      console.warn('[LOGIN DOWNLOAD OPEN ERROR]', error)
+    })
+  }
+
   return (
     <View style={styles.screen}>
       <KeyboardAvoidingView
@@ -670,6 +678,16 @@ export default function LoginScreen() {
           >
             <Text style={styles.createAccountText}>¿No tenés cuenta?</Text>
             <Text style={styles.createAccountLink}>Crear cuenta</Text>
+          </Pressable>
+
+          <Pressable
+            accessibilityLabel="Descargar Coincidir en Google Play"
+            accessibilityRole="link"
+            onPress={openPlayStore}
+            style={styles.downloadAppLink}
+          >
+            <Download color="#0E5A44" size={17} strokeWidth={2.4} />
+            <Text style={styles.downloadAppLinkText}>Descargar Coincidir en Google Play</Text>
           </Pressable>
         </ScrollView>
       </KeyboardAvoidingView>

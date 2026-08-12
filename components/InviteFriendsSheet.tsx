@@ -37,14 +37,21 @@ type InviteFriendsSheetProps = {
   visible: boolean
 }
 
-const ANDROID_APP_LINK = 'https://play.google.com/store/apps/details?id=com.leandroezequielciriaco.coincidir'
-const WEB_APP_LINK = 'https://coincidir.web.app'
+const DOWNLOAD_LINK = 'https://coincidir.web.app/descargar'
+const APP_INVITE_MESSAGE = `¡Sumate a Coincidir! 🙌
+
+Encontrá personas para compartir actividades, deportes, hobbies y nuevos encuentros.
+
+Descargá Coincidir:
+${DOWNLOAD_LINK}`
 
 function getAppShareLink() {
-  return Platform.OS === 'android' ? ANDROID_APP_LINK : WEB_APP_LINK
+  return DOWNLOAD_LINK
 }
 
-function getShareLink() {
+function getShareLink(target?: InviteShareTarget | null) {
+  if (target?.type === 'app') return DOWNLOAD_LINK
+
   return getAppShareLink()
 }
 
@@ -52,7 +59,7 @@ function getShareMessage(target?: InviteShareTarget | null) {
   const title = target?.title?.trim()
   const dateTime = target?.dateTime?.trim()
   const location = target?.location?.trim()
-  const link = getShareLink()
+  const link = getShareLink(target)
 
   if (target?.type === 'activity' && title) {
     return [
@@ -77,6 +84,10 @@ function getShareMessage(target?: InviteShareTarget | null) {
     ].filter(Boolean).join('\n')
   }
 
+  if (target?.type === 'app') {
+    return APP_INVITE_MESSAGE
+  }
+
   return [
     'Estoy usando COINCIDIR para encontrar actividades, encuentros y planes cerca mío 🙌',
     '',
@@ -86,7 +97,30 @@ function getShareMessage(target?: InviteShareTarget | null) {
   ].join('\n')
 }
 
-async function shareWithWhatsApp(message: string) {
+async function shareWithSystem(message: string, link: string) {
+  if (Platform.OS === 'web') {
+    const webNavigator = (globalThis as {
+      navigator?: { share?: (data: { text?: string; title?: string; url?: string }) => Promise<void> }
+    }).navigator
+
+    if (typeof webNavigator?.share === 'function') {
+      await webNavigator.share({
+        text: message,
+        title: 'Coincidir',
+        url: link,
+      })
+      return 'shared'
+    }
+
+    await Clipboard.setStringAsync(message)
+    return 'copied'
+  }
+
+  await Share.share({ message })
+  return 'shared'
+}
+
+async function shareWithWhatsApp(message: string, link: string) {
   const whatsappUrl = `whatsapp://send?text=${encodeURIComponent(message)}`
   const canOpen = await Linking.canOpenURL(whatsappUrl)
 
@@ -95,7 +129,7 @@ async function shareWithWhatsApp(message: string) {
     return
   }
 
-  await Share.share({ message })
+  await shareWithSystem(message, link)
 }
 
 async function shareWithTelegram(message: string, link: string) {
@@ -104,11 +138,11 @@ async function shareWithTelegram(message: string, link: string) {
   try {
     await Linking.openURL(telegramUrl)
   } catch {
-    await Share.share({ message })
+    await shareWithSystem(message, link)
   }
 }
 
-async function shareWithInstagram(message: string) {
+async function shareWithInstagram(message: string, link: string) {
   const instagramShareUrl = `instagram://sharesheet?text=${encodeURIComponent(message)}`
   const instagramAppUrl = 'instagram://app'
 
@@ -124,14 +158,14 @@ async function shareWithInstagram(message: string) {
       return
     }
 
-    await Share.share({ message })
+    await shareWithSystem(message, link)
   }
 }
 
 export function InviteFriendsSheet({ onClose, target, visible }: InviteFriendsSheetProps) {
   const [feedback, setFeedback] = useState('')
   const shareMessage = useMemo(() => getShareMessage(target), [target])
-  const shareLink = useMemo(() => getShareLink(), [])
+  const shareLink = useMemo(() => getShareLink(target), [target])
   const hasActivityTarget = target?.type === 'activity' && Boolean(target.id)
 
   const closeWithFeedback = (message: string) => {
@@ -142,6 +176,11 @@ export function InviteFriendsSheet({ onClose, target, visible }: InviteFriendsSh
   const copyLink = async () => {
     await Clipboard.setStringAsync(shareLink)
     closeWithFeedback('Link copiado')
+  }
+
+  const shareMoreOptions = async () => {
+    const result = await shareWithSystem(shareMessage, shareLink)
+    if (result === 'copied') closeWithFeedback('Invitación copiada')
   }
 
   return (
@@ -163,7 +202,7 @@ export function InviteFriendsSheet({ onClose, target, visible }: InviteFriendsSh
             color="#0FA958"
             description="Invitá a tus amigos a sumarse."
             label="WhatsApp"
-            onPress={() => shareWithWhatsApp(shareMessage)}
+            onPress={() => shareWithWhatsApp(shareMessage, shareLink)}
           />
           <InviteOption
             Icon={Copy}
@@ -184,14 +223,14 @@ export function InviteFriendsSheet({ onClose, target, visible }: InviteFriendsSh
             color="#E4405F"
             description="Abrí Instagram con el mensaje listo para pegar."
             label="Instagram"
-            onPress={() => shareWithInstagram(shareMessage)}
+            onPress={() => shareWithInstagram(shareMessage, shareLink)}
           />
           <InviteOption
             Icon={Rocket}
             color="#F2A900"
             description="Invitá a tus amigos a descubrir COINCIDIR."
             label="Más opciones"
-            onPress={() => Share.share({ message: shareMessage })}
+            onPress={() => void shareMoreOptions()}
           />
 
           {feedback ? <Text style={styles.feedback}>{feedback}</Text> : null}

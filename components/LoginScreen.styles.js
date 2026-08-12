@@ -282,4 +282,22 @@ export const styles = StyleSheet.create({
     lineHeight: 22,
     fontWeight: '900',
   },
+  downloadAppLink: {
+    alignItems: 'center',
+    alignSelf: 'center',
+    flexDirection: 'row',
+    gap: 7,
+    marginTop: 16,
+    minHeight: 36,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+  },
+  downloadAppLinkText: {
+    color: '#0E5A44',
+    fontSize: 14,
+    fontWeight: '800',
+    letterSpacing: 0,
+    lineHeight: 19,
+    textAlign: 'center',
+  },
 })
