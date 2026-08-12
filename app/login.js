@@ -680,15 +680,17 @@ export default function LoginScreen() {
             <Text style={styles.createAccountLink}>Crear cuenta</Text>
           </Pressable>
 
-          <Pressable
-            accessibilityLabel="Descargar Coincidir en Google Play"
-            accessibilityRole="link"
-            onPress={openPlayStore}
-            style={styles.downloadAppLink}
-          >
-            <Download color="#0E5A44" size={17} strokeWidth={2.4} />
-            <Text style={styles.downloadAppLinkText}>Descargar Coincidir en Google Play</Text>
-          </Pressable>
+          {isWeb ? (
+            <Pressable
+              accessibilityLabel="Descargar Coincidir en Google Play"
+              accessibilityRole="link"
+              onPress={openPlayStore}
+              style={styles.downloadAppLink}
+            >
+              <Download color="#0E5A44" size={17} strokeWidth={2.4} />
+              <Text style={styles.downloadAppLinkText}>Descargar Coincidir en Google Play</Text>
+            </Pressable>
+          ) : null}
         </ScrollView>
       </KeyboardAvoidingView>
     </View>

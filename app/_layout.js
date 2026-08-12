@@ -14,6 +14,7 @@ import { getJsInstanceId } from '../utils/jsInstance'
 import { canParticipate, isGoogleUser, reloadAuthUser } from '../utils/authParticipation'
 import { hasAcceptedCurrentLegal } from '../constants/legal'
 import { AppUpdateModal } from '../components/AppUpdateModal'
+import WebDownloadNotice from '../components/WebDownloadNotice'
 import { useAppUpdateState } from '../utils/appUpdate'
 
 const PUBLIC_ROUTES = new Set([
@@ -664,9 +665,12 @@ export default function RootLayout() {
     })
   }, [authState.checked, authState.user, legalState, pathname, pendingNotificationRouteVersion, router])
 
+  const showWebDownloadNotice = Boolean(authState.user)
+
   return (
     <AuthContext.Provider value={authState}>
       <SafeAreaProvider>
+        <WebDownloadNotice visible={showWebDownloadNotice} />
         <Stack
           screenOptions={{
             headerShown: false,
