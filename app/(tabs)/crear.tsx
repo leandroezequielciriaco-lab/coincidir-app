@@ -1700,7 +1700,6 @@ function CrearScreenContent() {
     if (!time) missingFields.push('hora')
     if (!selectedLocation && !location.trim()) missingFields.push('ubicación')
     if (activityKind === 'group' && (!selectedGroup || !selectedGroupId)) missingFields.push('grupo')
-    if (cost === 'Pago' && !price.trim()) missingFields.push('precio')
     return missingFields
   }
 
@@ -1742,11 +1741,6 @@ function CrearScreenContent() {
 
     if (activityKind === 'group' && (!selectedGroup || !selectedGroupId)) {
       setMessage('Seleccioná un grupo para publicar la actividad.')
-      return
-    }
-
-    if (cost === 'Pago' && !price.trim()) {
-      setMessage('Ingresá el precio de la actividad.')
       return
     }
 
