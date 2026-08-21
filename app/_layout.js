@@ -2,7 +2,7 @@ import { Stack, usePathname, useRouter } from 'expo-router'
 import Constants from 'expo-constants'
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import { useEffect, useRef, useState } from 'react'
-import { AppState, Platform } from 'react-native'
+import { Platform } from 'react-native'
 import { SafeAreaProvider } from 'react-native-safe-area-context'
 import { onAuthStateChanged, signOut } from 'firebase/auth'
 import { doc, onSnapshot, serverTimestamp, setDoc } from 'firebase/firestore'
@@ -303,16 +303,6 @@ export default function RootLayout() {
     pushTokenRegistrationAttemptedRef.current.add(userId)
     registerAndroidExpoPushToken(userId)
   }, [authState.checked, authState.user])
-
-  useEffect(() => {
-    const subscription = AppState.addEventListener('change', (nextState) => {
-      console.log('[APPSTATE CHANGE]', { instanceId, state: nextState })
-    })
-
-    return () => {
-      subscription.remove()
-    }
-  }, [instanceId])
 
   useEffect(() => {
     try {

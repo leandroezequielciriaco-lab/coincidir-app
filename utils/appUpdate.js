@@ -1,11 +1,12 @@
-import { useEffect, useState } from 'react'
-import { Platform } from 'react-native'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { AppState, Platform } from 'react-native'
 import * as Application from 'expo-application'
 import { doc, getDoc } from 'firebase/firestore'
 
 import { getFirebaseServices } from '../firebaseConfig'
 
 export const DEFAULT_PLAY_STORE_URL = 'https://play.google.com/store/apps/details?id=com.leandroezequielciriaco.coincidir'
+const FIRESTORE_RETRY_DELAY_MS = 3000
 
 function readString(value, fallback = '') {
   return typeof value === 'string' && value.trim() ? value.trim() : fallback
@@ -15,8 +16,36 @@ function readNumber(value, fallback = 0) {
   return typeof value === 'number' && Number.isFinite(value) ? value : fallback
 }
 
-function readBoolean(value, fallback = false) {
-  return typeof value === 'boolean' ? value : fallback
+function warnInvalidRemoteType(field, value, expectedType) {
+  if (typeof value === 'undefined') return
+  console.warn('[APP UPDATE CONFIG TYPE ERROR]', {
+    field,
+    receivedType: Array.isArray(value) ? 'array' : typeof value,
+    value,
+    expectedType,
+  })
+}
+
+function readRemoteBoolean(data, field, fallback = false) {
+  const value = data?.[field]
+  if (typeof value === 'boolean') return value
+
+  warnInvalidRemoteType(field, value, 'boolean')
+  return fallback
+}
+
+function readRemoteNumber(data, field, fallback = 0) {
+  const value = data?.[field]
+  if (typeof value === 'number' && Number.isFinite(value)) return value
+
+  warnInvalidRemoteType(field, value, 'number')
+  return fallback
+}
+
+function wait(ms) {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms)
+  })
 }
 
 function readStringList(value) {
@@ -42,6 +71,10 @@ export function compareAppVersion(installedVersionCode, config) {
   const minimumVersionCode = readNumber(config.minimumVersionCode, 0)
   const latestVersionCode = readNumber(config.latestVersionCode, 0)
 
+  if (config.forceUpdate === true && latestVersionCode > 0 && installedVersionCode < latestVersionCode) {
+    return 'required'
+  }
+
   if (minimumVersionCode > 0 && installedVersionCode < minimumVersionCode) {
     return 'required'
   }
@@ -63,6 +96,10 @@ function getAppUpdateDecisionReason(installedVersionCode, config, updateType) {
   const latestVersionCode = readNumber(config.latestVersionCode, 0)
 
   if (updateType === 'required') {
+    if (config.forceUpdate === true && latestVersionCode > 0 && installedVersionCode < latestVersionCode) {
+      return 'force_update_installed_version_below_latest_version_code'
+    }
+
     return 'installed_version_below_minimum_version_code'
   }
 
@@ -104,13 +141,32 @@ export async function fetchAppUpdateConfig() {
   const data = snapshot.data() ?? {}
 
   return {
-    enabled: readBoolean(data.enabled, false),
-    forceUpdate: readBoolean(data.forceUpdate, false),
-    latestVersionCode: readNumber(data.latestVersionCode, 0),
+    enabled: readRemoteBoolean(data, 'enabled', false),
+    forceUpdate: readRemoteBoolean(data, 'forceUpdate', false),
+    latestVersionCode: readRemoteNumber(data, 'latestVersionCode', 0),
     message: readString(data.message),
-    minimumVersionCode: readNumber(data.minimumVersionCode, 0),
+    minimumVersionCode: readRemoteNumber(data, 'minimumVersionCode', 0),
     playStoreUrl: readString(data.playStoreUrl, DEFAULT_PLAY_STORE_URL),
     releaseNotes: readStringList(data.releaseNotes),
+  }
+}
+
+async function fetchAppUpdateConfigWithRetry(installedVersionCode) {
+  try {
+    return await fetchAppUpdateConfig()
+  } catch (error) {
+    logAppUpdateDecision(installedVersionCode, null, null, 'firestore_read_failed_retrying')
+    console.warn('[APP UPDATE FIRESTORE ERROR]', { attempt: 1, error })
+  }
+
+  await wait(FIRESTORE_RETRY_DELAY_MS)
+
+  try {
+    return await fetchAppUpdateConfig()
+  } catch (error) {
+    logAppUpdateDecision(installedVersionCode, null, null, 'firestore_read_failed_after_retry')
+    console.warn('[APP UPDATE FIRESTORE ERROR]', { attempt: 2, error })
+    return null
   }
 }
 
@@ -127,14 +183,7 @@ export async function resolveAppUpdateState() {
       return null
     }
 
-    let config
-    try {
-      config = await fetchAppUpdateConfig()
-    } catch (error) {
-      logAppUpdateDecision(installedVersionCode, null, null, 'firestore_read_failed')
-      console.warn('[APP UPDATE FIRESTORE ERROR]', error)
-      return null
-    }
+    const config = await fetchAppUpdateConfigWithRetry(installedVersionCode)
 
     const updateType = compareAppVersion(installedVersionCode, config)
     const reason = getAppUpdateDecisionReason(installedVersionCode, config, updateType)
@@ -155,22 +204,55 @@ export async function resolveAppUpdateState() {
 export function useAppUpdateState() {
   const [appUpdateState, setAppUpdateState] = useState(null)
   const [dismissedRecommendedUpdate, setDismissedRecommendedUpdate] = useState(false)
+  const appStateRef = useRef(AppState.currentState)
+  const isCheckingRef = useRef(false)
+  const isMountedRef = useRef(false)
+  const pendingCheckReasonRef = useRef(null)
+  const checkVersion = useCallback((reason = 'manual') => {
+    if (isCheckingRef.current) {
+      pendingCheckReasonRef.current = reason
+      return
+    }
 
-  useEffect(() => {
-    let isMounted = true
+    isCheckingRef.current = true
+    console.log('[APP UPDATE CHECK REQUEST]', { reason })
 
     resolveAppUpdateState()
       .then((nextState) => {
-        if (isMounted) setAppUpdateState(nextState)
+        if (isMountedRef.current) setAppUpdateState(nextState)
       })
       .catch((error) => {
         if (__DEV__) console.warn('[APP UPDATE STATE ERROR]', error)
       })
+      .finally(() => {
+        isCheckingRef.current = false
+
+        const pendingReason = pendingCheckReasonRef.current
+        pendingCheckReasonRef.current = null
+        if (isMountedRef.current && pendingReason) {
+          checkVersion(pendingReason)
+        }
+      })
+  }, [])
+
+  useEffect(() => {
+    isMountedRef.current = true
+    checkVersion('mount')
+
+    const subscription = AppState.addEventListener('change', (nextState) => {
+      const previousState = appStateRef.current
+      appStateRef.current = nextState
+
+      if ((previousState === 'background' || previousState === 'inactive') && nextState === 'active') {
+        checkVersion('foreground')
+      }
+    })
 
     return () => {
-      isMounted = false
+      isMountedRef.current = false
+      subscription.remove()
     }
-  }, [])
+  }, [checkVersion])
 
   const visibleUpdateState = appUpdateState?.updateType === 'required' || !dismissedRecommendedUpdate
     ? appUpdateState
