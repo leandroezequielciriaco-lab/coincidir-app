@@ -825,6 +825,16 @@ function getCalendarDays(monthDate: Date) {
   return days
 }
 
+function getCalendarWeeks(days: (Date | null)[]) {
+  const weeks: (Date | null)[][] = []
+
+  for (let index = 0; index < days.length; index += 7) {
+    weeks.push(days.slice(index, index + 7))
+  }
+
+  return weeks
+}
+
 function shouldNotifyNewActivityInterest(payload: ActivityFormPayload) {
   return payload.visibility === 'public' && getActivityStartMillis(payload) > Date.now()
 }
@@ -1121,6 +1131,10 @@ function CrearScreenContent() {
   const calendarDays = useMemo(
     () => getCalendarDays(calendarMonth),
     [calendarMonth],
+  )
+  const calendarWeeks = useMemo(
+    () => getCalendarWeeks(calendarDays),
+    [calendarDays],
   )
 
   const resetCreateForm = useCallback(() => {
@@ -2640,36 +2654,40 @@ function CrearScreenContent() {
           </View>
 
           <View style={[styles.calendarGrid, Platform.OS === 'web' && styles.webCalendarGrid]}>
-            {calendarDays.map((item, index) => {
-              const isSelected = item && selectedDate ? isSameDay(item, selectedDate) : false
-              const isToday = item ? isSameDay(item, new Date()) : false
+            {calendarWeeks.map((week, weekIndex) => (
+              <View key={`week-${weekIndex}`} style={styles.calendarDayRow}>
+                {week.map((item, dayIndex) => {
+                  const isSelected = item && selectedDate ? isSameDay(item, selectedDate) : false
+                  const isToday = item ? isSameDay(item, new Date()) : false
 
-              return (
-                <Pressable
-                  accessibilityLabel={item ? `Elegir ${formatDate(item)}` : undefined}
-                  accessibilityRole={item ? 'button' : undefined}
-                  disabled={!item}
-                  key={item ? item.toISOString() : `empty-${index}`}
-                  onPress={() => item && selectCalendarDate(item)}
-                  style={[
-                    styles.calendarDay,
-                    Platform.OS === 'web' && styles.webCalendarDay,
-                    isToday && styles.calendarDayToday,
-                    isSelected && styles.calendarDaySelected,
-                  ]}
-                >
-                  {item ? (
-                    <Text style={[
-                      styles.calendarDayText,
-                      isSelected && styles.calendarDayTextSelected,
-                    ]}
+                  return (
+                    <Pressable
+                      accessibilityLabel={item ? `Elegir ${formatDate(item)}` : undefined}
+                      accessibilityRole={item ? 'button' : undefined}
+                      disabled={!item}
+                      key={item ? item.toISOString() : `empty-${weekIndex}-${dayIndex}`}
+                      onPress={() => item && selectCalendarDate(item)}
+                      style={[
+                        styles.calendarDay,
+                        Platform.OS === 'web' && styles.webCalendarDay,
+                        isToday && styles.calendarDayToday,
+                        isSelected && styles.calendarDaySelected,
+                      ]}
                     >
-                      {item.getDate()}
-                    </Text>
-                  ) : null}
-                </Pressable>
-              )
-            })}
+                      {item ? (
+                        <Text style={[
+                          styles.calendarDayText,
+                          isSelected && styles.calendarDayTextSelected,
+                        ]}
+                        >
+                          {item.getDate()}
+                        </Text>
+                      ) : null}
+                    </Pressable>
+                  )
+                })}
+              </View>
+            ))}
           </View>
         </View>
       ) : null}
@@ -4323,6 +4341,7 @@ function CreateStep4WebSimple({
   const [activePicker, setActivePicker] = useState<'date' | 'time' | null>(null)
   const [calendarMonth, setCalendarMonth] = useState(() => parseWebDateInput(date) ?? startOfDay(new Date()))
   const calendarDays = useMemo(() => getCalendarDays(calendarMonth), [calendarMonth])
+  const calendarWeeks = useMemo(() => getCalendarWeeks(calendarDays), [calendarDays])
   const selectedDateForPicker = parseWebDateInput(date)
   const selectedDateLabel = selectedDateForPicker ? formatDate(selectedDateForPicker) : 'Elegir'
   const selectedTimeLabel = time.trim() || 'Elegir'
@@ -4467,29 +4486,33 @@ function CreateStep4WebSimple({
                 </View>
 
                 <View style={styles.webPickerCalendarGrid}>
-                  {calendarDays.map((item, index) => {
-                    const isSelected = Boolean(item && selectedDateForPicker && isSameDay(item, selectedDateForPicker))
-                    const isToday = Boolean(item && isSameDay(item, new Date()))
+                  {calendarWeeks.map((week, weekIndex) => (
+                    <View key={`web-week-${weekIndex}`} style={styles.webPickerDayRow}>
+                      {week.map((item, dayIndex) => {
+                        const isSelected = Boolean(item && selectedDateForPicker && isSameDay(item, selectedDateForPicker))
+                        const isToday = Boolean(item && isSameDay(item, new Date()))
 
-                    return (
-                      <Pressable
-                        accessibilityLabel={item ? `Elegir ${formatDate(item)}` : undefined}
-                        accessibilityRole={item ? 'button' : undefined}
-                        disabled={!item}
-                        key={item ? item.toISOString() : `empty-${index}`}
-                        onPress={() => item && selectDate(item)}
-                        style={[
-                          styles.webPickerDay,
-                          isToday && styles.webPickerDayToday,
-                          isSelected && styles.webPickerDaySelected,
-                        ]}
-                      >
-                        {item ? (
-                          <Text style={[styles.webPickerDayText, isSelected && styles.webPickerDayTextSelected]}>{item.getDate()}</Text>
-                        ) : null}
-                      </Pressable>
-                    )
-                  })}
+                        return (
+                          <Pressable
+                            accessibilityLabel={item ? `Elegir ${formatDate(item)}` : undefined}
+                            accessibilityRole={item ? 'button' : undefined}
+                            disabled={!item}
+                            key={item ? item.toISOString() : `empty-${weekIndex}-${dayIndex}`}
+                            onPress={() => item && selectDate(item)}
+                            style={[
+                              styles.webPickerDay,
+                              isToday && styles.webPickerDayToday,
+                              isSelected && styles.webPickerDaySelected,
+                            ]}
+                          >
+                            {item ? (
+                              <Text style={[styles.webPickerDayText, isSelected && styles.webPickerDayTextSelected]}>{item.getDate()}</Text>
+                            ) : null}
+                          </Pressable>
+                        )
+                      })}
+                    </View>
+                  ))}
                 </View>
               </View>
             ) : null}
@@ -5029,16 +5052,19 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   webPickerCalendarGrid: {
+    width: '100%',
+  },
+  webPickerDayRow: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
+    width: '100%',
   },
   webPickerDay: {
     alignItems: 'center',
     borderRadius: 14,
+    flex: 1,
     height: 42,
     justifyContent: 'center',
     marginBottom: 6,
-    width: `${100 / 7}%`,
   },
   webPickerDayToday: {
     backgroundColor: '#EFF7EB',
@@ -6523,15 +6549,18 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   calendarGrid: {
+    width: '100%',
+  },
+  calendarDayRow: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
+    width: '100%',
   },
   webCalendarGrid: {
     alignSelf: 'center',
     width: '100%',
   },
   calendarDay: {
-    width: `${100 / 7}%`,
+    flex: 1,
     aspectRatio: 1,
     alignItems: 'center',
     justifyContent: 'center',
