@@ -92,6 +92,7 @@ export const activityCategories: ActivityCategory[] = [
       'Mindfulness',
       'Stretching',
       'Tai Chi',
+      'Chi Kung',
       'Sound Healing',
       'Terapias holísticas',
       'Astrología',
