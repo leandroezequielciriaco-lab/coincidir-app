@@ -302,6 +302,13 @@ function getMaxParticipants(data: Record<string, unknown>) {
   return Math.max(1, readNumber(getAdditionalSettings(data).maxParticipants, readNumber(data.maxParticipants, 10)))
 }
 
+function formatActivityCapacityLabel(count: number, maxParticipants: number, isOrganizer: boolean) {
+  if (maxParticipants <= 0) return 'Sin limite'
+  if (isOrganizer) return `${count}/${maxParticipants}`
+  if (count >= maxParticipants) return 'Cupo completo'
+  return `Hasta ${maxParticipants} personas`
+}
+
 function getGroupMeta(data: Record<string, unknown>, localGroups: LocalGroup[] = []) {
   return getActivityGroupMeta(data, localGroups)
 }
@@ -513,7 +520,7 @@ function mapExploreCard(
     subtitle,
     customName,
     optionalName,
-    capacity: isGroup ? formatGroupMemberCount(getGroupMemberCount(data)) : `${count}/${max}`,
+    capacity: isGroup ? formatGroupMemberCount(getGroupMemberCount(data)) : formatActivityCapacityLabel(count, max, organizer),
     location: readString(data.location, readString(data.city, 'Ubicación a definir')),
     schedule: isGroup
       ? readString(data.schedule, 'Próximo encuentro a definir')

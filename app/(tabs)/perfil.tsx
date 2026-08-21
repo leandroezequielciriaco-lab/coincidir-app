@@ -189,6 +189,10 @@ function readString(value: unknown, fallback = '') {
   return typeof value === 'string' && value.trim() ? value.trim() : fallback
 }
 
+function readNumber(value: unknown, fallback: number) {
+  return typeof value === 'number' && Number.isFinite(value) ? value : fallback
+}
+
 function cleanPhotoValue(value?: string | null) {
   return typeof value === 'string' && value.trim().length > 0 ? value.trim() : null
 }
@@ -283,6 +287,24 @@ function getParticipantCount(data: Record<string, unknown>) {
   const participants = data.participants ?? data.members
   if (typeof participants === 'object' && participants) return Object.keys(participants).length
   return Array.isArray(participants) ? participants.length : 0
+}
+
+function getAdditionalSettings(data: Record<string, unknown>) {
+  return typeof data.additionalSettings === 'object' && data.additionalSettings
+    ? data.additionalSettings as Record<string, unknown>
+    : {}
+}
+
+function getMaxParticipants(data: Record<string, unknown>) {
+  const additionalSettings = getAdditionalSettings(data)
+  return Math.max(1, readNumber(additionalSettings.maxParticipants, readNumber(data.maxParticipants, 10)))
+}
+
+function formatActivityCapacityLabel(count: number, maxParticipants: number, isOrganizer: boolean) {
+  if (maxParticipants <= 0) return 'Sin limite'
+  if (isOrganizer) return `${count} participantes`
+  if (count >= maxParticipants) return 'Cupo completo'
+  return `Hasta ${maxParticipants} personas`
 }
 
 function getRecordTime(record: FirestoreRecord) {
@@ -1294,6 +1316,10 @@ function ProfileRow({
   const participants = getParticipantCount(item.data)
   const visualState = variant === 'activity' ? getActivityVisualState(item.data) : null
   const ownActivity = variant === 'activity' && isOwnActivity(item.data, currentUserId)
+  const maxParticipants = variant === 'activity' ? getMaxParticipants(item.data) : 0
+  const activityCapacityLabel = variant === 'activity'
+    ? formatActivityCapacityLabel(participants, maxParticipants, ownActivity)
+    : ''
   const groupMeta = variant === 'activity' ? getActivityGroupMeta(item.data) : { groupColor: '', groupId: '', groupName: '' }
   const groupImageUrl = getGroupImageUrl(groupMeta, groupImageUrlsByKey)
   const isGroupActivity = Boolean(groupMeta.groupId || groupMeta.groupName)
@@ -1385,7 +1411,7 @@ function ProfileRow({
             <View style={styles.rowBadge}>
               <UsersRound color="#17803C" size={12} strokeWidth={2.2} />
               <Text ellipsizeMode="tail" numberOfLines={1} style={styles.rowBadgeText}>
-                {variant === 'group' ? `${participants} miembros` : `${participants} participantes`}
+                {variant === 'group' ? `${participants} miembros` : activityCapacityLabel}
               </Text>
             </View>
           </View>

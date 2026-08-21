@@ -199,6 +199,13 @@ function getMaxParticipants(data: Record<string, unknown>) {
   return Math.max(1, readNumber(additionalSettings.maxParticipants, 10))
 }
 
+function formatActivityCapacityLabel(count: number, maxParticipants: number, isOrganizer: boolean) {
+  if (maxParticipants <= 0) return 'Sin limite'
+  if (isOrganizer) return `${count}/${maxParticipants}`
+  if (count >= maxParticipants) return 'Cupo completo'
+  return `Hasta ${maxParticipants} personas`
+}
+
 function formatDateBadge(date: string) {
   const normalizedDate = normalize(date)
   const dateParts = date.trim().match(/^(\d{1,2})\/(\d{1,2})\/(\d{2}|\d{4})$/)
@@ -476,7 +483,7 @@ function mapActivityCard(
     optionalName,
     image: getCategoryImage(data),
     dateBadge: formatDateBadge(readString(data.date)),
-    people: maxParticipants > 0 ? `${joinState.count}/${maxParticipants}` : String(joinState.count),
+    people: formatActivityCapacityLabel(joinState.count, maxParticipants, isOrganizer),
     category,
     dateTime: formatSchedule(data),
     location: getRecordLocation(data),

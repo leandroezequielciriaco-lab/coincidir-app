@@ -295,6 +295,11 @@ function getMaxParticipants(data: ActivityData) {
   return Math.max(1, readNumber(additionalSettings.maxParticipants, readNumber(data.maxParticipants, 10)))
 }
 
+function formatPublicCapacityLabel(maxParticipants: number, isFull: boolean) {
+  if (maxParticipants <= 0) return ''
+  return isFull ? 'Cupo completo' : `Hasta ${maxParticipants} personas`
+}
+
 function hasUserInMap(value: unknown, userId: string) {
   return typeof value === 'object' && value !== null && userId in value
 }
@@ -1763,6 +1768,11 @@ export default function ActivityDetailScreen() {
   }
 
   const availablePlaces = Math.max(0, detail.maxParticipants - detail.participantCount)
+  const capacityIsFull = detail.maxParticipants > 0 && detail.participantCount >= detail.maxParticipants
+  const publicCapacityLabel = formatPublicCapacityLabel(detail.maxParticipants, capacityIsFull)
+  const capacityLabel = isOrganizer
+    ? `${detail.participantCount} de ${detail.maxParticipants} participantes`
+    : publicCapacityLabel
   const groupColors = getGroupTheme(detail.groupColor)
   const isFinished = detail.visualState?.key === 'finished'
   const isPrimaryActionDisabled = detail.isCancelled
@@ -1777,7 +1787,7 @@ export default function ActivityDetailScreen() {
         ? 'Actividad finalizada'
         : detail.action === 'interest'
           ? detail.interested ? 'Te interesa' : 'Me interesa'
-          : detail.isFull ? 'Actividad completa' : detail.joined ? 'Te sumaste' : 'Me sumo'
+          : detail.isFull ? 'Cupo completo' : detail.joined ? 'Te sumaste' : 'Me sumo'
   const isPrimaryActionMuted = isPrimaryActionDisabled || detail.joined || detail.interested
   const canOpenActivityChat = Boolean(activityId && currentUserId && (isOrganizer || detail.joined))
   const inviteTarget: InviteShareTarget = {
@@ -1853,9 +1863,13 @@ export default function ActivityDetailScreen() {
 
         <View style={styles.heroWrap}>
           <Image source={detail.image} style={styles.heroImage} />
-          <View style={styles.heroBadge}>
-            <Text style={styles.heroBadgeText}>{detail.participantCount}/{detail.maxParticipants}</Text>
-          </View>
+          {capacityLabel ? (
+            <View style={styles.heroBadge}>
+              <Text style={styles.heroBadgeText}>
+                {isOrganizer ? `${detail.participantCount}/${detail.maxParticipants}` : capacityLabel}
+              </Text>
+            </View>
+          ) : null}
         </View>
 
         <View style={styles.content}>
@@ -1887,7 +1901,7 @@ export default function ActivityDetailScreen() {
           <InfoRow Icon={CalendarDays} label={detail.date} />
           <InfoRow Icon={Clock3} label={detail.time} />
           <InfoRow Icon={MapPin} label={detail.location} onPress={openActivityLocation} secondary="Tocar para abrir en Maps" disabled={isOpeningLocation} />
-          <InfoRow Icon={UsersRound} label={`${detail.participantCount} de ${detail.maxParticipants} participantes`} />
+          {capacityLabel ? <InfoRow Icon={UsersRound} label={capacityLabel} /> : null}
 
           {detail.groupName ? (
             <View style={[styles.groupActivityCard, { backgroundColor: groupColors.backgroundColor, borderColor: groupColors.borderColor }]}>
@@ -1899,12 +1913,16 @@ export default function ActivityDetailScreen() {
             </View>
           ) : null}
 
-          <View style={styles.capacityTrack}>
-            <View style={[styles.capacityFill, { width: `${Math.min(100, (detail.participantCount / detail.maxParticipants) * 100)}%` }]} />
-          </View>
-          <Text style={[styles.availableText, detail.isFull && styles.fullText]}>
-            {detail.isFull ? 'Actividad completa' : `${availablePlaces} lugares disponibles`}
-          </Text>
+          {isOrganizer ? (
+            <>
+              <View style={styles.capacityTrack}>
+                <View style={[styles.capacityFill, { width: `${Math.min(100, (detail.participantCount / detail.maxParticipants) * 100)}%` }]} />
+              </View>
+              <Text style={[styles.availableText, capacityIsFull && styles.fullText]}>
+                {capacityIsFull ? 'Cupo completo' : `${availablePlaces} lugares disponibles`}
+              </Text>
+            </>
+          ) : null}
 
           {detail.features.length > 0 ? (
             <View style={styles.featuresSection}>
