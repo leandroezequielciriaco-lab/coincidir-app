@@ -87,6 +87,7 @@ type PickerMode = 'category' | 'subcategory' | 'date' | 'time' | 'currency' | nu
 type CreateStep = 1 | 2 | 3 | 4 | 5
 const allActivitySteps: CreateStep[] = [1, 2, 3, 4, 5]
 const groupContextActivitySteps: CreateStep[] = [1, 3, 4, 5]
+const ACTIVITY_DESCRIPTION_MAX_LENGTH = 500
 type CreateFlowMode = 'activity' | 'choice' | 'group' | 'groupCreated'
 type ActivityKind = 'group' | 'individual'
 
@@ -3576,7 +3577,7 @@ function CrearScreenContent() {
           <View style={styles.createCard}>
             <Text style={styles.createFieldLabel}>Descripción de la actividad</Text>
             <TextInput
-              maxLength={300}
+              maxLength={ACTIVITY_DESCRIPTION_MAX_LENGTH}
               multiline
               onChangeText={setDescription}
               placeholder="Contá qué van a hacer, qué llevar y cómo encontrarse."
@@ -3586,7 +3587,7 @@ function CrearScreenContent() {
               underlineColorAndroid="transparent"
               value={description}
             />
-            <Text style={styles.createCounterText}>{description.length}/300</Text>
+            <Text style={styles.createCounterText}>{description.length}/{ACTIVITY_DESCRIPTION_MAX_LENGTH}</Text>
           </View>
         ) : null}
 
